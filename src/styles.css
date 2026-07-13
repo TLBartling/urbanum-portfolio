@@ -2,8 +2,15 @@
   color-scheme: light;
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
-  background: #fff;
+  background: #faf9f5;
   color: #1a1a1a;
+
+  /* Shared "reveal" motion language -- a slow, gentle deceleration with no
+     bounce, meant to read as material settling into place rather than an
+     interface snapping open. Used wherever something is being *revealed*
+     (opening direction only); closing keeps its own, brisker pace, the
+     way an archival drawer eases open slowly but shuts more directly. */
+  --reveal-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 * {
@@ -24,7 +31,7 @@ body::-webkit-scrollbar {
 }
 
 body {
-  background: #fff;
+  background: #faf9f5;
 }
 
 #root {
@@ -34,73 +41,475 @@ body {
 .app-shell {
   width: 100%;
   min-height: 100vh;
-  background: #fff;
+  background: #faf9f5;
 }
 
+/* .site-header is the outer fixed frame. It has no explicit height of its
+   own -- its box is the sum of .site-header__row1 (always present, the
+   original chrome) plus .index-drawer (0px when closed), so the frame
+   genuinely grows to contain the subheader instead of the subheader
+   overflowing past a fixed box. Background stays transparent until the
+   drawer opens, at which point it becomes a real surface that frames the
+   controls. */
 .site-header {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   z-index: 1200;
-  height: clamp(86px, 10vw, 112px);
-  padding: clamp(12px, 1.45vw, 17px) clamp(18px, 2vw, 28px) 0;
   background: transparent;
   pointer-events: none;
+  transition:
+    opacity 1.6s cubic-bezier(0.65, 0, 0.35, 1),
+    background-color 200ms ease-out,
+    box-shadow 200ms ease-out;
 }
+
+/* A barely-there shadow rather than a hard rule -- just enough
+   separation to read as two sheets of paper, not a bordered panel. The
+   frame materializes slowly (its own opening-direction transition here
+   overrides the base rule's brisker closing speed). */
+.site-header--framed {
+  background: #faf9f5;
+  box-shadow: 0 3px 8px -6px rgba(17, 17, 17, 0.08);
+  transition:
+    opacity 1.6s cubic-bezier(0.65, 0, 0.35, 1),
+    background-color 520ms var(--reveal-ease),
+    box-shadow 520ms var(--reveal-ease);
+}
+
+.site-header__row1 {
+  position: relative;
+  height: clamp(80px, 7vw, 102px);
+  padding: clamp(34px,2.8vw,42px)
+        clamp(34px,4vw,60px)
+        0;
+  transition:
+    height 1.6s cubic-bezier(0.65, 0, 0.35, 1),
+    padding-top 1.6s cubic-bezier(0.65, 0, 0.35, 1);
+}
+
 
 .brand {
   position: absolute;
-  top: clamp(11px, 1.25vw, 13px);
+  top: 50%;
   left: 50%;
-  transform: translateX(-50%);
+  transform: translate(-50%, -50%);
   display: block;
-  width: clamp(158px, 19vw, 360px);
+  width: clamp(180px, 14vw, 235px);
   height: auto;
   pointer-events: none;
+  transition: transform 1.6s cubic-bezier(0.65, 0, 0.35, 1);
 }
 
 .top-menu {
-  position: absolute;
-  top: clamp(58px, 6.8vw, 76px);
-  left: clamp(24px, 2.8vw, 58px);
-  right: clamp(24px, 2.8vw, 58px);
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  pointer-events: none;
+  align-items: center;
+  width: 100%;
+  position: relative;
+  pointer-events: auto;
 }
 
 .top-menu__group {
   display: flex;
   align-items: center;
-  gap: clamp(0.8rem, 2.3vw, 1.65rem);
+  gap: 18px;
+  transition: gap 1.6s cubic-bezier(0.65, 0, 0.35, 1);
+}
+.text-control {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+
+  font-family: "Neue Haas Grotesk Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 0.78rem;
+  font-weight: 400;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+
+  color: #111;
+  transition: opacity 0.25s ease;
 }
 
-.text-control {
+.text-control:hover {
+  opacity: .55;
+}
+
+.text-control--muted{
+    color:#9d9d9d;
+}
+
+.text-control--active{
+    color:#111;
+}
+
+.text-control--engaged {
+  position: relative;
+}
+
+.text-control--engaged::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -6px;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.35;
+}
+
+/* Filter gets its own slightly more noticeable hover than the other
+   (currently inert) top-menu controls, so it reads as clickable: a subtle
+   opacity drop plus a slight upward tick, not a button-like treatment. */
+.text-control--filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.text-control--filter:hover {
+  opacity: 0.72;
+  transform: translateY(-1px);
+}
+
+/* Index drawer — the header unfolding into its own catalog (theme /
+   project / year). Not a dropdown: it lives inside .site-header, in
+   normal document flow beneath .site-header__row1, so .site-header's own
+   (unset) height is simply the sum of row1 + this drawer. That's what
+   lets the frame itself grow to contain the subheader rather than the
+   subheader overflowing past a fixed-height box.
+
+   Motion is deliberately sequenced in three slow, gentle stages so it
+   reads as metadata being uncovered, not a menu dropping open:
+     1. The frame itself gently unfolds (this rule's height transition --
+        slow, eased, no bounce -- the "expansion" the user actually sees).
+     2. Only once that's essentially settled, each category (Theme,
+        Project, Year) softly fades in on its own, generously staggered
+        (see .index-drawer__field below).
+     3. Opening one category's value list is a smaller version of the
+        same two-stage idea, nested beneath that category alone.
+   Closing reverses and compresses this: content fades out quickly first,
+   then the frame folds back -- a brisker, more direct close, the way an
+   archival drawer eases open slowly but shuts more plainly.
+
+   Once open, the drawer picks up .is-settled (see .is-open.is-settled
+   below) and its own size transition is switched off. Without that,
+   opening or closing a category's value list -- which changes how tall
+   the drawer needs to be -- would replay this same slow transition on
+   every click, even though grid-template-rows' own specified value
+   ("1fr") never changes; browsers still animate the resulting computed
+   height, which reads exactly like the whole header "re-expanding" every
+   time you touch Theme, Project, or Year. Settled, the frame simply
+   resizes to fit -- the category's own panel animation (further below)
+   is the only motion you see at that point. */
+.index-drawer {
+  display: grid;
+  grid-template-rows: 0fr;
+  pointer-events: none;
+  margin-top: 0;
+  transition: grid-template-rows 260ms ease-out, margin-top 260ms ease-out;
+}
+
+.index-drawer.is-open {
+  grid-template-rows: 1fr;
+  pointer-events: auto;
+  /* The negative margin-top pulls the whole drawer up into row1's own
+     unused bottom space (row1's fixed height always leaves room below
+     its nav line, so its closed-state footprint stays completely
+     untouched) -- the two rows read as one continuous header rather
+     than a header plus a separate panel beneath it. This lives on
+     .index-drawer itself (not a child), so it never distorts the
+     drawer's own measured height -- the archive below keeps lowering by
+     exactly the drawer's true rendered height, just measured from a few
+     px higher up. */
+  margin-top: clamp(-28px, -2.4vw, -20px);
+  transition: grid-template-rows 1400ms var(--reveal-ease), margin-top 1400ms var(--reveal-ease);
+}
+
+/* Higher specificity than .is-open alone, so once the drawer has settled
+   into its open state, any further internal resize (opening/closing a
+   category's own value list) happens quickly and quietly instead of
+   replaying the slow 1400ms reveal. */
+.index-drawer.is-open.is-settled {
+  transition: grid-template-rows 160ms ease-out, margin-top 160ms ease-out;
+}
+
+.index-drawer__inner {
+  /* Horizontal padding only -- any vertical padding here would keep this
+     box from ever fully collapsing to 0, since padding always reserves
+     its own space even at min-height: 0. The bottom breathing room lives
+     on .index-drawer__row instead, where it collapses along with the
+     rest of the row's own content. */
+  overflow: hidden;
+  min-height: 0;
+  padding: 0 clamp(34px, 4vw, 60px);
+}
+
+.index-drawer__row {
+  /* A single horizontal row, left-aligned with row1's own content (both
+     share the same left padding via .index-drawer__inner / .site-header__row1
+     above), so this row starts flush with the Filter control itself. Each
+     column sizes to its own content (via .index-drawer__field's flex: 0 0
+     auto below) with natural gaps between them, not a stretched grid. */
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: clamp(28px, 3.6vw, 56px);
+  padding-top: clamp(10px, 1.2vw, 15px);
+  padding-bottom: clamp(14px, 1.8vw, 22px);
+}
+
+/* One independent column per category: label + its own nested value
+   panel, sized to its own content (not stretched or shared with the
+   other columns). This is what lets each dropdown open directly beneath
+   its own label and lets "Theme" and "Project" occupy only as much width
+   as they actually need, with natural whitespace between them rather
+   than a rigid equal-width grid.
+
+   Each field fades in on its own -- opacity only, no movement, no scale
+   -- rather than the whole row appearing as one block. Closing fades all
+   three out together, quickly, before the frame folds; opening staggers
+   them (see the nth-child rules below), and only begins once the frame
+   has essentially finished unfolding above. */
+.index-drawer__field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  flex: 0 0 auto;
+  opacity: 0;
+  transition: opacity 160ms ease-out;
+}
+
+.index-drawer.is-open .index-drawer__field {
+  opacity: 1;
+  transition: opacity 700ms var(--reveal-ease);
+}
+
+/* Generously staggered -- roughly 200ms apart -- and only starting once
+   the frame's own slow expansion (1400ms) is most of the way settled, so
+   the sequence genuinely reads as "expand, then unfold one at a time"
+   rather than everything arriving in a single burst. */
+.index-drawer.is-open .index-drawer__field:nth-child(1) {
+  transition-delay: 1050ms;
+}
+
+.index-drawer.is-open .index-drawer__field:nth-child(2) {
+  transition-delay: 1260ms;
+}
+
+.index-drawer.is-open .index-drawer__field:nth-child(3) {
+  transition-delay: 1470ms;
+}
+
+.index-drawer__field-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.index-drawer__label-text {
+  white-space: nowrap;
+  font-family: "Neue Haas Grotesk Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 0.78rem;
+  font-weight: 400;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #111;
+}
+
+/* No persistent icon of any kind. The "+" exists only while this field's
+   label/chips are hovered or keyboard-focused, and is a soft opacity fade
+   -- never a layout shift -- so nothing "pops" in or out. */
+.index-drawer__add {
+  background: none;
   border: none;
-  background: transparent;
-  color: #050505;
-  cursor: pointer;
   padding: 0;
-  font: inherit;
-  font-size: clamp(0.82rem, 1.45vw, 1.45rem);
-  font-weight: 800;
+  cursor: pointer;
+  width: 13px;
+  display: inline-flex;
+  justify-content: center;
+  font-size: 0.8rem;
   line-height: 1;
-  letter-spacing: 0.28em;
+  color: #9d9d9d;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 260ms ease-out;
+}
+
+.index-drawer__field-row:hover .index-drawer__add,
+.index-drawer__field-row:focus-within .index-drawer__add {
+  opacity: 1;
   pointer-events: auto;
 }
 
-.text-control--muted {
-  color: rgba(5, 5, 5, 0.32);
-  font-weight: 700;
+/* The selected value separator glyph, reused from the Filter count. */
+.index-drawer__label-separator {
+  color: #9d9d9d;
+  opacity: 0.6;
+  font-size: 0.9em;
+}
+
+/* Selections read as archival metadata -- plain bracketed text sitting on
+   the same line as their label -- never as UI chips or buttons. */
+.index-drawer__chips {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+@keyframes index-drawer-chip-reveal {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.index-drawer__chip {
+  display: inline-flex;
+  align-items: baseline;
+  font-family: "Neue Haas Grotesk Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 0.72rem;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  /* Same typography as every other filter label/option -- uppercase is
+     the constant. Selected values are distinguished only by weight/color/
+     opacity below, never by case. */
+  text-transform: uppercase;
+  white-space: nowrap;
+  /* Newly added chips are revealed with a slow fade rather than simply
+     appearing the instant they're selected. */
+  animation: index-drawer-chip-reveal 460ms var(--reveal-ease);
+}
+
+.index-drawer__chip-bracket {
+  color: #c8c8c8;
+}
+
+.index-drawer__chip-text {
+  color: #6e6e6e;
+  font-weight: 500;
+  padding: 0 2px;
+}
+
+/* The x only ever appears for the one chip currently hovered or focused
+   -- every other selection stays perfectly quiet. */
+.index-drawer__chip-remove {
+  background: none;
+  border: none;
+  padding: 0 2px;
+  cursor: pointer;
+  font-size: 0.95em;
+  color: #9d9d9d;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms ease-out;
+}
+
+.index-drawer__chip:hover .index-drawer__chip-remove,
+.index-drawer__chip:focus-within .index-drawer__chip-remove {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Second level: nested inside .index-drawer__field, directly beneath
+   that field's own label, so its left edge aligns precisely with the
+   label above it and it reads as that column's own value list, not a
+   shared strip beneath the whole row. Same slow-unfold language as the
+   outer drawer, just a notch quicker since it's a smaller, secondary
+   reveal. */
+.index-drawer__panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  pointer-events: none;
+  transition: grid-template-rows 200ms ease-out;
+  width: 100%;
+}
+
+.index-drawer__panel.is-open {
+  grid-template-rows: 1fr;
+  pointer-events: auto;
+  transition: grid-template-rows 520ms var(--reveal-ease);
+}
+
+.index-drawer__panel-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.index-drawer__options-list {
+  /* A clean vertical list, not a wrapping tag cloud -- each field is its
+     own narrow column now, so values read top-to-bottom beneath their
+     label, the way entries stack in a printed index. */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: clamp(8px, 0.9vw, 12px);
+  padding-top: 10px;
+  padding-bottom: clamp(12px, 1.6vw, 18px);
+  opacity: 0;
+  transition: opacity 140ms ease-out;
+}
+
+.index-drawer__options-list.is-visible {
+  opacity: 1;
+  transition: opacity 480ms var(--reveal-ease) 160ms;
+}
+
+.index-drawer__option {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+
+  font-family: "Neue Haas Grotesk Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 0.72rem;
+  font-weight: 400;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: #9d9d9d;
+  transition: color 0.25s ease, opacity 0.25s ease;
+  white-space: nowrap;
+}
+
+.index-drawer__option:hover {
+  opacity: 0.7;
+}
+
+.index-drawer__option--selected {
+  color: #111;
+}
+
+/* The active-filter count beside "Filter" -- understated, lower in the
+   visual hierarchy than the label itself, using the same separator
+   glyph as the theme label/value pairing for one consistent language. */
+.text-control--filter .index-drawer__label-separator,
+.filter-count {
+  color: #9d9d9d;
+  opacity: 0.6;
+  letter-spacing: 0.1em;
 }
 
 /* GSAP ScrollTrigger Horizontal Gallery */
 
 .scroll-container {
   position: relative;
-  background: #fff;
+  background: #faf9f5;
+  transition: opacity 200ms ease-out;
+}
+
+/* The archive stays alive behind the index drawer -- just a slight,
+   quick dim, no blur and no scrim, so the controls read as an extension
+   of the same surface rather than a panel covering it. */
+.scroll-container--drawer-open {
+  opacity: 0.94;
 }
 
 .sticky-wrapper {
@@ -261,18 +670,22 @@ body {
   bottom: clamp(14px, 2vw, 20px);
   z-index: 1200;
   display: grid;
-  grid-template-columns: repeat(2, clamp(38px, 4.4vw, 54px));
-  height: clamp(38px, 4.4vw, 54px);
+  grid-template-columns: repeat(2, clamp(30px, 3vw, 40px));
+  height: clamp(30px, 3vw, 40px);
   transform: translateX(-50%);
   border: 1px solid rgba(5, 5, 5, 0.58);
-  background: rgba(255, 255, 255, 0.88);
+  background: transparent;
+  transition:
+    opacity 1.6s cubic-bezier(0.65, 0, 0.35, 1),
+    transform 1.6s cubic-bezier(0.65, 0, 0.35, 1),
+    bottom 1.6s cubic-bezier(0.65, 0, 0.35, 1);
 }
 
 .zoom-control {
   display: grid;
   place-items: center;
-  width: clamp(38px, 4.4vw, 54px);
-  height: calc(clamp(38px, 4.4vw, 54px) - 2px);
+  width: clamp(30px, 3vw, 40px);
+  height: calc(clamp(30px, 3vw, 40px) - 2px);
   border: 0;
   border-right: 1px solid rgba(5, 5, 5, 0.58);
   border-radius: 0;
@@ -280,13 +693,39 @@ body {
   color: rgba(5, 5, 5, 0.72);
   cursor: pointer;
   font: inherit;
-  font-size: clamp(1rem, 1.8vw, 1.45rem);
+  font-size: clamp(.8rem, 1.2vw, 1.1rem);
   font-weight: 300;
   line-height: 1;
 }
 
 .zoom-control:last-child {
   border-right: 0;
+}
+
+/* Scroll-quiet state — header and zoom control settle together
+   once the visitor moves away from the start of the archive */
+
+html.is-browsing .site-header {
+  opacity: 0.86;
+}
+
+html.is-browsing .site-header__row1 {
+  height: clamp(72px, 6.3vw, 90px);
+  padding-top: clamp(29px, 2.4vw, 36px);
+}
+
+html.is-browsing .brand {
+  transform: translate(-50%, -50%) scale(0.9);
+}
+
+html.is-browsing .top-menu__group {
+  gap: 12px;
+}
+
+html.is-browsing .zoom-controls {
+  opacity: 0.55;
+  bottom: clamp(8px, 1.2vw, 12px);
+  transform: translateX(-50%) scale(0.9);
 }
 
 .entry-card {
@@ -455,13 +894,12 @@ body {
 }
 
 @media (max-width: 640px) {
-  .site-header {
-    height: 86px;
-    padding: 12px 18px 0;
-  }
+.site-header{
+    height:60px;
+    padding:12px 20px 0;
+}
 
   .brand {
-    top: 14px;
     width: min(200px, 58vw);
   }
 
@@ -470,6 +908,10 @@ body {
     left: 24px;
     right: 24px;
   }
+
+.top-menu{
+    pointer-events:auto;
+}
 
   .top-menu__group {
     gap: 0.9rem;
@@ -489,4 +931,9 @@ body {
     right: 1rem;
     bottom: 1rem;
   }
+}
+.nav-divider {
+  width: 1px;
+  height: 11px;
+  background: rgba(0,0,0,.18);
 }

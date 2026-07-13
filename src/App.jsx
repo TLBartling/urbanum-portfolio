@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import imageMetadata from "./image-metadata.json";
+import Header from "./Header";
 
 const allImages = [
   "/img/pexels-adrien-olichon-1257089-3137038.jpg",
@@ -53,9 +54,20 @@ const imageTags = {
 const imageFocusEnabled = false;
 const galleryBatchWidth = 1760;
 const galleryEdgeBleed = 190;
-const galleryBatchOverlapRatio = 0.5;
-const galleryCopiesPerBatch = 2;
-const masonryGap = 4;
+
+// Real hand-built column compositions (extracted from the studio's own
+// reference layout). Each pattern is a fixed column of tiles sharing the
+// same render height; "left/top/w/h" are percentages of that column's own
+// box, "orientation" is used to pick a matching real photo for the slot.
+const COLUMN_PATTERNS = [{"aspect":0.557,"tiles":[{"left":33.858,"top":79.741,"w":16.535,"h":10.776,"orientation":"landscape"},{"left":62.598,"top":75.647,"w":35.039,"h":18.966,"orientation":"landscape"},{"left":0.0,"top":55.172,"w":32.677,"h":18.534,"orientation":"landscape"},{"left":38.189,"top":54.741,"w":59.449,"h":18.966,"orientation":"landscape"},{"left":84.252,"top":49.353,"w":13.386,"h":3.017,"orientation":"landscape"},{"left":62.598,"top":48.06,"w":12.047,"h":5.043,"orientation":"landscape"},{"left":37.431,"top":42.466,"w":16.535,"h":10.776,"orientation":"landscape"},{"left":17.323,"top":42.888,"w":17.323,"h":10.56,"orientation":"landscape"},{"left":84.252,"top":38.793,"w":13.386,"h":5.172,"orientation":"landscape"},{"left":56.693,"top":35.56,"w":19.291,"h":10.991,"orientation":"landscape"},{"left":62.598,"top":29.53,"w":13.386,"h":4.526,"orientation":"landscape"},{"left":84.252,"top":29.095,"w":13.386,"h":5.819,"orientation":"landscape"},{"left":62.598,"top":11.207,"w":37.402,"h":15.948,"orientation":"landscape"},{"left":62.598,"top":2.155,"w":13.386,"h":3.233,"orientation":"landscape"},{"left":12.205,"top":2.155,"w":45.276,"h":31.681,"orientation":"landscape"},{"left":84.252,"top":1.509,"w":13.386,"h":4.31,"orientation":"landscape"}]},{"aspect":1.0696,"tiles":[{"left":46.479,"top":82.328,"w":17.304,"h":9.483,"orientation":"landscape"},{"left":27.968,"top":76.293,"w":16.901,"h":23.707,"orientation":"portrait"},{"left":71.429,"top":71.767,"w":25.352,"h":19.828,"orientation":"landscape"},{"left":0.805,"top":69.612,"w":18.913,"h":17.241,"orientation":"square"},{"left":1.408,"top":62.716,"w":6.841,"h":4.741,"orientation":"landscape"},{"left":12.475,"top":62.284,"w":6.841,"h":5.388,"orientation":"landscape"},{"left":23.541,"top":59.698,"w":21.127,"h":14.44,"orientation":"landscape"},{"left":34.608,"top":53.861,"w":6.157,"h":4.461,"orientation":"landscape"},{"left":46.282,"top":52.155,"w":17.706,"h":25.862,"orientation":"portrait"},{"left":65.392,"top":50.862,"w":31.791,"h":18.75,"orientation":"landscape"},{"left":89.94,"top":43.966,"w":6.841,"h":4.31,"orientation":"landscape"},{"left":78.873,"top":43.966,"w":6.841,"h":4.31,"orientation":"landscape"},{"left":34.809,"top":42.883,"w":7.646,"h":9.483,"orientation":"portrait"},{"left":46.278,"top":42.879,"w":5.634,"h":7.328,"orientation":"portrait"},{"left":14.487,"top":42.879,"w":17.565,"h":13.965,"orientation":"landscape"},{"left":0.402,"top":40.948,"w":12.475,"h":18.75,"orientation":"portrait"},{"left":90.137,"top":34.483,"w":6.841,"h":4.526,"orientation":"landscape"},{"left":1.207,"top":34.483,"w":7.042,"h":4.526,"orientation":"landscape"},{"left":12.475,"top":34.052,"w":6.841,"h":5.388,"orientation":"landscape"},{"left":56.942,"top":33.621,"w":17.706,"h":15.302,"orientation":"landscape"},{"left":90.137,"top":24.784,"w":6.841,"h":4.957,"orientation":"landscape"},{"left":56.74,"top":24.784,"w":6.841,"h":4.957,"orientation":"landscape"},{"left":12.475,"top":24.784,"w":6.841,"h":4.957,"orientation":"landscape"},{"left":67.61,"top":24.569,"w":7.042,"h":5.603,"orientation":"landscape"},{"left":76.056,"top":24.353,"w":12.676,"h":17.026,"orientation":"portrait"},{"left":1.207,"top":24.353,"w":7.042,"h":6.034,"orientation":"landscape"},{"left":13.682,"top":1.207,"w":5.835,"h":4.526,"orientation":"landscape"},{"left":93.352,"top":16.164,"w":7.042,"h":5.388,"orientation":"landscape"},{"left":56.74,"top":15.733,"w":6.841,"h":4.31,"orientation":"landscape"},{"left":21.932,"top":15.086,"w":32.193,"h":26.293,"orientation":"landscape"},{"left":93.352,"top":7.328,"w":7.042,"h":4.31,"orientation":"landscape"},{"left":65.392,"top":7.328,"w":26.559,"h":14.44,"orientation":"landscape"},{"left":0.805,"top":7.112,"w":18.913,"h":14.224,"orientation":"landscape"},{"left":23.541,"top":6.466,"w":6.841,"h":4.31,"orientation":"landscape"},{"left":57.344,"top":4.741,"w":5.634,"h":7.543,"orientation":"portrait"},{"left":46.68,"top":4.741,"w":4.628,"h":7.543,"orientation":"portrait"},{"left":35.01,"top":0.0,"w":9.256,"h":12.284,"orientation":"portrait"}]},{"aspect":0.808,"tiles":[{"left":24.665,"top":86.638,"w":16.086,"h":6.25,"orientation":"landscape"},{"left":1.877,"top":86.638,"w":16.354,"h":6.466,"orientation":"landscape"},{"left":77.748,"top":86.422,"w":14.477,"h":6.681,"orientation":"landscape"},{"left":94.37,"top":84.483,"w":5.63,"h":8.405,"orientation":"portrait"},{"left":78.016,"top":72.845,"w":21.984,"h":9.914,"orientation":"landscape"},{"left":45.308,"top":72.845,"w":29.491,"h":24.569,"orientation":"landscape"},{"left":24.933,"top":72.845,"w":15.818,"h":7.543,"orientation":"landscape"},{"left":1.877,"top":72.629,"w":16.354,"h":7.974,"orientation":"landscape"},{"left":45.576,"top":63.578,"w":9.383,"h":5.388,"orientation":"landscape"},{"left":60.322,"top":63.362,"w":9.383,"h":5.819,"orientation":"landscape"},{"left":45.591,"top":43.966,"w":27.078,"h":16.379,"orientation":"landscape"},{"left":74.531,"top":36.638,"w":24.129,"h":31.034,"orientation":"portrait"},{"left":45.576,"top":36.207,"w":9.115,"h":3.664,"orientation":"landscape"},{"left":60.322,"top":35.129,"w":9.115,"h":5.819,"orientation":"landscape"},{"left":1.34,"top":34.483,"w":39.678,"h":35.56,"orientation":"square"},{"left":1.34,"top":26.509,"w":9.115,"h":4.31,"orientation":"landscape"},{"left":30.831,"top":25.862,"w":9.115,"h":5.603,"orientation":"landscape"},{"left":16.086,"top":25.862,"w":9.115,"h":5.603,"orientation":"landscape"},{"left":31.099,"top":17.241,"w":8.847,"h":4.095,"orientation":"landscape"},{"left":45.308,"top":16.379,"w":45.576,"h":16.81,"orientation":"landscape"},{"left":45.576,"top":7.543,"w":9.383,"h":4.526,"orientation":"landscape"},{"left":30.831,"top":7.112,"w":9.115,"h":5.603,"orientation":"landscape"},{"left":60.858,"top":6.25,"w":8.043,"h":7.328,"orientation":"square"},{"left":74.263,"top":5.388,"w":18.231,"h":7.974,"orientation":"landscape"},{"left":1.34,"top":1.94,"w":23.861,"h":21.121,"orientation":"square"}]},{"aspect":0.3523,"tiles":[{"left":0.0,"top":87.5,"w":21.656,"h":5.603,"orientation":"landscape"},{"left":0.0,"top":78.879,"w":21.656,"h":4.095,"orientation":"landscape"},{"left":35.032,"top":76.94,"w":57.325,"h":21.336,"orientation":"landscape"},{"left":70.064,"top":69.397,"w":22.293,"h":4.31,"orientation":"landscape"},{"left":35.032,"top":68.75,"w":22.293,"h":5.388,"orientation":"landscape"},{"left":0.0,"top":68.75,"w":21.656,"h":5.388,"orientation":"landscape"},{"left":0.0,"top":30.172,"w":92.357,"h":35.56,"orientation":"landscape"},{"left":52.229,"top":19.612,"w":38.217,"h":7.974,"orientation":"landscape"},{"left":0.0,"top":19.612,"w":36.306,"h":7.759,"orientation":"landscape"},{"left":52.229,"top":7.112,"w":38.217,"h":6.25,"orientation":"landscape"},{"left":0.0,"top":7.112,"w":36.306,"h":6.25,"orientation":"landscape"}]},{"aspect":0.711,"tiles":[{"left":35.78,"top":89.44,"w":10.398,"h":4.095,"orientation":"landscape"},{"left":70.948,"top":87.931,"w":7.034,"h":7.328,"orientation":"square"},{"left":53.211,"top":87.931,"w":14.067,"h":12.069,"orientation":"landscape"},{"left":87.156,"top":87.716,"w":8.563,"h":7.543,"orientation":"square"},{"left":86.239,"top":79.957,"w":10.398,"h":4.31,"orientation":"landscape"},{"left":1.223,"top":78.233,"w":28.746,"h":14.655,"orientation":"landscape"},{"left":86.239,"top":70.259,"w":10.398,"h":4.957,"orientation":"landscape"},{"left":18.96,"top":70.259,"w":10.092,"h":4.957,"orientation":"landscape"},{"left":1.835,"top":69.612,"w":10.398,"h":6.25,"orientation":"landscape"},{"left":1.835,"top":60.991,"w":10.398,"h":4.741,"orientation":"landscape"},{"left":18.96,"top":60.776,"w":10.398,"h":5.172,"orientation":"landscape"},{"left":33.333,"top":58.621,"w":48.93,"h":26.509,"orientation":"landscape"},{"left":86.239,"top":51.078,"w":13.15,"h":15.302,"orientation":"portrait"},{"left":70.336,"top":50.009,"w":8.563,"h":7.112,"orientation":"landscape"},{"left":52.905,"top":47.638,"w":11.315,"h":9.483,"orientation":"landscape"},{"left":21.713,"top":42.241,"w":26.972,"h":13.772,"orientation":"landscape"},{"left":52.599,"top":42.026,"w":8.838,"h":4.213,"orientation":"landscape"},{"left":0.612,"top":40.517,"w":18.96,"h":18.75,"orientation":"square"},{"left":18.96,"top":32.543,"w":10.398,"h":5.172,"orientation":"landscape"},{"left":1.835,"top":32.543,"w":10.398,"h":4.957,"orientation":"landscape"},{"left":35.474,"top":25.862,"w":32.416,"h":14.655,"orientation":"landscape"},{"left":70.642,"top":21.983,"w":26.911,"h":26.078,"orientation":"square"},{"left":1.223,"top":13.362,"w":28.746,"h":17.241,"orientation":"landscape"},{"left":70.642,"top":8.405,"w":25.994,"h":9.267,"orientation":"landscape"},{"left":7.951,"top":1.293,"w":26.606,"h":9.698,"orientation":"landscape"},{"left":42.508,"top":0.0,"w":25.688,"h":23.922,"orientation":"square"}]},{"aspect":0.5696,"tiles":[{"left":60.769,"top":94.828,"w":13.077,"h":3.233,"orientation":"landscape"},{"left":81.923,"top":94.181,"w":13.077,"h":4.31,"orientation":"landscape"},{"left":60.769,"top":72.845,"w":37.692,"h":15.948,"orientation":"landscape"},{"left":11.538,"top":66.164,"w":44.231,"h":31.897,"orientation":"landscape"},{"left":60.769,"top":65.948,"w":13.077,"h":4.31,"orientation":"landscape"},{"left":81.923,"top":65.302,"w":13.077,"h":5.603,"orientation":"landscape"},{"left":81.923,"top":56.034,"w":13.462,"h":5.388,"orientation":"landscape"},{"left":55.0,"top":53.664,"w":18.846,"h":10.776,"orientation":"landscape"},{"left":81.923,"top":47.845,"w":13.077,"h":3.017,"orientation":"landscape"},{"left":60.769,"top":46.763,"w":11.769,"h":5.043,"orientation":"landscape"},{"left":36.182,"top":46.974,"w":16.154,"h":10.776,"orientation":"landscape"},{"left":16.538,"top":46.552,"w":16.923,"h":10.776,"orientation":"landscape"},{"left":36.923,"top":26.509,"w":58.077,"h":18.75,"orientation":"landscape"},{"left":0.0,"top":26.509,"w":31.538,"h":18.534,"orientation":"landscape"},{"left":8.462,"top":6.034,"w":42.308,"h":15.733,"orientation":"landscape"},{"left":60.769,"top":5.388,"w":34.231,"h":18.966,"orientation":"landscape"}]}];
+
+// Gap between adjacent pattern columns, as a percentage of the rendered
+// column height. Originally set to the median internal gap measured across
+// all 6 patterns (1.94%); nudged down slightly toward the tighter end of
+// that same measured range (min 1.38%, p10 1.50%) so the pattern-to-pattern
+// seam doesn't read as a wider, more obvious negative-space line than the
+// gaps within a pattern.
+const SEAM_GAP_PCT = 1.5;
 
 const clusterPlacements = [
   { axis: "x", direction: -1, distance: 1.08, scale: 0.38 },
@@ -146,57 +158,46 @@ function getRandomBetween(min, max) {
   return Math.random() * (max - min) + min;
 }
 
-function rectsOverlap(first, second, padding = 0) {
-  return (
-    first.left < second.left + second.width + padding &&
-    first.left + first.width + padding > second.left &&
-    first.top < second.top + second.height + padding &&
-    first.top + first.height + padding > second.top
-  );
+function getImageOrientation(src) {
+  const ratio = imageMetadata[src]?.aspectRatio ?? 1;
+
+  if (ratio > 1.15) return "landscape";
+  if (ratio < 0.87) return "portrait";
+  return "square";
 }
 
-function rectCollides(rect, occupiedRects, padding = 0) {
-  return occupiedRects.some((existingRect) =>
-    rectsOverlap(rect, existingRect, padding),
-  );
+// Builds a self-refilling, per-orientation shuffled "bag" of real photos so
+// consecutive draws of the same orientation don't repeat until the bag is
+// exhausted and reshuffled. Falls back to the full image list for an
+// orientation bucket that has no members.
+function createImagePicker() {
+  const byOrientation = { landscape: [], portrait: [], square: [] };
+
+  allImages.forEach((src) => {
+    byOrientation[getImageOrientation(src)].push(src);
+  });
+
+  const bags = { landscape: [], portrait: [], square: [] };
+
+  const refill = (orientation) => {
+    const source = byOrientation[orientation].length
+      ? byOrientation[orientation]
+      : allImages;
+    bags[orientation] = shuffleArray(source);
+  };
+
+  return {
+    next(orientation) {
+      if (bags[orientation].length === 0) {
+        refill(orientation);
+      }
+
+      return bags[orientation].pop();
+    },
+  };
 }
 
-function getDefaultBatchBaseX(batchIndex) {
-  const viewportWidth =
-    typeof window === "undefined" ? 1200 : window.innerWidth;
-
-  return (
-    batchIndex *
-      Math.round(clamp(viewportWidth * 1.08, 1260, galleryBatchWidth)) -
-    galleryEdgeBleed
-  );
-}
-
-function getBatchOverlapDistance() {
-  const viewportWidth =
-    typeof window === "undefined" ? 1200 : window.innerWidth;
-
-  return Math.round(
-    clamp(viewportWidth * galleryBatchOverlapRatio, 420, 760),
-  );
-}
-
-function getRectMaxRight(rects) {
-  return rects.reduce(
-    (maxRight, rect) => Math.max(maxRight, rect.left + rect.width),
-    0,
-  );
-}
-
-function getContinuousBatchBaseX(batchIndex, occupiedRects) {
-  if (batchIndex === 0 || occupiedRects.length === 0) {
-    return getDefaultBatchBaseX(batchIndex);
-  }
-
-  return getRectMaxRight(occupiedRects) - getBatchOverlapDistance();
-}
-
-function getMasonryMetrics(batchIndex, batchBaseX = null) {
+function getColumnPatternMetrics() {
   const viewportHeight =
     typeof window === "undefined" ? 800 : window.innerHeight;
   const viewportWidth =
@@ -207,257 +208,26 @@ function getMasonryMetrics(batchIndex, batchBaseX = null) {
   const isCompactViewport = viewportWidth < 1000 || viewportHeight < 760;
   const headerClearance = Math.round(
     isCompactViewport
-      ? clamp(viewportHeight * 0.27, 170, 230)
-      : clamp(viewportHeight * 0.22, 142, 216),
+      ? clamp(viewportHeight * 0.14, 105, 145)
+      : clamp(viewportHeight * 0.1, 95, 125),
   );
   const topPadding = Math.max(viewportPadding, headerClearance);
   const bottomControlClearance = Math.round(
-    clamp(viewportHeight * 0.2, 116, 184),
+    isCompactViewport
+      ? clamp(viewportHeight * 0.14, 105, 145)
+      : clamp(viewportHeight * 0.1, 95, 125),
   );
   const bottomPadding = Math.max(viewportPadding, bottomControlClearance);
-  const availableHeight = Math.max(
+  const renderHeightPx = Math.max(
     80,
     viewportHeight - topPadding - bottomPadding,
   );
-  const rowCount = viewportHeight < 700 ? 5 : 6;
-  const cellSize = Math.floor(
-    (availableHeight - masonryGap * (rowCount - 1)) / rowCount,
-  );
 
   return {
-    batchBaseX: batchBaseX ?? getDefaultBatchBaseX(batchIndex),
-    cellSize: clamp(cellSize, 54, 104),
     galleryBottom: viewportHeight - bottomPadding,
     isCompactViewport,
-    rowCount,
+    renderHeightPx,
     topPadding,
-  };
-}
-
-function getMasonryFormat(itemIndex) {
-  const spanPattern = itemIndex % 24;
-
-  const formats = [
-    { columns: 1, rows: 1, widthScale: 0.82, heightScale: 0.58 },
-    { columns: 2, rows: 1, widthScale: 1, heightScale: 0.86 },
-    { columns: 1, rows: 1, widthScale: 0.68, heightScale: 0.98 },
-    { columns: 2, rows: 2, widthScale: 0.94, heightScale: 0.92 },
-    { columns: 1, rows: 1, widthScale: 0.7, heightScale: 0.68 },
-    { columns: 1, rows: 2, widthScale: 0.9, heightScale: 1 },
-    { columns: 1, rows: 1, widthScale: 0.84, heightScale: 0.56 },
-    { columns: 1, rows: 1, widthScale: 1, heightScale: 0.78 },
-    { columns: 2, rows: 1, widthScale: 1, heightScale: 0.8 },
-    { columns: 3, rows: 1, widthScale: 1, heightScale: 0.78 },
-    { columns: 1, rows: 1, widthScale: 0.62, heightScale: 0.62 },
-    { columns: 3, rows: 2, widthScale: 0.9, heightScale: 0.88 },
-    { columns: 1, rows: 1, widthScale: 0.72, heightScale: 1 },
-    { columns: 1, rows: 2, widthScale: 0.84, heightScale: 1 },
-    { columns: 1, rows: 1, widthScale: 0.94, heightScale: 0.94 },
-    { columns: 1, rows: 1, widthScale: 0.88, heightScale: 0.58 },
-    { columns: 2, rows: 1, widthScale: 0.96, heightScale: 0.84 },
-    { columns: 1, rows: 1, widthScale: 0.62, heightScale: 0.7 },
-    { columns: 1, rows: 1, widthScale: 1, heightScale: 1 },
-    { columns: 2, rows: 2, widthScale: 0.9, heightScale: 0.86 },
-    { columns: 1, rows: 1, widthScale: 0.78, heightScale: 0.58 },
-    { columns: 2, rows: 1, widthScale: 0.96, heightScale: 0.7 },
-    { columns: 1, rows: 1, widthScale: 0.74, heightScale: 0.9 },
-    { columns: 2, rows: 1, widthScale: 0.9, heightScale: 0.88 },
-  ];
-
-  return formats[spanPattern];
-}
-
-function canPlaceMasonryItem(occupiedCells, column, row, span, rowCount) {
-  if (row + span.rows > rowCount) return false;
-
-  for (let columnOffset = 0; columnOffset < span.columns; columnOffset += 1) {
-    for (let rowOffset = 0; rowOffset < span.rows; rowOffset += 1) {
-      if (occupiedCells[`${column + columnOffset}-${row + rowOffset}`]) {
-        return false;
-      }
-    }
-  }
-
-  return true;
-}
-
-function placeMasonryItem(occupiedCells, column, row, span) {
-  for (let columnOffset = 0; columnOffset < span.columns; columnOffset += 1) {
-    for (let rowOffset = 0; rowOffset < span.rows; rowOffset += 1) {
-      occupiedCells[`${column + columnOffset}-${row + rowOffset}`] = true;
-    }
-  }
-}
-
-function getMasonrySlot(
-  occupiedCells,
-  span,
-  rowCount,
-  itemIndex,
-  preferredRows = null,
-) {
-  const rowOrder =
-    preferredRows ||
-    shuffleArray(
-      Array.from({ length: rowCount - span.rows + 1 }, (_, index) => index),
-    );
-
-  for (let column = 0; column < 40; column += 1) {
-    for (const row of rowOrder) {
-      if (canPlaceMasonryItem(occupiedCells, column, row, span, rowCount)) {
-        return { column, row };
-      }
-    }
-  }
-
-  return {
-    column: Math.floor(itemIndex / rowCount),
-    row: itemIndex % rowCount,
-  };
-}
-
-function getWhitespaceReach(itemIndex, isCompactViewport = false) {
-  const reachPattern = itemIndex % 36;
-
-  if ([4, 29].includes(reachPattern)) {
-    return isCompactViewport ? -18 : -36;
-  }
-
-  if ([17, 34].includes(reachPattern)) {
-    return isCompactViewport ? 28 : 64;
-  }
-
-  return 0;
-}
-
-function resolveVisualRect(initialRect, occupiedRects, bounds = {}) {
-  const horizontalOffsets = [0, 8, -8, 16, -16, 28, -28, 44, -44, 64, -64];
-  const verticalOffsets = [0, 8, -8, 16, -16, 28, -28, 40, -40];
-  const minTop = bounds.minTop ?? -Infinity;
-  const maxBottom = bounds.maxBottom ?? Infinity;
-
-  for (const offsetX of horizontalOffsets) {
-    for (const offsetY of verticalOffsets) {
-      const candidateRect = {
-        ...initialRect,
-        left: initialRect.left + offsetX,
-        top: initialRect.top + offsetY,
-      };
-
-      if (
-        candidateRect.top < minTop ||
-        candidateRect.top + candidateRect.height > maxBottom
-      ) {
-        continue;
-      }
-
-      if (!rectCollides(candidateRect, occupiedRects, 3)) {
-        return candidateRect;
-      }
-    }
-  }
-
-  for (let step = 1; step <= 120; step += 1) {
-    for (const offsetY of verticalOffsets) {
-      const candidateRect = {
-        ...initialRect,
-        left: initialRect.left + step * 12,
-        top: initialRect.top + offsetY,
-      };
-
-      if (
-        candidateRect.top < minTop ||
-        candidateRect.top + candidateRect.height > maxBottom
-      ) {
-        continue;
-      }
-
-      if (!rectCollides(candidateRect, occupiedRects, 3)) {
-        return candidateRect;
-      }
-    }
-  }
-
-  return initialRect;
-}
-
-function getMasonryLayout(
-  itemIndex,
-  batchIndex,
-  occupiedCells,
-  occupiedRects,
-  batchBaseX = null,
-) {
-  const metrics = getMasonryMetrics(batchIndex, batchBaseX);
-  const originalFormat = getMasonryFormat(itemIndex);
-  const format =
-    originalFormat.rows > metrics.rowCount
-      ? { ...originalFormat, rows: 1, heightScale: originalFormat.widthScale }
-      : originalFormat;
-  const reach = getWhitespaceReach(itemIndex, metrics.isCompactViewport);
-  const preferredRows =
-    reach < 0
-      ? [0]
-      : reach > 0
-        ? [Math.max(0, metrics.rowCount - format.rows)]
-        : null;
-  const slot = getMasonrySlot(
-    occupiedCells,
-    format,
-    metrics.rowCount,
-    itemIndex,
-    preferredRows,
-  );
-  placeMasonryItem(occupiedCells, slot.column, slot.row, format);
-
-  const width =
-    metrics.cellSize * format.columns + masonryGap * (format.columns - 1);
-  const height =
-    metrics.cellSize * format.rows + masonryGap * (format.rows - 1);
-  const scaledWidth = Math.round(width * format.widthScale);
-  const scaledHeight = Math.round(height * format.heightScale);
-  const insetX = (width - scaledWidth) * ((itemIndex % 3) / 2);
-  const insetY = (height - scaledHeight) * (((itemIndex + 1) % 3) / 2);
-  const left =
-    metrics.batchBaseX +
-    slot.column * (metrics.cellSize + masonryGap) +
-    insetX +
-    getRandomBetween(-6, 6);
-  const top =
-    metrics.topPadding +
-    slot.row * (metrics.cellSize + masonryGap) +
-    insetY +
-    reach +
-    getRandomBetween(-7, 7);
-  const resolvedRect = resolveVisualRect(
-    {
-      left,
-      top,
-      width: scaledWidth,
-      height: scaledHeight,
-    },
-    occupiedRects,
-    {
-      maxBottom: metrics.galleryBottom + Math.max(reach, 0) + 4,
-      minTop: metrics.topPadding + Math.min(reach, 0) - 4,
-    },
-  );
-
-  const shouldRelationshipMove = false;
-
-  return {
-    width: `${scaledWidth}px`,
-    height: `${scaledHeight}px`,
-    left: `${Math.round(resolvedRect.left)}px`,
-    top: `${Math.round(resolvedRect.top)}px`,
-    relationshipMotion: shouldRelationshipMove
-      ? {
-          targetX: getRandomBetween(8, 18) * (Math.random() < 0.5 ? -1 : 1),
-          targetY: getRandomBetween(-4, 4),
-          zIndex: Math.round(getRandomBetween(18, 28)),
-        }
-      : null,
-    zIndex: Math.round(getRandomBetween(1, 12)),
   };
 }
 
@@ -472,57 +242,88 @@ function getRandomImageMotion() {
   };
 }
 
-function createGalleryBatch(batchIndex, occupiedRects = []) {
-  const batchImages = shuffleArray(
-    Array.from({ length: galleryCopiesPerBatch }, () => allImages).flat(),
+// Persistent state threaded across every createGalleryBatch call for the
+// life of the gallery: where the next column starts (cursorX), which
+// pattern was used last (so it isn't immediately repeated), and the
+// shuffled per-orientation photo bags. This is an explicit cursor rather
+// than a derived value, so there's no collision search needed -- each
+// pattern is pre-validated to have zero internal overlaps, so patterns can
+// simply be placed edge-to-edge with one calibrated seam gap.
+function createColumnState() {
+  return {
+    cursorX: -galleryEdgeBleed,
+    lastPatternIndex: -1,
+    picker: createImagePicker(),
+  };
+}
+
+function pickPatternIndex(state) {
+  const candidates = COLUMN_PATTERNS.map((_, index) => index).filter(
+    (index) => index !== state.lastPatternIndex,
   );
-  const occupiedCells = {};
-  const batchBaseX = getContinuousBatchBaseX(batchIndex, occupiedRects);
+  const nextIndex = candidates[Math.floor(Math.random() * candidates.length)];
+  state.lastPatternIndex = nextIndex;
 
-  return batchImages.map((src, itemIndex) => {
-    const layout = getMasonryLayout(
-      itemIndex,
-      batchIndex,
-      occupiedCells,
-      occupiedRects,
-      batchBaseX,
-    );
+  return nextIndex;
+}
 
-    occupiedRects.push({
-      left: Number.parseFloat(layout.left),
-      top: Number.parseFloat(layout.top),
-      width: Number.parseFloat(layout.width),
-      height: Number.parseFloat(layout.height),
+function createGalleryBatch(batchIndex, state) {
+  const metrics = getColumnPatternMetrics();
+  const seamGapPx = (SEAM_GAP_PCT / 100) * metrics.renderHeightPx;
+  const viewportWidth =
+    typeof window === "undefined" ? 1200 : window.innerWidth;
+  const targetBatchWidth = clamp(
+    viewportWidth * 1.35,
+    900,
+    galleryBatchWidth,
+  );
+  const batchStartX = state.cursorX;
+  const items = [];
+  let itemIndex = 0;
+
+  while (state.cursorX - batchStartX < targetBatchWidth) {
+    const pattern = COLUMN_PATTERNS[pickPatternIndex(state)];
+    const columnLeft = state.cursorX;
+    const columnWidthPx = pattern.aspect * metrics.renderHeightPx;
+
+    pattern.tiles.forEach((tile) => {
+      const src = state.picker.next(tile.orientation);
+      const width = (tile.w / 100) * columnWidthPx;
+      const height = (tile.h / 100) * metrics.renderHeightPx;
+      const left = columnLeft + (tile.left / 100) * columnWidthPx;
+      const top = metrics.topPadding + (tile.top / 100) * metrics.renderHeightPx;
+
+      items.push({
+        id: `${batchIndex}-${itemIndex}`,
+        batchIndex,
+        src,
+        alt: `Gallery image ${itemIndex + 1}`,
+        layout: {
+          width: `${Math.round(width)}px`,
+          height: `${Math.round(height)}px`,
+          left: `${Math.round(left)}px`,
+          top: `${Math.round(top)}px`,
+          relationshipMotion: null,
+          zIndex: Math.round(getRandomBetween(1, 12)),
+        },
+        opacity: getRandomOpacity(),
+        tag: imageTags[src] || null,
+        motion: getRandomImageMotion(),
+      });
+
+      itemIndex += 1;
     });
 
-    return {
-      id: `${batchIndex}-${itemIndex}`,
-      batchIndex,
-      src,
-      alt: `Gallery image ${itemIndex + 1}`,
-      layout,
-      opacity: getRandomOpacity(),
-      tag: imageTags[src] || null,
-      motion: getRandomImageMotion(),
-    };
-  });
+    state.cursorX = columnLeft + columnWidthPx + seamGapPx;
+  }
+
+  return items;
 }
 
-function buildGalleryItems(batchCount = initialGalleryBatches) {
-  const occupiedRects = [];
-
+function buildGalleryItems(state, batchCount = initialGalleryBatches) {
   return Array.from({ length: batchCount }, (_, batchIndex) =>
-    createGalleryBatch(batchIndex, occupiedRects),
+    createGalleryBatch(batchIndex, state),
   ).flat();
-}
-
-function getOccupiedRects(items) {
-  return items.map((item) => ({
-    left: Number.parseFloat(item.layout.left),
-    top: Number.parseFloat(item.layout.top),
-    width: Number.parseFloat(item.layout.width),
-    height: Number.parseFloat(item.layout.height),
-  }));
 }
 
 function getGalleryTrackWidth(items) {
@@ -625,32 +426,38 @@ function App() {
     distance: 0,
     enabled: true,
     velocity: 0,
+    hasBrowsed: false,
   });
   const isExtendingGalleryRef = useRef(false);
   const animatedImagesRef = useRef(new Set());
   const focusTimelineRef = useRef(null);
   const focusedIdRef = useRef(null);
   const renderWindowRef = useRef(getGalleryRenderWindow());
+  const columnStateRef = useRef(null);
   const [galleryItems, setGalleryItems] = useState([]);
   const [renderWindow, setRenderWindow] = useState(() =>
     getGalleryRenderWindow(),
   );
   const [focusedId, setFocusedId] = useState(null);
   const [focusedImage, setFocusedImage] = useState(null);
+  const [isIndexDrawerOpen, setIsIndexDrawerOpen] = useState(false);
+  const [indexDrawerHeight, setIndexDrawerHeight] = useState(0);
 
   useEffect(() => {
     galleryMovementRef.current.distance = 0;
     renderWindowRef.current = getGalleryRenderWindow(0);
     setRenderWindow(renderWindowRef.current);
     animatedImagesRef.current.clear();
-    setGalleryItems(buildGalleryItems());
+    columnStateRef.current = createColumnState();
+    setGalleryItems(buildGalleryItems(columnStateRef.current));
 
     const handleResize = () => {
       galleryMovementRef.current.distance = 0;
       renderWindowRef.current = getGalleryRenderWindow(0);
       setRenderWindow(renderWindowRef.current);
       animatedImagesRef.current.clear();
-      setGalleryItems(buildGalleryItems());
+      columnStateRef.current = createColumnState();
+      setGalleryItems(buildGalleryItems(columnStateRef.current));
     };
 
     window.addEventListener("resize", handleResize);
@@ -1028,14 +835,26 @@ function App() {
     const animatedImages = animatedImagesRef.current;
     const preEntryDistance = 360;
     const friction = 0.92;
+    const browsingThreshold = 48;
     const renderWindowUpdateThreshold = Math.max(window.innerWidth * 0.35, 240);
     let animationFrame = null;
     let touchPoint = null;
 
     scrollContainer.style.height = "100vh";
 
+    // Look up each image wrapper by id via a Map built once per effect run,
+    // instead of re-querying the DOM with an attribute selector for every
+    // item on every animation frame. The per-frame querySelector cost scales
+    // with total DOM size, so with the denser real-photo column patterns
+    // (some columns pack 25-37 tiles) that cost adds up fast and was the
+    // main source of scroll jank.
+    const wrapperById = new Map();
+    track.querySelectorAll("[data-image-id]").forEach((element) => {
+      wrapperById.set(element.dataset.imageId, element);
+    });
+
     galleryItems.forEach((item) => {
-      const wrapper = track.querySelector(`[data-image-id="${item.id}"]`);
+      const wrapper = wrapperById.get(item.id);
       if (!wrapper) return;
       if (animatedImages.has(item.id)) return;
 
@@ -1053,7 +872,7 @@ function App() {
 
     const updateEntranceAnimations = () => {
       galleryItems.forEach((item) => {
-        const wrapper = track.querySelector(`[data-image-id="${item.id}"]`);
+        const wrapper = wrapperById.get(item.id);
         if (!wrapper) return;
 
         const layoutLeft = Number.parseFloat(item.layout.left);
@@ -1215,11 +1034,10 @@ function App() {
 
       setGalleryItems((currentItems) => {
         const nextBatchIndex = getNextGalleryBatchIndex(currentItems);
-        const occupiedRects = getOccupiedRects(currentItems);
 
         return [
           ...currentItems,
-          ...createGalleryBatch(nextBatchIndex, occupiedRects),
+          ...createGalleryBatch(nextBatchIndex, columnStateRef.current),
         ];
       });
 
@@ -1233,6 +1051,13 @@ function App() {
       extendGalleryIfNeeded();
       updateRenderWindow();
       updateEntranceAnimations();
+      if (movement.distance > browsingThreshold) {
+        movement.hasBrowsed = true;
+      }
+      document.documentElement.classList.toggle(
+        "is-browsing",
+        movement.hasBrowsed,
+      );
     };
 
     const animateGallery = () => {
@@ -1314,24 +1139,25 @@ function App() {
 
   return (
     <div className="app-shell">
-      <header className="site-header">
-        <img className="brand" src="/urbanum-logo.jpg" alt="urbānum" />
-        <nav className="top-menu" aria-label="Gallery navigation">
-          <div className="top-menu__group" aria-label="Browse tools">
-            <button type="button" className="text-control text-control--active">
-              Filter
-            </button>
-            <button type="button" className="text-control text-control--muted">
-              Search
-            </button>
-          </div>
-          <button type="button" className="text-control text-control--active">
-            Menu
-          </button>
-        </nav>
-      </header>
+      <Header
+        onFilterOpenChange={setIsIndexDrawerOpen}
+        onDrawerHeightChange={setIndexDrawerHeight}
+      />
 
-      <div className="scroll-container" ref={scrollContainerRef}>
+      <div
+        className={`scroll-container${
+          isIndexDrawerOpen ? " scroll-container--drawer-open" : ""
+        }`}
+        ref={scrollContainerRef}
+        style={{
+          // The extra few px beyond the drawer's own measured height keeps
+          // a sliver of breathing room between the header's shadow and the
+          // archive, rather than the archive butting directly against it.
+          transform: indexDrawerHeight
+            ? `translateY(${Math.round(indexDrawerHeight) + 8}px)`
+            : undefined,
+        }}
+      >
         <div className="sticky-wrapper">
           <div
             className="gallery-track"

@@ -253,7 +253,11 @@ body {
      share the same left padding via .index-drawer__inner / .site-header__row1
      above), so this row starts flush with the Filter control itself. Each
      column sizes to its own content (via .index-drawer__field's flex: 0 0
-     auto below) with natural gaps between them, not a stretched grid. */
+     auto below) with natural gaps between them, not a stretched grid.
+     position: relative so the Active Panel's own offsetLeft measurement of
+     each .index-drawer__field (in Header.jsx) resolves relative to this
+     row's own left edge -- the same edge the panel itself starts from. */
+  position: relative;
   display: flex;
   flex-direction: row;
   flex-wrap: nowrap;
@@ -313,6 +317,13 @@ body {
 }
 
 .index-drawer__label-text {
+  /* Now a real button (was a plain span) so it shares the "+" control's
+     click target -- reset to look exactly as it did before, with no
+     added hover/visual treatment beyond what was already here. */
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
   white-space: nowrap;
   font-family: "Neue Haas Grotesk Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-size: 0.78rem;
@@ -322,9 +333,20 @@ body {
   color: #111;
 }
 
+/* The Context Panel no longer shows individual selected values -- only how
+   many are selected, so the row stays visually stable no matter how many
+   values a category holds. Same muted color/opacity as .filter-count,
+   so the two counts read as one consistent language. */
+.index-drawer__count {
+  margin-left: 4px;
+  color: #9d9d9d;
+  opacity: 0.6;
+  font-weight: 400;
+}
+
 /* No persistent icon of any kind. The "+" exists only while this field's
-   label/chips are hovered or keyboard-focused, and is a soft opacity fade
-   -- never a layout shift -- so nothing "pops" in or out. */
+   label (or its count) is hovered or keyboard-focused, and is a soft
+   opacity fade -- never a layout shift -- so nothing "pops" in or out. */
 .index-drawer__add {
   background: none;
   border: none;
@@ -354,71 +376,6 @@ body {
   font-size: 0.9em;
 }
 
-/* Selections read as archival metadata -- plain bracketed text sitting on
-   the same line as their label -- never as UI chips or buttons. */
-.index-drawer__chips {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-@keyframes index-drawer-chip-reveal {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-.index-drawer__chip {
-  display: inline-flex;
-  align-items: baseline;
-  font-family: "Neue Haas Grotesk Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
-  font-size: 0.72rem;
-  font-weight: 400;
-  letter-spacing: 0.12em;
-  /* Same typography as every other filter label/option -- uppercase is
-     the constant. Selected values are distinguished only by weight/color/
-     opacity below, never by case. */
-  text-transform: uppercase;
-  white-space: nowrap;
-  /* Newly added chips are revealed with a slow fade rather than simply
-     appearing the instant they're selected. */
-  animation: index-drawer-chip-reveal 460ms var(--reveal-ease);
-}
-
-.index-drawer__chip-bracket {
-  color: #c8c8c8;
-}
-
-.index-drawer__chip-text {
-  color: #6e6e6e;
-  font-weight: 500;
-  padding: 0 2px;
-}
-
-/* The x only ever appears for the one chip currently hovered or focused
-   -- every other selection stays perfectly quiet. */
-.index-drawer__chip-remove {
-  background: none;
-  border: none;
-  padding: 0 2px;
-  cursor: pointer;
-  font-size: 0.95em;
-  color: #9d9d9d;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 200ms ease-out;
-}
-
-.index-drawer__chip:hover .index-drawer__chip-remove,
-.index-drawer__chip:focus-within .index-drawer__chip-remove {
-  opacity: 1;
-  pointer-events: auto;
-}
-
 /* Second level: nested inside .index-drawer__field, directly beneath
    that field's own label, so its left edge aligns precisely with the
    label above it and it reads as that column's own value list, not a
@@ -426,17 +383,30 @@ body {
    outer drawer, just a notch quicker since it's a smaller, secondary
    reveal. */
 .index-drawer__panel {
+  /* margin-left / width are set inline (Header.jsx) from the same measured
+     offset: margin-left moves the panel's reading origin beneath whichever
+     Context is active, and width shrinks by that same amount so the
+     panel's right edge stays anchored to the drawer's own right boundary
+     instead of overflowing past it. Both animate on the existing
+     grid-template-rows timing so switching Contexts reads as the same
+     reveal, not a new motion. */
   display: grid;
   grid-template-rows: 0fr;
   pointer-events: none;
-  transition: grid-template-rows 200ms ease-out;
+  transition:
+    grid-template-rows 200ms ease-out,
+    margin-left 200ms ease-out,
+    width 200ms ease-out;
   width: 100%;
 }
 
 .index-drawer__panel.is-open {
   grid-template-rows: 1fr;
   pointer-events: auto;
-  transition: grid-template-rows 520ms var(--reveal-ease);
+  transition:
+    grid-template-rows 520ms var(--reveal-ease),
+    margin-left 520ms var(--reveal-ease),
+    width 520ms var(--reveal-ease);
 }
 
 .index-drawer__panel-inner {
@@ -445,13 +415,18 @@ body {
 }
 
 .index-drawer__options-list {
-  /* A clean vertical list, not a wrapping tag cloud -- each field is its
-     own narrow column now, so values read top-to-bottom beneath their
-     label, the way entries stack in a printed index. */
+  /* A horizontal archive index, not a dropdown list: values read left to
+     right like labels on an archive wall, wrapping into additional lines
+     only once a line genuinely runs out of room -- never a vertical
+     stack. flex-start (not baseline) so every option's top edge lines up
+     on a consistent grid, matching the same alignment .index-drawer__row
+     already uses, rather than relying on font-metric baselines that could
+     shift before the custom font finishes loading. */
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  flex-wrap: wrap;
   align-items: flex-start;
-  gap: clamp(8px, 0.9vw, 12px);
+  gap: clamp(8px, 0.9vw, 12px) clamp(16px, 2vw, 24px);
   padding-top: 10px;
   padding-bottom: clamp(12px, 1.6vw, 18px);
   opacity: 0;
@@ -485,6 +460,43 @@ body {
 
 .index-drawer__option--selected {
   color: #111;
+}
+
+/* Selected values read as indexed archive references -- bracketed
+   typography, not chips. Brackets match the same muted tone the old chip
+   brackets used, so the "archive index" bracket language stays consistent
+   even though it now lives here rather than in the Context Panel. */
+.index-drawer__option-bracket {
+  color: #c8c8c8;
+}
+
+.index-drawer__option-text {
+  padding: 0 1px;
+}
+
+/* The x is a purely typographic editing affordance -- invisible and
+   occupying zero width at rest (max-width: 0, not just opacity: 0), so it
+   never disturbs the resting bracket's spacing. On hover/focus the
+   bracket gently opens to admit it: max-width, opacity, and margin all
+   animate together on the same timing the old chip-remove used, so the ×
+   grows into the gap rather than snapping into view. */
+.index-drawer__option-remove {
+  display: inline-block;
+  overflow: hidden;
+  max-width: 0;
+  margin-left: 0;
+  opacity: 0;
+  font-size: 0.95em;
+  vertical-align: baseline;
+  transition: max-width 200ms ease-out, margin-left 200ms ease-out,
+    opacity 200ms ease-out;
+}
+
+.index-drawer__option--selected:hover .index-drawer__option-remove,
+.index-drawer__option--selected:focus-visible .index-drawer__option-remove {
+  max-width: 14px;
+  margin-left: 3px;
+  opacity: 1;
 }
 
 /* The active-filter count beside "Filter" -- understated, lower in the
@@ -937,3 +949,4 @@ html.is-browsing .zoom-controls {
   height: 11px;
   background: rgba(0,0,0,.18);
 }
+

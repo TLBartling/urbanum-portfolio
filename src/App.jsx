@@ -119,7 +119,6 @@ function getImageDimensions(src) {
 
 function shouldEagerLoadImage(item) {
   const itemIndex = Number(item.id.split("-")[1] || 0);
-
   return item.batchIndex === 0 && itemIndex < 12;
 }
 
@@ -166,35 +165,53 @@ function getImageOrientation(src) {
   return "square";
 }
 
-// Builds a self-refilling, per-orientation shuffled "bag" of real photos so
+// Static grouping of every image by orientation -- computed once, at module
+// load, since allImages/getImageOrientation never change. Used by
+// pickImage() below to refill an exhausted bag.
+const imagesByOrientation = { landscape: [], portrait: [], square: [] };
+allImages.forEach((src) => {
+  imagesByOrientation[getImageOrientation(src)].push(src);
+});
+
+// A self-refilling, per-orientation shuffled "bag" of real photos so
 // consecutive draws of the same orientation don't repeat until the bag is
 // exhausted and reshuffled. Falls back to the full image list for an
 // orientation bucket that has no members.
-function createImagePicker() {
-  const byOrientation = { landscape: [], portrait: [], square: [] };
+//
+// REFACTORED (extension-pipeline fix): this used to be a stateful object
+// (`createImagePicker()`) whose `.next()` method mutated a private `bags`
+// object in place. That mutation was one of the side effects that made
+// createGalleryBatch() unsafe to call from inside a React state updater --
+// see createGalleryBatch's own comment for the full picture. It's now a
+// plain, immutable data shape (`{ bags }`) plus a pure function, pickImage,
+// that never mutates its `pickerState` argument or anything reachable from
+// it -- it returns a brand new pickerState instead. shuffleArray already
+// returns a new array rather than mutating its input, so nothing here
+// mutates anything shared.
+function createImagePickerState() {
+  return { bags: { landscape: [], portrait: [], square: [] } };
+}
 
-  allImages.forEach((src) => {
-    byOrientation[getImageOrientation(src)].push(src);
-  });
+// PURE: given a pickerState and an orientation, returns { src,
+// nextPickerState }. Draws from the end of the current bag for that
+// orientation (equivalent to the old bags[orientation].pop()), refilling
+// with a freshly shuffled bag first if the current one is empty.
+function pickImage(pickerState, orientation) {
+  let bag = pickerState.bags[orientation];
 
-  const bags = { landscape: [], portrait: [], square: [] };
-
-  const refill = (orientation) => {
-    const source = byOrientation[orientation].length
-      ? byOrientation[orientation]
+  if (bag.length === 0) {
+    const source = imagesByOrientation[orientation].length
+      ? imagesByOrientation[orientation]
       : allImages;
-    bags[orientation] = shuffleArray(source);
+    bag = shuffleArray(source);
+  }
+
+  const src = bag[bag.length - 1];
+  const nextPickerState = {
+    bags: { ...pickerState.bags, [orientation]: bag.slice(0, -1) },
   };
 
-  return {
-    next(orientation) {
-      if (bags[orientation].length === 0) {
-        refill(orientation);
-      }
-
-      return bags[orientation].pop();
-    },
-  };
+  return { src, nextPickerState };
 }
 
 function getColumnPatternMetrics() {
@@ -242,32 +259,73 @@ function getRandomImageMotion() {
   };
 }
 
-// Persistent state threaded across every createGalleryBatch call for the
-// life of the gallery: where the next column starts (cursorX), which
-// pattern was used last (so it isn't immediately repeated), and the
-// shuffled per-orientation photo bags. This is an explicit cursor rather
-// than a derived value, so there's no collision search needed -- each
-// pattern is pre-validated to have zero internal overlaps, so patterns can
-// simply be placed edge-to-edge with one calibrated seam gap.
+// Logical state threaded across every createGalleryBatch call for the life
+// of the gallery: where the next column starts (cursorX), which pattern was
+// used last (so it isn't immediately repeated), and the shuffled
+// per-orientation photo bags. This is an explicit cursor rather than a
+// derived value, so there's no collision search needed -- each pattern is
+// pre-validated to have zero internal overlaps, so patterns can simply be
+// placed edge-to-edge with one calibrated seam gap.
+//
+// REFACTORED (extension-pipeline fix): this is now plain, immutable data.
+// Nothing in this file mutates a columnState object in place anymore --
+// createGalleryBatch() (below) takes one as input and returns a brand new
+// one as part of its result instead. See createGalleryBatch's comment for
+// why that matters.
 function createColumnState() {
   return {
     cursorX: -galleryEdgeBleed,
     lastPatternIndex: -1,
-    picker: createImagePicker(),
+    pickerState: createImagePickerState(),
+    // TEMPORARY DIAGNOSTIC (reversible) -- a persistent, globally-sequential
+    // module counter, threaded across every createGalleryBatch call exactly
+    // like cursorX already is. Gives every module (column) a stable,
+    // comparable identity across batches/extensions so a gap-tracing tool
+    // can tell "consecutive modules with an abnormal cursor jump between
+    // them" apart from "a real break in the module sequence itself."
+    moduleIndex: 0,
   };
 }
 
-function pickPatternIndex(state) {
+// PURE: does not mutate anything. Given the pattern used last time, returns
+// the next pattern index to use. The caller is responsible for carrying the
+// returned value forward as the new "last pattern index".
+function pickPatternIndex(lastPatternIndex) {
   const candidates = COLUMN_PATTERNS.map((_, index) => index).filter(
-    (index) => index !== state.lastPatternIndex,
+    (index) => index !== lastPatternIndex,
   );
-  const nextIndex = candidates[Math.floor(Math.random() * candidates.length)];
-  state.lastPatternIndex = nextIndex;
 
-  return nextIndex;
+  return candidates[Math.floor(Math.random() * candidates.length)];
 }
 
-function createGalleryBatch(batchIndex, state) {
+// REFACTORED (extension-pipeline fix): createGalleryBatch is now a pure
+// function. It used to take a mutable `state` object and mutate
+// state.cursorX / state.moduleIndex / state.lastPatternIndex / state.picker
+// in place as it ran -- and it was being called from directly inside a
+// setGalleryItems(currentItems => ...) updater. React is explicitly allowed
+// to invoke an updater function more than once for a single state update
+// (deliberately, in development, to help surface exactly this kind of bug;
+// and, as traced this round with window.__extendCallTrace /
+// window.__setGalleryItemsTrace / window.__analyzeExtensionLifecycle(),
+// also happening in practice well beyond just that immediate double-check).
+// Every extra invocation was performing another real, permanent mutation of
+// the shared columnState -- advancing the cursor and module counter again --
+// regardless of whether that particular invocation's returned items ever
+// ended up in the committed galleryItems. That is what produced everything
+// this investigation traced back to: the duplicate moduleIndex 27/28 (two
+// invocations, two different starting cursor positions), and the modules
+// that were generated correctly but never appeared in galleryItems (an
+// invocation whose mutation stuck, but whose returned batch was the one
+// discarded).
+//
+// The fix: this function no longer mutates its `columnState` argument or
+// anything reachable from it (pickPatternIndex and pickImage, both used
+// below, are pure for the same reason). It returns the batch's items AND a
+// brand new columnState reflecting the advance, instead of mutating one in
+// place. The one remaining non-purity is the same Math.random()-driven
+// pattern/image selection this generator always had -- that's an
+// intentional design property (real visual variety), not a side effect.
+function createGalleryBatch(batchIndex, columnState) {
   const metrics = getColumnPatternMetrics();
   const seamGapPx = (SEAM_GAP_PCT / 100) * metrics.renderHeightPx;
   const viewportWidth =
@@ -277,17 +335,36 @@ function createGalleryBatch(batchIndex, state) {
     900,
     galleryBatchWidth,
   );
-  const batchStartX = state.cursorX;
+  const batchStartX = columnState.cursorX;
   const items = [];
   let itemIndex = 0;
+  let moduleCount = 0; // TEMPORARY VISUAL DEBUG MODE -- one column == one procedural module
 
-  while (state.cursorX - batchStartX < targetBatchWidth) {
-    const pattern = COLUMN_PATTERNS[pickPatternIndex(state)];
-    const columnLeft = state.cursorX;
+  // Local, function-scoped working values -- these are what would have been
+  // `state.cursorX` etc. before the refactor. They're reassigned as the loop
+  // runs, but nothing outside this function call can observe or be affected
+  // by that, since they're plain local bindings, not the caller's object.
+  let cursorX = columnState.cursorX;
+  let lastPatternIndex = columnState.lastPatternIndex;
+  let pickerState = columnState.pickerState;
+  let moduleIndex = columnState.moduleIndex;
+
+  while (cursorX - batchStartX < targetBatchWidth) {
+    const patternIndex = pickPatternIndex(lastPatternIndex);
+    lastPatternIndex = patternIndex;
+    const pattern = COLUMN_PATTERNS[patternIndex];
+    const columnLeft = cursorX;
     const columnWidthPx = pattern.aspect * metrics.renderHeightPx;
+    // TEMPORARY DIAGNOSTIC (reversible) -- see createColumnState's
+    // moduleIndex comment. Captured once per column/module, before the
+    // cursor advances, so every tile in this column shares the same value.
+    const thisModuleIndex = moduleIndex;
+    moduleIndex += 1;
+    moduleCount += 1;
 
     pattern.tiles.forEach((tile) => {
-      const src = state.picker.next(tile.orientation);
+      const { src, nextPickerState } = pickImage(pickerState, tile.orientation);
+      pickerState = nextPickerState;
       const width = (tile.w / 100) * columnWidthPx;
       const height = (tile.h / 100) * metrics.renderHeightPx;
       const left = columnLeft + (tile.left / 100) * columnWidthPx;
@@ -296,6 +373,9 @@ function createGalleryBatch(batchIndex, state) {
       items.push({
         id: `${batchIndex}-${itemIndex}`,
         batchIndex,
+        // TEMPORARY DIAGNOSTIC (reversible) -- see moduleIndex above.
+        moduleIndex: thisModuleIndex,
+        patternIndex,
         src,
         alt: `Gallery image ${itemIndex + 1}`,
         layout: {
@@ -314,16 +394,40 @@ function createGalleryBatch(batchIndex, state) {
       itemIndex += 1;
     });
 
-    state.cursorX = columnLeft + columnWidthPx + seamGapPx;
+    const expectedNextCursor = columnLeft + columnWidthPx + seamGapPx;
+    cursorX = expectedNextCursor;
   }
 
-  return items;
+  return {
+    items,
+    nextColumnState: { cursorX, lastPatternIndex, pickerState, moduleIndex },
+    // TEMPORARY VISUAL DEBUG MODE -- returned instead of written to a
+    // window side-channel, since this function's caller now always has
+    // these values in hand synchronously (createGalleryBatch no longer runs
+    // inside anything replayable, so there's no need for an out-of-band
+    // channel to survive a re-invocation).
+    moduleCount,
+    batchStartX,
+  };
 }
 
-function buildGalleryItems(state, batchCount = initialGalleryBatches) {
-  return Array.from({ length: batchCount }, (_, batchIndex) =>
-    createGalleryBatch(batchIndex, state),
-  ).flat();
+// REFACTORED (extension-pipeline fix): threads columnState through each
+// sequential batch explicitly (createGalleryBatch no longer mutates it),
+// returning both the combined items and the final columnState after all
+// batchCount batches -- the caller (the mount/resize effects) is
+// responsible for storing that final columnState as the new starting point
+// for future extensions.
+function buildGalleryItems(columnState, batchCount = initialGalleryBatches) {
+  let state = columnState;
+  const allItems = [];
+
+  for (let batchIndex = 0; batchIndex < batchCount; batchIndex++) {
+    const { items, nextColumnState } = createGalleryBatch(batchIndex, state);
+    allItems.push(...items);
+    state = nextColumnState;
+  }
+
+  return { items: allItems, nextColumnState: state };
 }
 
 function getGalleryTrackWidth(items) {
@@ -448,16 +552,28 @@ function App() {
     renderWindowRef.current = getGalleryRenderWindow(0);
     setRenderWindow(renderWindowRef.current);
     animatedImagesRef.current.clear();
-    columnStateRef.current = createColumnState();
-    setGalleryItems(buildGalleryItems(columnStateRef.current));
+    // REFACTORED (extension-pipeline fix): buildGalleryItems no longer
+    // mutates a columnState object in place -- it returns the final one
+    // alongside the items, and that's what columnStateRef gets set to.
+    // This call site was already outside any React updater (setGalleryItems
+    // is passed a plain value here, not a function), so it was never part
+    // of the bug -- this change is purely to match the new pure signature.
+    const { items: initialItems, nextColumnState: columnStateAfterInitialBuild } =
+      buildGalleryItems(createColumnState());
+    columnStateRef.current = columnStateAfterInitialBuild;
+    setGalleryItems(initialItems);
 
     const handleResize = () => {
       galleryMovementRef.current.distance = 0;
       renderWindowRef.current = getGalleryRenderWindow(0);
       setRenderWindow(renderWindowRef.current);
       animatedImagesRef.current.clear();
-      columnStateRef.current = createColumnState();
-      setGalleryItems(buildGalleryItems(columnStateRef.current));
+      // REFACTORED (extension-pipeline fix): see the matching mount-site
+      // comment above; identical reasoning.
+      const { items: resizeItems, nextColumnState: columnStateAfterResizeBuild } =
+        buildGalleryItems(createColumnState());
+      columnStateRef.current = columnStateAfterResizeBuild;
+      setGalleryItems(resizeItems);
     };
 
     window.addEventListener("resize", handleResize);
@@ -831,6 +947,7 @@ function App() {
     if (!scrollContainer || !track) return;
 
     const setTrackX = gsap.quickSetter(track, "x", "px");
+
     const movement = galleryMovementRef.current;
     const animatedImages = animatedImagesRef.current;
     const preEntryDistance = 360;
@@ -1032,14 +1149,45 @@ function App() {
 
       isExtendingGalleryRef.current = true;
 
-      setGalleryItems((currentItems) => {
-        const nextBatchIndex = getNextGalleryBatchIndex(currentItems);
+      // *** THE FIX (extension-pipeline refactor) ***
+      //
+      // Everything from here down to the setGalleryItems call used to
+      // happen INSIDE the functional updater passed to setGalleryItems --
+      // including the createGalleryBatch call that mutated
+      // columnStateRef.current in place. That made the mutation itself
+      // subject to however many times React chose to invoke that updater,
+      // which the tracing this session confirmed was happening well beyond
+      // the immediate double-check.
+      //
+      // Now: nextBatchIndex, the batch itself, and the next columnState are
+      // all computed and applied HERE -- synchronously, in the body of
+      // extendGalleryIfNeeded, which can only reach this point once per
+      // real (non-reentrant) invocation, guaranteed by the
+      // isExtendingGalleryRef guard above. `galleryItems` is the current
+      // render's own state value (this whole effect re-runs and recreates
+      // this closure on every galleryItems commit, so it's always the
+      // latest committed value by the time a genuinely new invocation gets
+      // this far -- the guard's own reset is deferred to the NEXT
+      // animation frame specifically so the current commit has already
+      // landed and this closure has already been refreshed before that
+      // happens). columnStateRef.current is mutated exactly once, right
+      // here, as a single plain assignment -- not from inside anything
+      // React could re-invoke.
+      //
+      // The updater actually passed to setGalleryItems below is now just
+      // `(currentItems) => [...currentItems, ...newBatch]` -- newBatch is a
+      // fixed, already-computed array closed over from here, and the
+      // updater touches nothing else. However many times React invokes
+      // that updater, it produces the identical result every time and
+      // mutates nothing, so replay is harmless by construction.
+      const nextBatchIndex = getNextGalleryBatchIndex(galleryItems);
 
-        return [
-          ...currentItems,
-          ...createGalleryBatch(nextBatchIndex, columnStateRef.current),
-        ];
-      });
+      const { items: newBatch, nextColumnState } =
+        createGalleryBatch(nextBatchIndex, columnStateRef.current);
+
+      columnStateRef.current = nextColumnState;
+
+      setGalleryItems((currentItems) => [...currentItems, ...newBatch]);
 
       requestAnimationFrame(() => {
         isExtendingGalleryRef.current = false;
@@ -1173,6 +1321,8 @@ function App() {
                   type="button"
                   data-image-id={item.id}
                   data-batch-index={item.batchIndex}
+                  data-module-index={item.moduleIndex}
+                  data-pattern-index={item.patternIndex}
                   className={`gallery-image-wrapper${
                     imageFocusEnabled ? "" : " gallery-image-wrapper--disabled"
                   }`}

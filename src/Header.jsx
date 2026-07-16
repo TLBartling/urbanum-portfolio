@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import Logo from "./Logo";
 
 // Mock catalog values for the index drawer. These are the seam a developer
 // swaps for real CMS data later: point `themes` / `projects` / `years` at
@@ -91,13 +92,26 @@ export default function Header({
   // Context changes (see handleAddClick) -- the preview is always where a
   // freshly opened, or reopened, Context starts.
   const [isExpanded, setIsExpanded] = useState(false);
+  // Which selected option's × is currently allowed to show. Set only by a
+  // mouseenter/focus that lands on an option that is *already* selected --
+  // never by the click that does the selecting, since the pointer is still
+  // over the option at that instant and would otherwise satisfy a plain
+  // :hover selector immediately, flashing the × as part of selection
+  // itself rather than a later, deliberate return visit.
+  const [removeArmedValue, setRemoveArmedValue] = useState(null);
+  // The search query itself. Purely local for now -- nothing reads this
+  // yet -- so a future search implementation has one clean place to hook
+  // into rather than re-deriving where the typed value lives.
+  const [searchValue, setSearchValue] = useState("");
+  // Whether the search line is drawn out. Clicking SEARCH toggles this
+  // directly (same as Filter's own toggle below); losing focus with an
+  // empty field also closes it, but only that specific case -- typed text
+  // keeps it open until the visitor closes it themselves.
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const searchInputRef = useRef(null);
 
   const entryValues = { theme: themes, project: projects, year: years };
   const entryLabels = { theme: "Theme", project: "Project", year: "Year" };
-  const activeFilterCount = Object.values(selection).reduce(
-    (sum, values) => sum + values.length,
-    0
-  );
   const activeValues = activeEntry ? entryValues[activeEntry] : [];
   const previewValues = activeEntry ? getPreviewValues(activeValues) : [];
   // Only meaningful once a Context is active, and only once its full list
@@ -118,6 +132,26 @@ export default function Header({
 
   const handleFilterToggle = () => {
     setFilterOpen(!isFilterOpen);
+  };
+
+  // Same toggle shape as Filter above. Closing this way always retracts
+  // the line (even with text typed in) using the identical reveal
+  // transition in reverse, since it's the same width/margin transition on
+  // .search-control__input either way -- just driven by this state
+  // instead of the field's own focus. The button's onMouseDown below
+  // stops the input from blurring itself first when the field is open
+  // and empty -- without that, the blur's own auto-close (see the
+  // input's onBlur) would fire before this click and then get reopened
+  // by the toggle right after, which is what made an empty field look
+  // like clicking SEARCH did nothing.
+  const handleSearchToggle = () => {
+    const nextOpen = !isSearchOpen;
+    setIsSearchOpen(nextOpen);
+    if (nextOpen) {
+      searchInputRef.current?.focus();
+    } else {
+      searchInputRef.current?.blur();
+    }
   };
 
   // The "+" is the only click target that opens a category's value list --
@@ -236,7 +270,7 @@ export default function Header({
       className={`site-header${isFilterOpen ? " site-header--framed" : ""}`}
     >
       <div className="site-header__row1">
-        <img className="brand" src="/urbanum-logo.jpg" alt="urbānum" />
+        <Logo className="brand" />
         <nav className="top-menu" aria-label="Gallery navigation">
           <div className="top-menu__group" aria-label="Browse tools">
             <button
@@ -248,19 +282,36 @@ export default function Header({
               onClick={handleFilterToggle}
             >
               <span>Filter</span>
-              {activeFilterCount > 0 && (
-                <>
-                  <span className="index-drawer__label-separator">·</span>
-                  <span className="filter-count">{activeFilterCount}</span>
-                </>
-              )}
             </button>
 
             <div className="nav-divider"></div>
 
-            <button type="button" className="text-control text-control--muted">
-              Search
-            </button>
+            <div className="search-control">
+              <button
+                type="button"
+                className="text-control text-control--muted"
+                aria-expanded={isSearchOpen}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={handleSearchToggle}
+              >
+                Search
+              </button>
+              <input
+                ref={searchInputRef}
+                type="text"
+                aria-label="Search"
+                className={`search-control__input${
+                  isSearchOpen ? " is-open" : ""
+                }`}
+                autoComplete="off"
+                value={searchValue}
+                onChange={(event) => setSearchValue(event.target.value)}
+                onFocus={() => setIsSearchOpen(true)}
+                onBlur={() => {
+                  if (!searchValue) setIsSearchOpen(false);
+                }}
+              />
+            </div>
           </div>
           <button type="button" className="text-control text-control--active">
             Index
@@ -369,15 +420,41 @@ export default function Header({
                 {activeEntry &&
                   visibleValues.map((option) => {
                     const isSelected = selection[activeEntry].includes(option);
+                    const armRemove = () => {
+                      if (isSelected) setRemoveArmedValue(option);
+                    };
+                    const disarmRemove = () =>
+                      setRemoveArmedValue((current) =>
+                        current === option ? null : current
+                      );
                     return (
                       <button
                         type="button"
                         key={option}
                         className={`index-drawer__option${
                           isSelected ? " index-drawer__option--selected" : ""
+                        }${
+                          removeArmedValue === option
+                            ? " index-drawer__option--remove-armed"
+                            : ""
                         }`}
                         aria-pressed={isSelected}
-                        onClick={() => handleOptionToggle(activeEntry, option)}
+                        onClick={() => {
+                          // A click that's about to *select* this option
+                          // always starts clean, even if it was armed from
+                          // a previous selected/hovered visit that ended
+                          // in removal without the pointer ever leaving --
+                          // otherwise reselecting it in the same hover
+                          // session would show the × immediately, which is
+                          // exactly the "flash during selection" this is
+                          // meant to avoid.
+                          if (!isSelected) setRemoveArmedValue(null);
+                          handleOptionToggle(activeEntry, option);
+                        }}
+                        onMouseEnter={armRemove}
+                        onMouseLeave={disarmRemove}
+                        onFocus={armRemove}
+                        onBlur={disarmRemove}
                         tabIndex={isFilterOpen ? 0 : -1}
                       >
                         {/* Selected values read as indexed archive

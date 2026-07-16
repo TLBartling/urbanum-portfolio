@@ -10,7 +10,7 @@
       ]
     },
     {
-      "source": "/urbanum-logo.jpg",
+      "source": "/urbanum-logo-transparent.svg",
       "headers": [
         {
           "key": "Cache-Control",

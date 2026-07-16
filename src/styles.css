@@ -96,7 +96,13 @@ body {
   left: 50%;
   transform: translate(-50%, -50%);
   display: block;
-  width: clamp(180px, 14vw, 235px);
+  /* The transparent SVG wordmark's own artwork occupies a smaller share of
+     its canvas than the old JPEG did (it carries generous built-in
+     padding), so its frame is sized ~25.7% larger than the old JPEG's
+     clamp to keep the visible wordmark itself the same perceived width --
+     verified by comparing rendered ink-pixel width against the old JPEG
+     at matching viewports. */
+  width: clamp(226px, 17.6vw, 296px);
   height: auto;
   pointer-events: none;
   transition: transform 1.6s cubic-bezier(0.65, 0, 0.35, 1);
@@ -173,6 +179,44 @@ body {
 .text-control--filter:hover {
   opacity: 0.72;
   transform: translateY(-1px);
+}
+
+/* SEARCH stays put as the fixed anchor; the input is a line that quietly
+   draws itself in immediately to its right, rather than a field opening
+   up. Open/closed is driven by .is-open (toggled by clicking SEARCH, see
+   handleSearchToggle) rather than pure CSS, since SEARCH itself needs to
+   be able to retract the line even when it already holds typed text --
+   something a content-based CSS selector alone can't express. Losing
+   focus while empty still closes it independently (see the input's
+   onBlur), using this same class and transition either way. */
+.search-control {
+  display: inline-flex;
+  align-items: baseline;
+}
+
+.search-control__input {
+  width: 0;
+  margin-left: 0;
+  padding: 0;
+  border: none;
+  border-bottom: 1px solid transparent;
+  outline: none;
+  background: none;
+  font-family: "Neue Haas Grotesk Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 0.78rem;
+  font-weight: 400;
+  letter-spacing: 0.18em;
+  color: #111;
+  caret-color: #111;
+  transition: width 0.5s cubic-bezier(0.65, 0, 0.35, 1),
+    margin-left 0.5s cubic-bezier(0.65, 0, 0.35, 1),
+    border-color 0.5s ease;
+}
+
+.search-control__input.is-open {
+  width: clamp(120px, 9vw, 190px);
+  margin-left: 10px;
+  border-bottom-color: rgba(0, 0, 0, 0.18);
 }
 
 /* Index drawer — the header unfolding into its own catalog (theme /
@@ -476,10 +520,13 @@ body {
 
 /* The x is a purely typographic editing affordance -- invisible and
    occupying zero width at rest (max-width: 0, not just opacity: 0), so it
-   never disturbs the resting bracket's spacing. On hover/focus the
-   bracket gently opens to admit it: max-width, opacity, and margin all
-   animate together on the same timing the old chip-remove used, so the ×
-   grows into the gap rather than snapping into view. */
+   never disturbs the resting bracket's spacing. It only grows in once
+   --remove-armed is present (see Header.jsx's armRemove/disarmRemove --
+   set by a mouseenter/focus that lands on an already-selected option),
+   not from a plain :hover/:focus-visible selector -- otherwise the same
+   click that selects an option would also satisfy :hover instantly,
+   flashing the × as part of selecting rather than a later, deliberate
+   hover back over it. */
 .index-drawer__option-remove {
   display: inline-block;
   overflow: hidden;
@@ -492,8 +539,7 @@ body {
     opacity 200ms ease-out;
 }
 
-.index-drawer__option--selected:hover .index-drawer__option-remove,
-.index-drawer__option--selected:focus-visible .index-drawer__option-remove {
+.index-drawer__option--remove-armed .index-drawer__option-remove {
   max-width: 14px;
   margin-left: 3px;
   opacity: 1;
@@ -912,7 +958,7 @@ html.is-browsing .zoom-controls {
 }
 
   .brand {
-    width: min(200px, 58vw);
+    width: min(251px, 73vw);
   }
 
   .top-menu {

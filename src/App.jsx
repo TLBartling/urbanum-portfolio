@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import imageMetadata from "./image-metadata.json";
 import Header from "./Header";
+import { navigate } from "./navigation";
+import { findArchiveItemBySrc } from "./mockArchiveItems";
 
 export const allImages = [
   "/img/pexels-adrien-olichon-1257089-3137038.jpg",
@@ -370,6 +372,13 @@ function createGalleryBatch(batchIndex, columnState) {
       const left = columnLeft + (tile.left / 100) * columnWidthPx;
       const top = metrics.topPadding + (tile.top / 100) * metrics.renderHeightPx;
 
+      // Homepage -> Project navigation: an image only becomes clickable
+      // (below, in the render) if it's also a mock Archive Item that
+      // belongs to a Project -- most of these 34 stock photos aren't, and
+      // stay exactly as inert as they are today. archiveItem is null for
+      // those, and the fields below just carry that through.
+      const archiveItem = findArchiveItemBySrc(src);
+
       items.push({
         id: `${batchIndex}-${itemIndex}`,
         batchIndex,
@@ -388,6 +397,8 @@ function createGalleryBatch(batchIndex, columnState) {
         },
         opacity: getRandomOpacity(),
         tag: imageTags[src] || null,
+        archiveNumber: archiveItem?.archiveNumber ?? null,
+        project: archiveItem?.project ?? null,
         motion: getRandomImageMotion(),
       });
 
@@ -1314,6 +1325,15 @@ function App() {
           >
             {renderedGalleryItems.map((item) => {
               const dimensions = getImageDimensions(item.src);
+              // Click is navigation, per the approved Project Template
+              // architecture: an image that belongs to a Project always
+              // routes to it, regardless of imageFocusEnabled. The
+              // existing focus-overlay path below is left exactly as it
+              // was -- not removed, not built around -- for images that
+              // aren't part of a Project yet, until hover/click are
+              // properly separated as their own later task.
+              const isProjectLinked = Boolean(item.project);
+              const isInteractive = isProjectLinked || imageFocusEnabled;
 
               return (
                 <button
@@ -1324,20 +1344,31 @@ function App() {
                   data-module-index={item.moduleIndex}
                   data-pattern-index={item.patternIndex}
                   className={`gallery-image-wrapper${
-                    imageFocusEnabled ? "" : " gallery-image-wrapper--disabled"
+                    isInteractive ? "" : " gallery-image-wrapper--disabled"
                   }`}
                   onClick={
-                    imageFocusEnabled
-                      ? () => handleImageClick(item.id)
-                      : undefined
+                    isProjectLinked
+                      ? () =>
+                          navigate(
+                            `/projects/${item.project}?image=${item.archiveNumber}`,
+                          )
+                      : imageFocusEnabled
+                        ? () => handleImageClick(item.id)
+                        : undefined
                   }
                   aria-label={
-                    imageFocusEnabled ? `Focus ${item.alt}` : item.alt
+                    isProjectLinked
+                      ? `View project: ${item.alt}`
+                      : imageFocusEnabled
+                        ? `Focus ${item.alt}`
+                        : item.alt
                   }
                   aria-pressed={
-                    imageFocusEnabled ? focusedId === item.id : undefined
+                    !isProjectLinked && imageFocusEnabled
+                      ? focusedId === item.id
+                      : undefined
                   }
-                  tabIndex={imageFocusEnabled ? 0 : -1}
+                  tabIndex={isInteractive ? 0 : -1}
                   style={{
                     width: item.layout.width,
                     height: item.layout.height,

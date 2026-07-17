@@ -1648,3 +1648,135 @@ html.is-browsing .zoom-controls {
   height: auto;
 }
 
+/* --- Project Template ------------------------------------------------
+   Reuses .about-page/.about-content for the page shell and
+   .about-hero__title/__location for the title block (see ProjectHeader.jsx
+   -- both already carry the site's restrained editorial type scale, same
+   as About/Projects/Journal). Everything below is new: the large image
+   frame, its zoom/image-navigation controls (zoom reuses the existing
+   .zoom-controls/.zoom-control), the per-image metadata block, and the
+   previous/next Project row. */
+.project-content {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(20px, 2.4vw, 32px);
+}
+
+.project-image-viewer {
+  position: relative;
+}
+
+.project-image-frame {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: #eeece6;
+}
+
+.project-image-frame__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 320ms ease-out;
+}
+
+.project-image-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(14px, 1.6vw, 22px);
+  margin-top: clamp(14px, 1.6vw, 20px);
+}
+
+.project-image-nav__control {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: #1a1a1a;
+  cursor: pointer;
+}
+
+.project-image-nav__control:disabled {
+  color: #c7c5bd;
+  cursor: default;
+}
+
+.project-image-nav__count {
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  color: #9d9d9d;
+}
+
+.project-image-metadata {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  max-width: 620px;
+}
+
+.project-image-metadata__number {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #9d9d9d;
+}
+
+.project-image-metadata__title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.project-image-metadata__caption,
+.project-image-metadata__detail {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #5a5a5a;
+}
+
+.project-navigation {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: clamp(16px, 2vw, 28px);
+  padding-top: clamp(24px, 2.8vw, 36px);
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.project-navigation__control {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.project-navigation__control--next {
+  text-align: right;
+  margin-left: auto;
+}
+
+.project-navigation__label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #9d9d9d;
+}
+
+.project-navigation__title {
+  font-size: 0.9rem;
+  color: #1a1a1a;
+}
+
+.project-not-found {
+  font-size: 0.9rem;
+  color: #5a5a5a;
+}
+

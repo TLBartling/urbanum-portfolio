@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Logo from "./Logo";
+import { navigate, useCurrentPath } from "./navigation";
 
 // Mock catalog values for the index drawer. These are the seam a developer
 // swaps for real CMS data later: point `themes` / `projects` / `years` at
@@ -35,6 +36,25 @@ const INDEX_ENTRIES = [
   { key: "year", label: "Year" },
 ];
 
+// Menu is the same drawer showing different content: no categories or
+// selection state, just a small set of top-level destinations.
+const MENU_LINKS = ["About", "Journal"];
+
+// Both links are now wired up to real routes; kept as a lookup rather
+// than growing the ternary below, since a third page later is one more
+// entry here instead of a longer condition.
+const MENU_LINK_PATHS = {
+  About: "/about",
+  Journal: "/journal",
+};
+
+// Contact is revealed through the exact same active-field/panel mechanism
+// as Filter's Theme/Project/Year (see entryValues/entryLabels and the
+// shared Active Panel below) -- it's just another entry, "contact", in
+// that same lookup. Adding a fourth contact method later is a one-line
+// change here; no interaction code needs to change.
+const MENU_CONTACT_ITEMS = ["Instagram", "Email", "Phone"];
+
 // How many archive terms the Active Content Panel shows before offering
 // "View All" to reveal the complete index for that Context.
 const PREVIEW_COUNT = 6;
@@ -56,8 +76,15 @@ export default function Header({
   onFilterChange,
   onDrawerHeightChange,
 }) {
-  // Whether the header has unfolded its subheader (category row) at all.
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  // Filter and Menu physically share one drawer surface -- only one of
+  // their two content rows can occupy .index-drawer at a time -- so
+  // they're modeled as one exclusive selector. Search is deliberately NOT
+  // part of this: Filter and Search are complementary tools a visitor can
+  // reasonably use together, so it keeps its own independent open state
+  // below. Menu still closes Search on open (see handleMenuToggle) since
+  // Menu is navigation that temporarily replaces the working interface,
+  // not another working tool alongside it.
+  const [drawerSection, setDrawerSection] = useState(null);
   // Once the initial slow expansion has finished, the drawer is "settled":
   // its outer frame stops carrying a transition on its own size, so that
   // opening/closing a category's value list afterward (which changes how
@@ -103,15 +130,60 @@ export default function Header({
   // yet -- so a future search implementation has one clean place to hook
   // into rather than re-deriving where the typed value lives.
   const [searchValue, setSearchValue] = useState("");
-  // Whether the search line is drawn out. Clicking SEARCH toggles this
-  // directly (same as Filter's own toggle below); losing focus with an
-  // empty field also closes it, but only that specific case -- typed text
-  // keeps it open until the visitor closes it themselves.
+  // Whether the search line is drawn out. Independent of drawerSection on
+  // purpose (see the note above) -- Filter and Search can be open at the
+  // same time. Clicking SEARCH toggles this directly (same as Filter's own
+  // toggle); losing focus with an empty field also closes it, but only
+  // that specific case -- typed text keeps it open until the visitor
+  // closes it themselves.
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const searchInputRef = useRef(null);
 
-  const entryValues = { theme: themes, project: projects, year: years };
-  const entryLabels = { theme: "Theme", project: "Project", year: "Year" };
+  // Derived read-only flags over drawerSection.
+  const isFilterOpen = drawerSection === "filter";
+  const isMenuOpen = drawerSection === "menu";
+  // Whether the header has unfolded its subheader (category row or menu
+  // row) at all -- Filter and Menu both use this same drawer/frame. Search
+  // has its own separate, lighter-weight reveal (the input line itself)
+  // and isn't part of this shared surface.
+  const isDrawerOpen = isFilterOpen || isMenuOpen;
+
+  // On any page other than the homepage, the header should also solidify
+  // as soon as the visitor scrolls -- the transparent-over-hero treatment
+  // only makes sense above the gallery. This reuses the exact same
+  // .site-header--framed surface the drawer already opens into (same
+  // background, shadow, and reveal-ease timing), so there's nothing new
+  // to look at here, just another condition that can ask for it. The
+  // listener itself is only attached on child pages, so the homepage's
+  // header is untouched by this in every way.
+  const path = useCurrentPath();
+  const isChildPage = path !== "/";
+  const [isChildPageScrolled, setIsChildPageScrolled] = useState(false);
+
+  useEffect(() => {
+    if (!isChildPage) {
+      setIsChildPageScrolled(false);
+      return undefined;
+    }
+
+    const handleScroll = () => setIsChildPageScrolled(window.scrollY > 4);
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [isChildPage]);
+
+  const entryValues = {
+    theme: themes,
+    project: projects,
+    year: years,
+    contact: MENU_CONTACT_ITEMS,
+  };
+  const entryLabels = {
+    theme: "Theme",
+    project: "Project",
+    year: "Year",
+    contact: "Contact",
+  };
   const activeValues = activeEntry ? entryValues[activeEntry] : [];
   const previewValues = activeEntry ? getPreviewValues(activeValues) : [];
   // Only meaningful once a Context is active, and only once its full list
@@ -121,35 +193,56 @@ export default function Header({
   const visibleValues = isExpanded ? activeValues : previewValues;
   const hasHiddenValues = !isExpanded && activeValues.length > previewValues.length;
 
-  const setFilterOpen = (nextOpen) => {
-    setIsFilterOpen(nextOpen);
-    onFilterOpenChange?.(nextOpen);
-
-    if (!nextOpen) {
-      setActiveEntry(null);
+  // onFilterOpenChange is specifically about Filter's own open state, so it
+  // only fires when Filter itself transitions -- an explicit toggle, or
+  // Menu taking over the shared drawer. Search no longer forces Filter
+  // closed, so it no longer calls this at all.
+  const notifyIfFilterCloses = (nextSection) => {
+    if (isFilterOpen && nextSection !== "filter") {
+      onFilterOpenChange?.(false);
     }
   };
 
   const handleFilterToggle = () => {
-    setFilterOpen(!isFilterOpen);
+    const nextOpen = !isFilterOpen;
+    setDrawerSection(nextOpen ? "filter" : null);
+    onFilterOpenChange?.(nextOpen);
   };
 
-  // Same toggle shape as Filter above. Closing this way always retracts
-  // the line (even with text typed in) using the identical reveal
-  // transition in reverse, since it's the same width/margin transition on
-  // .search-control__input either way -- just driven by this state
-  // instead of the field's own focus. The button's onMouseDown below
-  // stops the input from blurring itself first when the field is open
-  // and empty -- without that, the blur's own auto-close (see the
-  // input's onBlur) would fire before this click and then get reopened
-  // by the toggle right after, which is what made an empty field look
-  // like clicking SEARCH did nothing.
+  // Search is fully independent of Filter now -- opening or closing it
+  // never touches drawerSection, so Filter stays exactly as it was. The
+  // one exception is Menu: since Menu temporarily replaces the working
+  // interface, bringing Search up (like opening Filter) steps back out of
+  // Menu the same way. Closing this way always retracts the line (even
+  // with text typed in) using the identical reveal transition in reverse,
+  // since it's the same width/margin transition on .search-control__input
+  // either way -- just driven by this state instead of the field's own
+  // focus. The button's onMouseDown below stops the input from blurring
+  // itself first when the field is open and empty -- without that, the
+  // blur's own auto-close (see the input's onBlur) would fire before this
+  // click and then get reopened by the toggle right after, which is what
+  // made an empty field look like clicking SEARCH did nothing.
   const handleSearchToggle = () => {
     const nextOpen = !isSearchOpen;
     setIsSearchOpen(nextOpen);
     if (nextOpen) {
+      setDrawerSection((current) => (current === "menu" ? null : current));
       searchInputRef.current?.focus();
     } else {
+      searchInputRef.current?.blur();
+    }
+  };
+
+  // Menu is the one section that still fully takes over: opening it closes
+  // both Filter and Search, since Menu is navigation replacing the working
+  // interface rather than another working tool alongside it. Clicking Menu
+  // again just collapses it, same as Filter's own toggle.
+  const handleMenuToggle = () => {
+    const nextOpen = !isMenuOpen;
+    notifyIfFilterCloses(nextOpen ? "menu" : null);
+    setDrawerSection(nextOpen ? "menu" : null);
+    if (nextOpen) {
+      setIsSearchOpen(false);
       searchInputRef.current?.blur();
     }
   };
@@ -191,34 +284,50 @@ export default function Header({
   // Arms the "settled" state once the slow expansion has had time to
   // finish -- 1500ms comfortably clears the drawer's own 1400ms reveal.
   // Closing resets it immediately, so the next open cycle always replays
-  // the full slow reveal from a clean state.
+  // the full slow reveal from a clean state. Keyed on isDrawerOpen (not
+  // just isFilterOpen) so Menu's use of the same drawer gets the same
+  // settle behavior.
   useEffect(() => {
-    if (!isFilterOpen) {
+    if (!isDrawerOpen) {
       setIsSettled(false);
       return undefined;
     }
 
     const timer = setTimeout(() => setIsSettled(true), 1500);
     return () => clearTimeout(timer);
-  }, [isFilterOpen]);
+  }, [isDrawerOpen]);
+
+  // The active field panel (Theme/Project/Year under Filter, or Contact
+  // under Menu) only ever belongs to whichever section currently owns the
+  // shared drawer. Keying this cleanup on drawerSection itself -- rather
+  // than isFilterOpen alone -- guarantees a clean slate any time that
+  // ownership changes: Filter closing, Menu closing, or switching directly
+  // from one to the other. It does NOT fire on every click within a
+  // section (e.g. Theme -> Project, or opening Contact), since
+  // drawerSection itself doesn't change there -- only handleAddClick does.
+  useEffect(() => {
+    setActiveEntry(null);
+  }, [drawerSection]);
 
   useEffect(() => {
-    if (!isFilterOpen) return undefined;
+    if (!isDrawerOpen) return undefined;
 
     const handleKeyDown = (event) => {
       if (event.key !== "Escape") return;
 
-      if (activeEntry) {
+      if (isFilterOpen && activeEntry) {
         setActiveEntry(null);
-      } else {
-        setFilterOpen(false);
+        return;
       }
+
+      notifyIfFilterCloses(null);
+      setDrawerSection(null);
     };
 
     document.addEventListener("keydown", handleKeyDown);
 
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isFilterOpen, activeEntry]);
+  }, [isDrawerOpen, isFilterOpen, activeEntry]);
 
   // The Context row never moves -- THEME/PROJECT/YEAR stay exactly where
   // they are. Instead, the single Active Panel shifts its own reading
@@ -267,10 +376,21 @@ export default function Header({
 
   return (
     <header
-      className={`site-header${isFilterOpen ? " site-header--framed" : ""}`}
+      className={`site-header${
+        isDrawerOpen || (isChildPage && isChildPageScrolled)
+          ? " site-header--framed"
+          : ""
+      }`}
     >
       <div className="site-header__row1">
-        <Logo className="brand" />
+        <button
+          type="button"
+          className="brand-button"
+          onClick={() => navigate("/")}
+          aria-label="Urbānum — home"
+        >
+          <Logo className="brand" />
+        </button>
         <nav className="top-menu" aria-label="Gallery navigation">
           <div className="top-menu__group" aria-label="Browse tools">
             <button
@@ -306,15 +426,29 @@ export default function Header({
                 autoComplete="off"
                 value={searchValue}
                 onChange={(event) => setSearchValue(event.target.value)}
-                onFocus={() => setIsSearchOpen(true)}
+                onFocus={() => {
+                  setIsSearchOpen(true);
+                  setDrawerSection((current) =>
+                    current === "menu" ? null : current
+                  );
+                }}
                 onBlur={() => {
-                  if (!searchValue) setIsSearchOpen(false);
+                  if (!searchValue) {
+                    setIsSearchOpen(false);
+                  }
                 }}
               />
             </div>
           </div>
-          <button type="button" className="text-control text-control--active">
-            Index
+          <button
+            type="button"
+            className={`text-control text-control--active text-control--filter${
+              isMenuOpen ? " text-control--engaged" : ""
+            }`}
+            aria-expanded={isMenuOpen}
+            onClick={handleMenuToggle}
+          >
+            <span>Menu</span>
           </button>
         </nav>
       </div>
@@ -324,12 +458,55 @@ export default function Header({
           rendered height (measured above) is what pushes the archive down. */}
       <div
         ref={drawerRef}
-        className={`index-drawer${isFilterOpen ? " is-open" : ""}${
+        className={`index-drawer${isDrawerOpen ? " is-open" : ""}${
           isSettled ? " is-settled" : ""
         }`}
-        aria-hidden={!isFilterOpen}
+        aria-hidden={!isDrawerOpen}
       >
         <div className="index-drawer__inner">
+          {isMenuOpen ? (
+            /* Menu displaying inside the exact same drawer surface Filter
+               uses -- same wrapper, same is-open/is-settled classes, same
+               reveal/stagger CSS -- just a different content row. Contact
+               is the one interactive field here, and it reuses the
+               identical field/label/handleAddClick pattern
+               Theme/Project/Year use below -- see the shared Active Panel
+               further down for its reveal. */
+            <div className="index-drawer__row index-drawer__row--menu">
+              {MENU_LINKS.map((label) => (
+                <div className="index-drawer__field" key={label}>
+                  <div className="index-drawer__field-row">
+                    <button
+                      type="button"
+                      className="index-drawer__label-text"
+                      onClick={() => navigate(MENU_LINK_PATHS[label])}
+                      tabIndex={isMenuOpen ? 0 : -1}
+                    >
+                      {label}
+                    </button>
+                  </div>
+                </div>
+              ))}
+              <div
+                className="index-drawer__field"
+                ref={(el) => {
+                  if (el) fieldRefs.current.set("contact", el);
+                }}
+              >
+                <div className="index-drawer__field-row">
+                  <button
+                    type="button"
+                    className="index-drawer__label-text"
+                    aria-expanded={activeEntry === "contact"}
+                    onClick={() => handleAddClick("contact")}
+                    tabIndex={isMenuOpen ? 0 : -1}
+                  >
+                    Contact
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
           <div className="index-drawer__row">
             {/* Level 2 -- the Context row. Theme/Project/Year are pure
                 selectors now: clicking one only ever changes which context
@@ -390,113 +567,149 @@ export default function Header({
               );
             })}
           </div>
+          )}
 
-          {/* Level 3 -- the single Active Panel. There is exactly one of
-              these, not one per category: Theme/Project/Year do not each
-              own their own dropdown -- they just tell this shared panel
-              what to display. Its open state is "is any context active",
-              and its content is whichever context's values that is.
-              The Context row above never moves -- instead this panel's own
-              reading origin (marginLeft) shifts to sit beneath whichever
-              Context is active, using the offset measured by the
-              useLayoutEffect above. width is reduced by that same offset
-              so the panel's right edge stays anchored to the drawer's own
-              right boundary instead of overflowing past it, which keeps
-              the horizontal wrapping behavior correct at every offset. */}
+          {/* Level 3 -- the single Active Panel, shared by Filter's
+              Theme/Project/Year AND Menu's Contact -- there is exactly one
+              of these, not one per field or per section: each field just
+              tells this shared panel what to display. Its open state is
+              "is any field active", and its content is whichever field's
+              values that is (see entryValues/entryLabels above, which now
+              include "contact" alongside theme/project/year). The field
+              row above never moves -- instead this panel's own reading
+              origin (marginLeft) shifts to sit beneath whichever field is
+              active, using the offset measured by the useLayoutEffect
+              above. width is reduced by that same offset so the panel's
+              right edge stays anchored to the drawer's own right boundary
+              instead of overflowing past it, which keeps the horizontal
+              wrapping behavior correct at every offset. */}
           <div
             className={`index-drawer__panel${activeEntry ? " is-open" : ""}`}
             aria-hidden={!activeEntry}
-            style={{
-              marginLeft: activeOffset,
-              width: `calc(100% - ${activeOffset}px)`,
-            }}
+            style={
+              activeEntry === "contact"
+                ? /* Contact's field sits at the right end of a
+                     right-aligned row (index-drawer__row--menu), so it's
+                     already close to the row's right edge -- narrowing the
+                     panel by that same offset (the way Filter's left-
+                     aligned Theme/Project/Year do) would leave almost no
+                     room and wrap "Instagram Email Phone" onto separate
+                     lines. Same alignment philosophy as the row above it,
+                     mirrored for a right-aligned field: full width, right
+                     -justified content (see index-drawer__options-list--menu
+                     below), instead of a left-anchored, width-reduced panel. */
+                  { marginLeft: 0, width: "100%" }
+                : {
+                    marginLeft: activeOffset,
+                    width: `calc(100% - ${activeOffset}px)`,
+                  }
+            }
           >
             <div className="index-drawer__panel-inner">
               <div
                 className={`index-drawer__options-list${
                   activeEntry ? " is-visible" : ""
+                }${
+                  activeEntry === "contact"
+                    ? " index-drawer__options-list--menu"
+                    : ""
                 }`}
               >
-                {activeEntry &&
-                  visibleValues.map((option) => {
-                    const isSelected = selection[activeEntry].includes(option);
-                    const armRemove = () => {
-                      if (isSelected) setRemoveArmedValue(option);
-                    };
-                    const disarmRemove = () =>
-                      setRemoveArmedValue((current) =>
-                        current === option ? null : current
-                      );
-                    return (
-                      <button
-                        type="button"
+                {activeEntry === "contact"
+                  ? /* Contact has no selection state -- it's a plain,
+                       static reading of the same options list, typographic
+                       like everything else in the header rather than
+                       icons. index-drawer__option--static just neutralizes
+                       the selectable-chip's hover/cursor affordance. */
+                    visibleValues.map((option) => (
+                      <span
+                        className="index-drawer__option index-drawer__option--static"
                         key={option}
-                        className={`index-drawer__option${
-                          isSelected ? " index-drawer__option--selected" : ""
-                        }${
-                          removeArmedValue === option
-                            ? " index-drawer__option--remove-armed"
-                            : ""
-                        }`}
-                        aria-pressed={isSelected}
-                        onClick={() => {
-                          // A click that's about to *select* this option
-                          // always starts clean, even if it was armed from
-                          // a previous selected/hovered visit that ended
-                          // in removal without the pointer ever leaving --
-                          // otherwise reselecting it in the same hover
-                          // session would show the × immediately, which is
-                          // exactly the "flash during selection" this is
-                          // meant to avoid.
-                          if (!isSelected) setRemoveArmedValue(null);
-                          handleOptionToggle(activeEntry, option);
-                        }}
-                        onMouseEnter={armRemove}
-                        onMouseLeave={disarmRemove}
-                        onFocus={armRemove}
-                        onBlur={disarmRemove}
-                        tabIndex={isFilterOpen ? 0 : -1}
                       >
-                        {/* Selected values read as indexed archive
-                            references -- bracketed text, not chips. The ×
-                            is a purely visual editing affordance (hidden
-                            via aria-hidden, since aria-pressed above
-                            already carries the selected state to assistive
-                            tech): it stays invisible and reserves no space
-                            at rest, and only grows in on hover/focus. The
-                            same click/Enter/Space that already toggles
-                            this option off is what removes it -- there's
-                            no separate remove control to activate. */}
-                        {isSelected ? (
-                          <>
-                            <span
-                              className="index-drawer__option-bracket"
-                              aria-hidden="true"
-                            >
-                              [
-                            </span>
-                            <span className="index-drawer__option-text">
-                              {option}
-                            </span>
-                            <span
-                              className="index-drawer__option-remove"
-                              aria-hidden="true"
-                            >
-                              ×
-                            </span>
-                            <span
-                              className="index-drawer__option-bracket"
-                              aria-hidden="true"
-                            >
-                              ]
-                            </span>
-                          </>
-                        ) : (
-                          option
-                        )}
-                      </button>
-                    );
-                  })}
+                        {option}
+                      </span>
+                    ))
+                  : activeEntry &&
+                    visibleValues.map((option) => {
+                      const isSelected =
+                        selection[activeEntry].includes(option);
+                      const armRemove = () => {
+                        if (isSelected) setRemoveArmedValue(option);
+                      };
+                      const disarmRemove = () =>
+                        setRemoveArmedValue((current) =>
+                          current === option ? null : current
+                        );
+                      return (
+                        <button
+                          type="button"
+                          key={option}
+                          className={`index-drawer__option${
+                            isSelected ? " index-drawer__option--selected" : ""
+                          }${
+                            removeArmedValue === option
+                              ? " index-drawer__option--remove-armed"
+                              : ""
+                          }`}
+                          aria-pressed={isSelected}
+                          onClick={() => {
+                            // A click that's about to *select* this option
+                            // always starts clean, even if it was armed from
+                            // a previous selected/hovered visit that ended
+                            // in removal without the pointer ever leaving --
+                            // otherwise reselecting it in the same hover
+                            // session would show the × immediately, which is
+                            // exactly the "flash during selection" this is
+                            // meant to avoid.
+                            if (!isSelected) setRemoveArmedValue(null);
+                            handleOptionToggle(activeEntry, option);
+                          }}
+                          onMouseEnter={armRemove}
+                          onMouseLeave={disarmRemove}
+                          onFocus={armRemove}
+                          onBlur={disarmRemove}
+                          tabIndex={isDrawerOpen ? 0 : -1}
+                        >
+                          {/* Selected values read as indexed archive
+                              references -- bracketed text, not chips. The ×
+                              is a purely visual editing affordance (hidden
+                              via aria-hidden, since aria-pressed above
+                              already carries the selected state to assistive
+                              tech): it stays invisible and reserves no space
+                              at rest, and only grows in on hover/focus. The
+                              same click/Enter/Space that already toggles
+                              this option off is what removes it -- there's
+                              no separate remove control to activate. */}
+                          {isSelected ? (
+                            <>
+                              <span
+                                className="index-drawer__option-bracket"
+                                aria-hidden="true"
+                              >
+                                [
+                              </span>
+                              <span className="index-drawer__option-text">
+                                {option}
+                              </span>
+                              <span
+                                className="index-drawer__option-remove"
+                                aria-hidden="true"
+                              >
+                                ×
+                              </span>
+                              <span
+                                className="index-drawer__option-bracket"
+                                aria-hidden="true"
+                              >
+                                ]
+                              </span>
+                            </>
+                          ) : (
+                            option
+                          )}
+                        </button>
+                      );
+                    })}
 
                 {/* Appears only once there's more of the Context's index
                     left to reveal. Deliberately plain -- no distinct
@@ -511,7 +724,7 @@ export default function Header({
                       activeEntry
                     ]?.toLowerCase()} options`}
                     onClick={handleViewAllClick}
-                    tabIndex={isFilterOpen ? 0 : -1}
+                    tabIndex={isDrawerOpen ? 0 : -1}
                   >
                     View All
                   </button>

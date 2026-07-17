@@ -90,11 +90,30 @@ body {
 }
 
 
-.brand {
+.brand-button {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
+  display: block;
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  /* .site-header disables pointer-events by default so only specific
+     controls (see .top-menu) are click-through-able; this opts the logo
+     back in the same way, which is what it was missing. */
+  pointer-events: auto;
+  /* .top-menu comes after this element in the DOM and is itself a
+     positioned, pointer-events:auto element spanning the full row width
+     -- without a stacking order of its own, its transparent middle (the
+     gap between the left button group and Menu) paints on top of the
+     centered logo and swallows clicks meant for the artwork itself. */
+  z-index: 1;
+  transition: transform 1.6s cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+.brand {
   display: block;
   /* The transparent SVG wordmark's own artwork occupies a smaller share of
      its canvas than the old JPEG did (it carries generous built-in
@@ -105,7 +124,6 @@ body {
   width: clamp(226px, 17.6vw, 296px);
   height: auto;
   pointer-events: none;
-  transition: transform 1.6s cubic-bezier(0.65, 0, 0.35, 1);
 }
 
 .top-menu {
@@ -312,6 +330,14 @@ body {
   padding-bottom: clamp(14px, 1.8vw, 22px);
 }
 
+/* Menu's row is the same .index-drawer__row (identical gap, padding,
+   alignment, field/stagger behavior) with one override: its content reads
+   right-aligned, directly beneath the Menu control it belongs to, instead
+   of left-aligned like Filter's Theme/Project/Year row. */
+.index-drawer__row--menu {
+  justify-content: flex-end;
+}
+
 /* One independent column per category: label + its own nested value
    panel, sized to its own content (not stretched or shared with the
    other columns). This is what lets each dropdown open directly beneath
@@ -482,6 +508,15 @@ body {
   transition: opacity 480ms var(--reveal-ease) 160ms;
 }
 
+/* Contact's panel is full-width rather than offset/narrowed (see the
+   style prop in Header.jsx), so its content needs its own justification
+   to land on the right -- mirroring index-drawer__row--menu above it,
+   the same "right-aligned row -> right-aligned reveal" philosophy applied
+   one level down. */
+.index-drawer__options-list--menu {
+  justify-content: flex-end;
+}
+
 .index-drawer__option {
   background: none;
   border: none;
@@ -504,6 +539,19 @@ body {
 
 .index-drawer__option--selected {
   color: #111;
+}
+
+/* Contact's revealed items are plain, non-interactive typography (a <span>,
+   not a <button>) -- this just neutralizes the base .index-drawer__option's
+   pointer cursor and hover-dim so they don't visually promise a click that
+   isn't there, while keeping the exact same type, color, and spacing as
+   every other archive term in the row. */
+.index-drawer__option--static {
+  cursor: default;
+}
+
+.index-drawer__option--static:hover {
+  opacity: 1;
 }
 
 /* Selected values read as indexed archive references -- bracketed
@@ -772,7 +820,7 @@ html.is-browsing .site-header__row1 {
   padding-top: clamp(29px, 2.4vw, 36px);
 }
 
-html.is-browsing .brand {
+html.is-browsing .brand-button {
   transform: translate(-50%, -50%) scale(0.9);
 }
 
@@ -994,5 +1042,609 @@ html.is-browsing .zoom-controls {
   width: 1px;
   height: 11px;
   background: rgba(0,0,0,.18);
+}
+
+/* --- About page ------------------------------------------------------
+   Reuses the header untouched, and reads as one more archive entry
+   composition rather than a distinct page template: a title/location/
+   established line, an asymmetric photo composition with numbered
+   captions, a short description, and a CLIENT/ARCHITECT/STATUS/
+   PHOTOGRAPHY/TAGS meta panel. Three independent columns free-running to
+   their own height (rather than a row-synced grid) echo the same
+   "columns settle at their own pace" idea the gallery's own column
+   patterns already use -- just composed once here instead of scrolling.
+   No animation of any kind is introduced on this page. */
+.about-page {
+  width: 100%;
+  min-height: 100vh;
+  background: #faf9f5;
+}
+
+/* Same top clearance language as the gallery's own header-clearance
+   calculation (getColumnPatternMetrics in App.jsx), and the same
+   horizontal margin already used by .site-header__row1, so this page's
+   content lines up with the header's Logo/Filter/Menu edges exactly. */
+.about-content {
+  padding: clamp(110px, 11vw, 150px) clamp(34px, 4vw, 60px)
+    clamp(48px, 5vw, 72px);
+  transition: opacity 200ms ease-out;
+}
+
+.about-hero {
+  margin-bottom: clamp(28px, 3vw, 44px);
+}
+
+.about-hero__title {
+  margin: 0;
+  font-size: clamp(1.8rem, 2.6vw, 2.4rem);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #111;
+}
+
+.about-hero__location {
+  margin: 0.4rem 0 0;
+  font-size: clamp(0.95rem, 1.1vw, 1.05rem);
+  color: #9d9d9d;
+}
+
+.about-hero__established {
+  margin: 0.3rem 0 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.about-columns {
+  display: flex;
+  align-items: flex-start;
+  gap: clamp(14px, 1.6vw, 20px);
+}
+
+.about-column {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(14px, 1.6vw, 20px);
+  min-width: 0;
+}
+
+.about-column--one {
+  flex: 1.9;
+}
+
+.about-column--two {
+  flex: 2.2;
+}
+
+.about-column--three {
+  flex: 1;
+}
+
+.about-tile {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  background: #e7e4dc;
+}
+
+.about-tile::before {
+  /* A subtle top scrim keeps the white caption legible over any photo,
+     without changing the tile's own visible crop or color. */
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.32) 0%,
+    rgba(0, 0, 0, 0) 32%
+  );
+  pointer-events: none;
+}
+
+.about-tile__image {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.about-tile__caption {
+  position: absolute;
+  top: clamp(12px, 1.2vw, 18px);
+  left: clamp(14px, 1.4vw, 20px);
+  display: flex;
+  align-items: baseline;
+  gap: 0.5em;
+  color: #fff;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
+  font-family: "Neue Haas Grotesk Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+.about-tile__number {
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.about-tile__label {
+  font-size: 0.72rem;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.92;
+}
+
+.about-tile__year {
+  position: absolute;
+  top: clamp(12px, 1.2vw, 18px);
+  right: clamp(14px, 1.4vw, 20px);
+  color: #fff;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
+  font-size: 0.8rem;
+  font-family: "Neue Haas Grotesk Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+.about-column--one .about-tile:first-child {
+  aspect-ratio: 4 / 3;
+}
+
+.about-column--one .about-tile:last-child {
+  aspect-ratio: 16 / 9;
+}
+
+.about-column--two > .about-tile:nth-child(1) {
+  aspect-ratio: 2 / 1;
+}
+
+.about-column--two > .about-tile:nth-child(2) {
+  aspect-ratio: 12 / 5;
+}
+
+.about-column--three > .about-tile:first-child {
+  aspect-ratio: 6 / 5;
+}
+
+.about-column--three > .about-tile:nth-child(2) {
+  aspect-ratio: 4 / 7;
+}
+
+.about-text-row {
+  display: flex;
+  align-items: flex-start;
+  gap: clamp(20px, 2.4vw, 32px);
+}
+
+.about-text-row .about-tile {
+  flex: 0 0 clamp(140px, 15vw, 200px);
+  aspect-ratio: 1 / 1;
+}
+
+.about-description {
+  flex: 1;
+  margin: 0;
+  font-size: clamp(0.85rem, 1vw, 0.95rem);
+  line-height: 1.55;
+  color: #333;
+}
+
+.about-meta {
+  display: flex;
+  gap: clamp(20px, 2.4vw, 32px);
+  padding-top: 4px;
+}
+
+.about-meta__fields {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(10px, 1.2vw, 14px);
+}
+
+.about-meta__field dt {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #9d9d9d;
+}
+
+.about-meta__field dd {
+  margin: 0.15rem 0 0;
+  font-size: 0.85rem;
+  color: #1a1a1a;
+}
+
+.about-meta__tags {
+  padding-left: clamp(20px, 2.4vw, 32px);
+  border-left: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.about-meta__tags-label {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #9d9d9d;
+  margin-bottom: clamp(10px, 1.2vw, 14px);
+}
+
+.about-meta__tags ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.about-meta__tags li {
+  font-size: 0.85rem;
+  color: #1a1a1a;
+}
+
+@media (max-width: 900px) {
+  .about-columns {
+    flex-direction: column;
+  }
+
+  .about-text-row,
+  .about-meta {
+    flex-direction: column;
+  }
+
+  .about-meta__tags {
+    padding-left: 0;
+    border-left: none;
+    padding-top: clamp(10px, 1.2vw, 14px);
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+  }
+}
+
+/* --- About page (studio) -----------------------------------------------
+   The dedicated About page reuses .about-page/.about-content for the page
+   shell and .about-hero__title/__location/__established + .about-meta__*
+   for typography (both already carry the site's restrained editorial
+   type scale), and adds only the layout this page needs: a two-region
+   split between a quiet intro column and an authored image composition. */
+.studio-content {
+  /* Slightly deeper top clearance than the archive pages -- this page has
+     no hero row of its own above the two-column layout, so the extra
+     breathing room keeps the heading from crowding the header. */
+  padding-top: clamp(130px, 13vw, 170px);
+}
+
+.studio-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: clamp(32px, 4vw, 64px);
+}
+
+/* A narrow, fixed-width intro column so the image grid -- not the text --
+   reads as the dominant feature of the page, per the approved mockup. */
+.studio-intro {
+  flex: 0 0 clamp(220px, 20vw, 300px);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.studio-intro__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9em;
+  margin-top: clamp(32px, 4vw, 56px);
+  max-width: 42ch;
+}
+
+.studio-intro__paragraph {
+  margin: 0;
+  font-size: clamp(0.9rem, 1.05vw, 1rem);
+  line-height: 1.7;
+  color: #333;
+}
+
+.studio-intro__link {
+  display: inline-block;
+  width: fit-content;
+  margin-top: clamp(18px, 2.2vw, 28px);
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+  color: #1a1a1a;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.25);
+  padding-bottom: 2px;
+  transition: opacity 200ms ease, border-color 200ms ease;
+}
+
+.studio-intro__link:hover {
+  opacity: 0.6;
+}
+
+.studio-composition {
+  flex: 1;
+  min-width: 0;
+  /* A small nudge down from the intro column's top edge, giving the
+     heading a touch more breathing room above the grid. */
+  padding-top: clamp(22px, 2.6vw, 34px);
+}
+
+/* Two fixed-height rows of images -- widths vary per the approved
+   mockup's proportions, but every image in a row shares the row's exact
+   height (object-fit: cover crops to fill), which is what makes the grid
+   read as a single authored composition instead of a gallery. */
+.studio-grid {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(10px, 1.2vw, 16px);
+}
+
+.studio-grid__row {
+  display: flex;
+  gap: clamp(10px, 1.2vw, 16px);
+}
+
+.studio-grid__row--one {
+  height: clamp(220px, 23vw, 360px);
+}
+
+.studio-grid__row--one > .studio-image {
+  flex: 1;
+}
+
+.studio-grid__row--two {
+  height: clamp(190px, 19.5vw, 300px);
+}
+
+.studio-grid__row--two > .studio-image:nth-child(1) {
+  flex: 1.8;
+}
+
+.studio-grid__row--two > .studio-image:nth-child(2) {
+  flex: 2.2;
+}
+
+.studio-grid__row--two > .studio-image:nth-child(3) {
+  flex: 1;
+}
+
+/* Quiet fade-in on appearance, using the same opacity + reveal-ease
+   language as the rest of the site (see .index-drawer__field). The
+   second row starts a beat after the first rather than all six firing
+   at once, kept understated -- no movement, just opacity. */
+@keyframes studio-image-reveal {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.studio-image {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  background: #e7e4dc;
+  animation: studio-image-reveal 900ms var(--reveal-ease) both;
+}
+
+.studio-grid__row--two > .studio-image {
+  animation-delay: 120ms;
+}
+
+.studio-image__img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+/* Number only -- no secondary caption, category, or tag, per the
+   approved mockup. */
+.studio-image__number {
+  position: absolute;
+  top: clamp(12px, 1.2vw, 18px);
+  left: clamp(14px, 1.4vw, 20px);
+  color: #fff;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
+  font-family: "Neue Haas Grotesk Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+/* Full-width footer below the intro/grid layout: five short editorial
+   text blocks, a vertical rule, and the studio's contact details -- laid
+   out per the approved mockup. */
+.studio-footer {
+  display: flex;
+  align-items: flex-start;
+  gap: clamp(20px, 2.6vw, 40px);
+  margin-top: clamp(56px, 6vw, 96px);
+  padding-top: clamp(28px, 3vw, 40px);
+  padding-bottom: clamp(24px, 2.6vw, 36px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.studio-footer__col {
+  flex: 1;
+  min-width: 0;
+}
+
+.studio-footer__label {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #9d9d9d;
+  margin-bottom: 0.7em;
+}
+
+.studio-footer__text {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: #333;
+}
+
+.studio-footer__divider {
+  width: 1px;
+  align-self: stretch;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.studio-footer__contact {
+  /* Slightly more flex-grow than the four text columns (still equal to
+     one another) so the contact block reads a touch wider -- roughly 5px
+     at typical widths -- without changing the footer row's total width. */
+  flex: 1.02;
+  min-width: 0;
+}
+
+.studio-footer__contact-heading {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin-bottom: 0.9em;
+}
+
+.studio-footer__contact-fields {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+}
+
+.studio-footer__contact-field {
+  display: flex;
+  gap: 0.6em;
+  align-items: baseline;
+}
+
+.studio-footer__contact-field dt {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #1a1a1a;
+  min-width: 68px;
+}
+
+.studio-footer__contact-field dd {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #333;
+  /* Without this, the flex row can't shrink the unbroken email string
+     below its own content width, which is what was pushing the contact
+     block past the right edge of the viewport. */
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+@media (max-width: 900px) {
+  .studio-layout {
+    flex-direction: column;
+  }
+
+  .studio-intro {
+    flex: 1 1 auto;
+  }
+
+  .studio-grid__row {
+    flex-direction: column;
+    height: auto;
+  }
+
+  .studio-grid__row > .studio-image {
+    height: clamp(220px, 60vw, 320px);
+    flex: unset;
+  }
+
+  .studio-footer {
+    flex-wrap: wrap;
+  }
+
+  .studio-footer__col {
+    flex: 1 1 40%;
+  }
+
+  .studio-footer__divider {
+    display: none;
+  }
+
+  .studio-footer__contact {
+    flex: 1 1 100%;
+    padding-top: clamp(16px, 2vw, 24px);
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+  }
+}
+
+/* --- Journal page -------------------------------------------------------
+   A plain three-column image archive -- reuses .about-page/.about-content
+   for the page shell and outer margins (same as About/Projects), and adds
+   only a fixed-ratio grid. No masonry, no variable sizing, no captions or
+   hover states: the page is meant to feel like a quiet visual notebook,
+   not a gallery. */
+.journal-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: clamp(14px, 1.6vw, 24px);
+}
+
+.journal-tile {
+  overflow: hidden;
+  background: #e7e4dc;
+  /* Slightly squarer than a standard photo crop, per the approved
+     reference -- a subtle nudge, not a different feeling. */
+  aspect-ratio: 5 / 4;
+}
+
+.journal-tile__img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+@media (max-width: 700px) {
+  .journal-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* --- Splash screen -------------------------------------------------------
+   A temporary full-screen overlay, mounted once above Router in main.jsx.
+   Three plain layers: a fixed positioning frame, a background layer that
+   fades away, and a logo layer that moves/scales into the real header
+   logo's position -- see SplashScreen.jsx for the motion itself. Sized
+   and composed to match the approved reference: a modest, centered
+   wordmark with generous surrounding whitespace, not a hero-sized mark. */
+.splash-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.splash-overlay__bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: #faf9f5;
+}
+
+.splash-logo-wrap {
+  position: relative;
+  z-index: 1;
+}
+
+.splash-logo {
+  display: block;
+  width: clamp(360px, 42vw, 620px);
+  height: auto;
 }
 

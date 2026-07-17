@@ -3,7 +3,7 @@ import gsap from "gsap";
 import imageMetadata from "./image-metadata.json";
 import Header from "./Header";
 
-const allImages = [
+export const allImages = [
   "/img/pexels-adrien-olichon-1257089-3137038.jpg",
   "/img/pexels-adrien-olichon-1257089-3137047.jpg",
   "/img/pexels-ai25studio-8837511.jpg",

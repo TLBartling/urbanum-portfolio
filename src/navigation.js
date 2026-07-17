@@ -33,3 +33,28 @@ export function useCurrentPath() {
 
   return path;
 }
+
+// A minimal, ephemeral channel for handing a header intent (which control to
+// resume as active on arrival, plus any typed-but-unsubmitted text) across a
+// return trip to the homepage. Filter and Search both resolve on the
+// homepage now, regardless of which child page they were invoked from -- this
+// is how the freshly mounted homepage Header knows which one to resume. A
+// plain module variable is enough: there's no real page load between "a
+// child page requests this" and "the homepage Header reads it once on
+// mount," so nothing here needs to survive a reload or a browser
+// back/forward.
+let pendingHomeIntent = null;
+
+export function navigateHomeWithIntent(intent) {
+  pendingHomeIntent = intent;
+  navigate("/");
+}
+
+// Reads and clears the pending intent in one step, so it's consumed exactly
+// once by the homepage Header's own mount -- a later, ordinary visit to "/"
+// (the logo, a Menu link) never picks up a stale intent.
+export function consumePendingHomeIntent() {
+  const intent = pendingHomeIntent;
+  pendingHomeIntent = null;
+  return intent;
+}

@@ -78,6 +78,30 @@ body {
     box-shadow 520ms var(--reveal-ease);
 }
 
+/* A brief full-viewport veil, not a page-transition system: Filter and
+   Search both resolve on the homepage now, so a child page returning there
+   needs to read as quietly arriving back at the archive, not an abrupt
+   swap between two independently rendered pages. Rendered by Header (the
+   one component present on every page) so no other page component needs
+   to know this exists. Matches the page's own background exactly, so
+   fading in/out reads as the archive settling into view rather than a new
+   visual layer announcing itself. 520ms/var(--reveal-ease) matches
+   .site-header--framed's own transition above -- same motion vocabulary,
+   not a new one. */
+.page-transition-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: #faf9f5;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 520ms var(--reveal-ease);
+}
+
+.page-transition-veil.is-opaque {
+  opacity: 1;
+}
+
 .site-header__row1 {
   position: relative;
   height: clamp(80px, 7vw, 102px);

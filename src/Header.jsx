@@ -1,6 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Logo from "./Logo";
-import { navigate, useCurrentPath } from "./navigation";
+import {
+  navigate,
+  navigateHomeWithIntent,
+  consumePendingHomeIntent,
+  useCurrentPath,
+} from "./navigation";
 
 // Mock catalog values for the index drawer. These are the seam a developer
 // swaps for real CMS data later: point `themes` / `projects` / `years` at
@@ -76,6 +81,23 @@ export default function Header({
   onFilterChange,
   onDrawerHeightChange,
 }) {
+  // Computed first (rather than down where it originally lived, alongside
+  // isChildPageScrolled) because the initial state below now depends on it:
+  // Menu defaults open on every child page -- the homepage's own Menu
+  // behavior is untouched. Header remounts fresh on every route change (each
+  // page mounts its own <Header>), so "defaults" here really does mean "the
+  // state this particular mount starts in," not a value that needs to be
+  // reset later.
+  const path = useCurrentPath();
+  const isChildPage = path !== "/";
+
+  // Consumed exactly once, on this mount: which control (if any) asked to
+  // resume on the homepage after a Filter/Search return trip from a child
+  // page. See navigateHomeWithIntent/consumePendingHomeIntent in
+  // navigation.js. null on every ordinary visit (including a plain click on
+  // the logo), so this only ever affects the specific arrival it's meant to.
+  const [pendingIntent] = useState(() => consumePendingHomeIntent());
+
   // Filter and Menu physically share one drawer surface -- only one of
   // their two content rows can occupy .index-drawer at a time -- so
   // they're modeled as one exclusive selector. Search is deliberately NOT
@@ -84,7 +106,17 @@ export default function Header({
   // below. Menu still closes Search on open (see handleMenuToggle) since
   // Menu is navigation that temporarily replaces the working interface,
   // not another working tool alongside it.
-  const [drawerSection, setDrawerSection] = useState(null);
+  //
+  // Initial value covers three cases: a child page always starts with Menu
+  // open (the design intent -- it's the site's table of contents while
+  // reading); the homepage starts with Filter open only if this mount is the
+  // arrival half of a Filter return trip; otherwise closed, exactly as
+  // before.
+  const [drawerSection, setDrawerSection] = useState(() => {
+    if (isChildPage) return "menu";
+    if (pendingIntent?.type === "filter") return "filter";
+    return null;
+  });
   // Once the initial slow expansion has finished, the drawer is "settled":
   // its outer frame stops carrying a transition on its own size, so that
   // opening/closing a category's value list afterward (which changes how
@@ -126,17 +158,26 @@ export default function Header({
   // :hover selector immediately, flashing the × as part of selection
   // itself rather than a later, deliberate return visit.
   const [removeArmedValue, setRemoveArmedValue] = useState(null);
-  // The search query itself. Purely local for now -- nothing reads this
-  // yet -- so a future search implementation has one clean place to hook
-  // into rather than re-deriving where the typed value lives.
-  const [searchValue, setSearchValue] = useState("");
+  // The search query itself. Still purely local -- nothing executes a
+  // search yet -- so a future search implementation has one clean place to
+  // hook into rather than re-deriving where the typed value lives. The one
+  // exception: arriving here as a Search return trip's homepage half
+  // restores the text the visitor already typed on the child page, so the
+  // field reads as continuous rather than reset.
+  const [searchValue, setSearchValue] = useState(() =>
+    pendingIntent?.type === "search" ? pendingIntent.query : ""
+  );
   // Whether the search line is drawn out. Independent of drawerSection on
   // purpose (see the note above) -- Filter and Search can be open at the
   // same time. Clicking SEARCH toggles this directly (same as Filter's own
   // toggle); losing focus with an empty field also closes it, but only
   // that specific case -- typed text keeps it open until the visitor
-  // closes it themselves.
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  // closes it themselves. Also starts open on a Search return trip's
+  // homepage arrival, so the restored text is visible rather than hidden
+  // behind a closed line.
+  const [isSearchOpen, setIsSearchOpen] = useState(
+    () => pendingIntent?.type === "search"
+  );
   const searchInputRef = useRef(null);
 
   // Derived read-only flags over drawerSection.
@@ -155,9 +196,9 @@ export default function Header({
   // background, shadow, and reveal-ease timing), so there's nothing new
   // to look at here, just another condition that can ask for it. The
   // listener itself is only attached on child pages, so the homepage's
-  // header is untouched by this in every way.
-  const path = useCurrentPath();
-  const isChildPage = path !== "/";
+  // header is untouched by this in every way. (path/isChildPage themselves
+  // now live at the top of the component -- see there -- since the initial
+  // drawerSection state above needs isChildPage before this point.)
   const [isChildPageScrolled, setIsChildPageScrolled] = useState(false);
 
   useEffect(() => {
@@ -171,6 +212,50 @@ export default function Header({
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
   }, [isChildPage]);
+
+  // Drives the brief full-viewport veil (rendered at the bottom of this
+  // component) that masks a child page's return trip to the homepage for
+  // Filter or Search, so it reads as quietly arriving back at the archive
+  // rather than an abrupt swap between two independently rendered pages.
+  // isLeaving fades the veil in on the child page, right before navigating;
+  // isArriving starts it already opaque on the homepage and fades it back
+  // out right after mounting -- same duration, same easing, two halves of
+  // one motion. Neither state is ever true outside this specific flow (a
+  // plain click on the logo, for instance, never touches either).
+  const [isLeaving, setIsLeaving] = useState(false);
+  const [isArriving, setIsArriving] = useState(() => pendingIntent !== null);
+  const leaveTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (leaveTimeoutRef.current) clearTimeout(leaveTimeoutRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isArriving) return undefined;
+    // Committing the opaque state on mount, then flipping it back on the
+    // next frame, is what makes this transition rather than start already
+    // resolved -- without a frame in between, the browser has nothing to
+    // interpolate from.
+    const frame = requestAnimationFrame(() => setIsArriving(false));
+    return () => cancelAnimationFrame(frame);
+  }, [isArriving]);
+
+  // Matches the header's own framing transition (520ms, var(--reveal-ease))
+  // so this reads as part of the site's existing motion vocabulary rather
+  // than a new one.
+  const VEIL_DURATION_MS = 520;
+
+  // Shared by Filter and Search: both resolve on the homepage now, so
+  // returning there is one motion regardless of which control asked for it
+  // -- only the intent carried across differs.
+  const beginGentleReturnHome = (intent) => {
+    setIsLeaving(true);
+    leaveTimeoutRef.current = window.setTimeout(() => {
+      navigateHomeWithIntent(intent);
+    }, VEIL_DURATION_MS);
+  };
 
   const entryValues = {
     theme: themes,
@@ -203,7 +288,15 @@ export default function Header({
     }
   };
 
+  // On a child page, Filter is archive filtering -- and the archive is the
+  // homepage -- so it no longer opens a drawer here at all. It quietly
+  // returns to the homepage instead, arriving with the existing Filter
+  // drawer already open (see the drawerSection initializer above).
   const handleFilterToggle = () => {
+    if (isChildPage) {
+      beginGentleReturnHome({ type: "filter" });
+      return;
+    }
     const nextOpen = !isFilterOpen;
     setDrawerSection(nextOpen ? "filter" : null);
     onFilterOpenChange?.(nextOpen);
@@ -231,6 +324,20 @@ export default function Header({
     } else {
       searchInputRef.current?.blur();
     }
+  };
+
+  // On a child page, submitting a search is archive search -- and the
+  // archive is the homepage -- so Enter here doesn't try to search the
+  // child page itself. It quietly returns to the homepage carrying the
+  // typed text, which arrives already restored into this same field (see
+  // the searchValue/isSearchOpen initializers above). No search actually
+  // runs yet on the homepage either -- there's no gallery search behavior
+  // to hand this off to today -- so this only ever adapts the navigation
+  // flow, exactly as scoped. On the homepage itself this is a no-op, same
+  // as before this change.
+  const handleSearchKeyDown = (event) => {
+    if (event.key !== "Enter" || !isChildPage) return;
+    beginGentleReturnHome({ type: "search", query: searchValue });
   };
 
   // Menu is the one section that still fully takes over: opening it closes
@@ -426,6 +533,7 @@ export default function Header({
                 autoComplete="off"
                 value={searchValue}
                 onChange={(event) => setSearchValue(event.target.value)}
+                onKeyDown={handleSearchKeyDown}
                 onFocus={() => {
                   setIsSearchOpen(true);
                   setDrawerSection((current) =>
@@ -734,6 +842,19 @@ export default function Header({
           </div>
         </div>
       </div>
+
+      {/* The Filter/Search return-to-homepage veil (see isLeaving/isArriving
+          above). Rendered unconditionally, at rest it's fully transparent
+          and non-interactive -- .is-opaque is what the transition actually
+          drives. Kept mounted at all times rather than conditionally, so
+          the opacity change itself is always a real CSS transition, never a
+          mount that has nothing to animate from. */}
+      <div
+        className={`page-transition-veil${
+          isLeaving || isArriving ? " is-opaque" : ""
+        }`}
+        aria-hidden="true"
+      />
     </header>
   );
 }

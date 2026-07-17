@@ -96,8 +96,20 @@ export default function AboutPage({ images = PLACEHOLDER_IMAGES }) {
           isIndexDrawerOpen ? " scroll-container--drawer-open" : ""
         }`}
         style={{
-          transform: indexDrawerHeight
-            ? `translateY(${Math.round(indexDrawerHeight) + 8}px)`
+          // margin-top, not transform: on a child page the drawer stays
+          // open for the whole visit (see Header.jsx), so this offset is
+          // steady-state, not a brief animated toggle -- transform's per-
+          // frame compositing cost, paid the whole time the page is open,
+          // is what caused child-page scrolling to regress. margin-top
+          // adds to this element's own existing padding-top via normal
+          // document flow (no calc()/clamp duplication needed) and, with
+          // no transition declared on it, changes apply instantly rather
+          // than animating -- consistent with Menu no longer being a
+          // brief, animated interaction here. The homepage keeps its own
+          // transform-based push untouched (see App.jsx): Filter/Menu are
+          // genuinely frequent, animated toggles there.
+          marginTop: indexDrawerHeight
+            ? `${Math.round(indexDrawerHeight) + 8}px`
             : undefined,
         }}
       >

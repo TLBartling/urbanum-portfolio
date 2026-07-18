@@ -80,6 +80,7 @@ export default function Header({
   onFilterOpenChange,
   onFilterChange,
   onDrawerHeightChange,
+  onLogoClick,
 }) {
   // Computed first (rather than down where it originally lived, alongside
   // isChildPageScrolled) because the initial state below now depends on it:
@@ -493,8 +494,16 @@ export default function Header({
         <button
           type="button"
           className="brand-button"
-          onClick={() => navigate("/")}
-          aria-label="Urbānum — home"
+          onClick={() => {
+            if (isChildPage) {
+              navigate("/");
+            } else {
+              onLogoClick?.();
+            }
+          }}
+          aria-label={
+            isChildPage ? "Urbānum — home" : "Urbānum — reveal a new composition"
+          }
         >
           <Logo className="brand" />
         </button>

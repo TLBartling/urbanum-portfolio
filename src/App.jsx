@@ -71,6 +71,28 @@ const COLUMN_PATTERNS = [{"aspect":0.557,"tiles":[{"left":33.858,"top":79.741,"w
 // gaps within a pattern.
 const SEAM_GAP_PCT = 1.5;
 
+// Guard window for logo-triggered regeneration (see handleLogoClick below):
+// how long to ignore repeat clicks after a regeneration starts, so a burst
+// of clicks reads as one deliberate action rather than several queued
+// regenerations. Sized to the worst-case entrance-settle time of a freshly
+// regenerated gallery -- item.motion.duration (0.72-1.08s, see
+// getRandomImageMotion) plus up to ~0.42s of initial-reveal stagger plus up
+// to ~0.08s of motion.delay -- with a small buffer rounded up.
+const GALLERY_REGENERATION_SETTLE_MS = 1600;
+
+// How long handleExitFocus's own defocus timeline takes to finish (matches
+// its `defaults: { duration: 0.45, ... }`) -- used to delay a logo-triggered
+// regeneration until the exit-focus animation has actually completed.
+const EXIT_FOCUS_DURATION_MS = 450;
+
+// Matches Header.jsx's own VEIL_DURATION_MS (520ms, var(--reveal-ease)) --
+// the same motion vocabulary already used for the Filter/Search
+// return-to-homepage veil, reused here so a logo-triggered regeneration
+// reads as the gallery track quietly settling into a new composition
+// rather than a hard cut. See the .gallery-track.is-regenerating rule in
+// styles.css.
+const GALLERY_FADE_MS = 520;
+
 const clusterPlacements = [
   { axis: "x", direction: -1, distance: 1.08, scale: 0.38 },
   { axis: "x", direction: 1, distance: 1.08, scale: 0.38 },
@@ -549,6 +571,11 @@ function App() {
   const focusedIdRef = useRef(null);
   const renderWindowRef = useRef(getGalleryRenderWindow());
   const columnStateRef = useRef(null);
+  // Guards against a burst of logo clicks queueing up multiple
+  // regenerations -- set true as soon as a logo-triggered regeneration
+  // begins (see handleLogoClick), cleared after the freshly regenerated
+  // gallery has settled (GALLERY_REGENERATION_SETTLE_MS).
+  const isRegeneratingFromLogoRef = useRef(false);
   const [galleryItems, setGalleryItems] = useState([]);
   const [renderWindow, setRenderWindow] = useState(() =>
     getGalleryRenderWindow(),
@@ -557,42 +584,38 @@ function App() {
   const [focusedImage, setFocusedImage] = useState(null);
   const [isIndexDrawerOpen, setIsIndexDrawerOpen] = useState(false);
   const [indexDrawerHeight, setIndexDrawerHeight] = useState(0);
+  // Drives a brief opacity dip on the gallery track during a logo-triggered
+  // regeneration (see handleLogoClick below and the matching .is-regenerating
+  // rule in styles.css) -- mount and resize are untouched and stay instant.
+  const [isGalleryTransitioning, setIsGalleryTransitioning] = useState(false);
 
-  useEffect(() => {
+  // Shared regeneration sequence -- used on mount, on window resize, and
+  // (see handleLogoClick below) when the logo is clicked on the homepage.
+  // REFACTORED (extension-pipeline fix): buildGalleryItems no longer
+  // mutates a columnState object in place -- it returns the final one
+  // alongside the items, and that's what columnStateRef gets set to. This
+  // call site is outside any React updater (setGalleryItems is passed a
+  // plain value here, not a function), so it was never part of the bug --
+  // this is purely the pure-function-based rebuild the pipeline was
+  // refactored to support.
+  const regenerateGallery = useCallback(() => {
     galleryMovementRef.current.distance = 0;
     renderWindowRef.current = getGalleryRenderWindow(0);
     setRenderWindow(renderWindowRef.current);
     animatedImagesRef.current.clear();
-    // REFACTORED (extension-pipeline fix): buildGalleryItems no longer
-    // mutates a columnState object in place -- it returns the final one
-    // alongside the items, and that's what columnStateRef gets set to.
-    // This call site was already outside any React updater (setGalleryItems
-    // is passed a plain value here, not a function), so it was never part
-    // of the bug -- this change is purely to match the new pure signature.
-    const { items: initialItems, nextColumnState: columnStateAfterInitialBuild } =
-      buildGalleryItems(createColumnState());
-    columnStateRef.current = columnStateAfterInitialBuild;
-    setGalleryItems(initialItems);
+    const { items, nextColumnState } = buildGalleryItems(createColumnState());
+    columnStateRef.current = nextColumnState;
+    setGalleryItems(items);
+  }, []);
 
-    const handleResize = () => {
-      galleryMovementRef.current.distance = 0;
-      renderWindowRef.current = getGalleryRenderWindow(0);
-      setRenderWindow(renderWindowRef.current);
-      animatedImagesRef.current.clear();
-      // REFACTORED (extension-pipeline fix): see the matching mount-site
-      // comment above; identical reasoning.
-      const { items: resizeItems, nextColumnState: columnStateAfterResizeBuild } =
-        buildGalleryItems(createColumnState());
-      columnStateRef.current = columnStateAfterResizeBuild;
-      setGalleryItems(resizeItems);
-    };
-
-    window.addEventListener("resize", handleResize);
+  useEffect(() => {
+    regenerateGallery();
+    window.addEventListener("resize", regenerateGallery);
 
     return () => {
-      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("resize", regenerateGallery);
     };
-  }, []);
+  }, [regenerateGallery]);
 
   const getImageWrapper = useCallback((imageId) => {
     return trackRef.current?.querySelector(`[data-image-id="${imageId}"]`);
@@ -696,6 +719,40 @@ function App() {
 
     focusTimelineRef.current = tl;
   }, [galleryItems, getImageWrapper]);
+
+  // Homepage-only logo behavior: regenerate the gallery via the same pure
+  // pipeline used on mount and resize, rather than navigating anywhere.
+  // Child pages don't use this at all -- Header keeps their logo on its
+  // existing navigate("/") behavior. Deliberately does not touch
+  // handleExitFocus's own signature (it's also wired directly as
+  // onClick={handleExitFocus} elsewhere, so adding a parameter there would
+  // wire the raw click event in as if it were a callback).
+  const handleLogoClick = useCallback(() => {
+    if (isRegeneratingFromLogoRef.current) return;
+    isRegeneratingFromLogoRef.current = true;
+
+    const beginRegeneration = () => {
+      // Fade the track out first, swap the composition once it's no
+      // longer visible, then let the .is-regenerating class removal fade
+      // it back in -- same dip-and-return motion as the veil, just scoped
+      // to the track instead of the whole viewport.
+      setIsGalleryTransitioning(true);
+      window.setTimeout(() => {
+        regenerateGallery();
+        setIsGalleryTransitioning(false);
+        window.setTimeout(() => {
+          isRegeneratingFromLogoRef.current = false;
+        }, GALLERY_REGENERATION_SETTLE_MS);
+      }, GALLERY_FADE_MS);
+    };
+
+    if (focusedIdRef.current !== null) {
+      handleExitFocus();
+      window.setTimeout(beginRegeneration, EXIT_FOCUS_DURATION_MS);
+    } else {
+      beginRegeneration();
+    }
+  }, [handleExitFocus, regenerateGallery]);
 
   const handleImageClick = useCallback(
     (imageId) => {
@@ -1301,6 +1358,7 @@ function App() {
       <Header
         onFilterOpenChange={setIsIndexDrawerOpen}
         onDrawerHeightChange={setIndexDrawerHeight}
+        onLogoClick={handleLogoClick}
       />
 
       <div
@@ -1319,7 +1377,9 @@ function App() {
       >
         <div className="sticky-wrapper">
           <div
-            className="gallery-track"
+            className={`gallery-track${
+              isGalleryTransitioning ? " is-regenerating" : ""
+            }`}
             ref={trackRef}
             style={{ width: `${getGalleryTrackWidth(galleryItems)}px` }}
           >

@@ -660,6 +660,17 @@ body {
   z-index: 2;
   height: 100%;
   will-change: transform, filter, opacity;
+  transition: opacity 520ms var(--reveal-ease);
+}
+
+/* Logo-triggered regeneration only (see handleLogoClick in App.jsx) --
+   mount and resize stay instant. The track sits on .scroll-container's own
+   matching #faf9f5 background, so dipping to 0 here reads as the archive
+   quietly stepping back rather than a blank flash -- same motion
+   vocabulary as .page-transition-veil in Header.jsx, just scoped to the
+   track instead of the whole viewport. */
+.gallery-track.is-regenerating {
+  opacity: 0;
 }
 
 .gallery-image-wrapper {

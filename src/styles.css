@@ -1117,6 +1117,31 @@ html.is-browsing .zoom-controls {
   color: #111;
 }
 
+/* Only the Project Template's title is ever wrapped in this button (see
+   ProjectHeader.jsx) -- About/Journal's own <h1 class="about-hero__title">
+   is plain text, untouched. A plain reset: font/color/letter-spacing are
+   inherited from the parent .about-hero__title, so this changes nothing
+   about the typography itself, only adds a click target and a very
+   subtle hover (matching the site's existing quiet-link language, e.g.
+   .studio-intro__link) so the title reads as interactive. */
+.about-hero__title-button {
+  display: inline;
+  background: none;
+  border: none;
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  text-align: inherit;
+  cursor: pointer;
+  transition: opacity 200ms ease;
+}
+
+.about-hero__title-button:hover {
+  opacity: 0.62;
+}
+
 .about-hero__location {
   margin: 0.4rem 0 0;
   font-size: clamp(0.95rem, 1.1vw, 1.05rem);
@@ -1687,14 +1712,85 @@ html.is-browsing .zoom-controls {
    Reuses .about-page/.about-content for the page shell and
    .about-hero__title/__location for the title block (see ProjectHeader.jsx
    -- both already carry the site's restrained editorial type scale, same
-   as About/Projects/Journal). Everything below is new: the large image
-   frame, its zoom/image-navigation controls (zoom reuses the existing
-   .zoom-controls/.zoom-control), the per-image metadata block, and the
-   previous/next Project row. */
+   as About/Projects/Journal; the title is additionally wrapped in
+   .about-hero__title-button, above, on this page only). Everything below
+   is new: the large image frame with its metadata overlay and hairline
+   sequence dots, and the previous/next Project row -- composed so the
+   image+sequence reads as the primary experience and Project Navigation
+   as the quiet, secondary destination after it. */
 .project-content {
   display: flex;
   flex-direction: column;
-  gap: clamp(20px, 2.4vw, 32px);
+  /* Compared directly against the client mockup: the mockup's title,
+     image, Image Navigation and Project Navigation all sit inside one
+     narrower editorial column with generous side margins, independent of
+     the header's own edge-to-edge width -- not the near-full-bleed column
+     .about-content gives About/Journal (which this page still inherits
+     everywhere else). Capping and centering just this element is what
+     actually fixes the "oversized" feeling: the image is 100% of this
+     box's width, so a narrower box means a shorter image at the *same*
+     aspect-ratio, no separate image sizing needed. max-width rather than a
+     vw-based clamp so it reads as a fixed reading column (like
+     .project-image-metadata's own max-width: 620px below) -- on any
+     viewport narrower than this plus its gutters, margin:auto collapses
+     to 0 and .about-content's existing side padding is the only gutter,
+     same fallback behavior as before this change. */
+  max-width: 1000px;
+  margin-left: auto;
+  margin-right: auto;
+  /* Was clamp(20px, 2.4vw, 32px) -- shared evenly across all four gaps
+     (title->image, image->metadata, metadata->nav). The mockup's rhythm
+     specifically wants the title->image gap much tighter than the other
+     two, which a single shared `gap` value can't express on its own, so
+     this is now sized for the *tightest* of the four gaps (title->image),
+     and .project-image-metadata / .project-navigation below each add back
+     the difference as their own margin-top -- holding image->metadata and
+     metadata->nav at their original ~32px rhythm while only title->image
+     actually shrinks. */
+  gap: clamp(6px, 0.6vw, 8px);
+  /* Overrides .about-content's own clamp(110px, 11vw, 150px) -- About and
+     Journal keep that full clearance, but the Project Template's real
+     dominant element is the hero image directly below the title, not the
+     title itself, so the header-to-title gap can run tighter here without
+     the page losing its editorial breathing room. Matched against the
+     client mockup (title sitting close beneath the header, image
+     essentially fully visible on load): the mockup's own header is a
+     simpler, collapsed one, so this can't be pixel-identical to it, but
+     tightening this gap is what actually closes most of the remaining
+     distance -- more so than the image's own size. Part of the same
+     composition rebalance as .project-content .about-hero below.
+     Refinement pass: the prior clamp(40px, 3.9vw, 56px) tightened this a
+     little too far -- the title started reading as pressed against the
+     header. Nudged back up by a modest, subtle margin (not a return to
+     .about-content's original clearance) so the title has quiet breathing
+     room above it again. Second pass: still a touch tight, so nudged up
+     again by a further ~12px across the clamp's range. */
+  padding-top: clamp(68px, 5.8vw, 88px);
+}
+
+/* Scoped to the Project Template only -- About/Journal's own .about-hero
+   keeps its original clamp(28px, 3vw, 44px). The mockup shows the location
+   line sitting almost flush against the image -- "the hero image begins
+   almost immediately after the project metadata" -- so this now carries
+   almost none of the title->image gap itself; .project-content's own
+   `gap` above (tightened to match) provides the small remaining space. */
+.project-content .about-hero {
+  margin-bottom: clamp(0px, 0.3vw, 4px);
+}
+
+/* Refinement pass: the main Project Title (top left, e.g. "57 Icon
+   Tower") read slightly too large next to the client mockup. Scoped here
+   (not editing .about-hero__title itself) so About/Journal keep their
+   original clamp(1.8rem, 2.6vw, 2.4rem) untouched -- only the Project
+   Template's title shrinks, by exactly 10% at every step of the clamp.
+   This targets .about-hero__title specifically -- the location line
+   (.about-hero__location) and the per-image metadata/caption block
+   (.project-image-metadata__*, a separate component below the image) are
+   untouched by this rule. Font-family, font-weight, and letter-spacing
+   are unchanged (still inherited from .about-hero__title), so this is
+   scale only. */
+.project-content .about-hero__title {
+  font-size: clamp(1.62rem, 2.34vw, 2.16rem);
 }
 
 .project-image-viewer {
@@ -1703,7 +1799,20 @@ html.is-browsing .zoom-controls {
 
 .project-image-frame {
   width: 100%;
-  aspect-ratio: 16 / 9;
+  /* Composition rebalance: this used to carry nearly the whole fix (16/9 ->
+     21/10, an ~11% height reduction). That flattened the image more than
+     it should have to do the job alone. Most of the "below the fold"
+     feeling was actually coming from the whitespace above the image
+     (.project-content's header-to-title padding-top and .about-hero's
+     title-to-image margin-bottom, both tightened just below/above this),
+     not the image itself -- so the ratio only needs a small nudge now.
+     19/10 is a ~6% reduction from the original 16/9, keeping the image the
+     clearly dominant element while the tightened spacing above it does
+     most of the work of bringing Image Navigation into view. Still purely
+     width-driven -- no vh units, no max-height, no JS. Left untouched in
+     the mockup-matching pass above (see .project-content/.about-hero) --
+     that gap closed the rest of the distance to the mockup on its own. */
+  aspect-ratio: 19 / 10;
   overflow: hidden;
   background: #eeece6;
 }
@@ -1715,40 +1824,82 @@ html.is-browsing .zoom-controls {
   transition: transform 320ms ease-out;
 }
 
-.project-image-nav {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: clamp(14px, 1.6vw, 22px);
-  margin-top: clamp(14px, 1.6vw, 20px);
-}
-
-.project-image-nav__control {
-  border: 0;
-  background: transparent;
-  padding: 0;
-  font-size: 1.1rem;
-  line-height: 1;
-  color: #1a1a1a;
-  cursor: pointer;
-}
-
-.project-image-nav__control:disabled {
-  color: #c7c5bd;
-  cursor: default;
-}
-
-.project-image-nav__count {
-  font-size: 0.75rem;
-  letter-spacing: 0.06em;
-  color: #9d9d9d;
-}
-
+/* Per-image metadata -- a plain caption directly beneath the frame,
+   sitting close to it (almost a museum-label distance, not the page's
+   usual generous rhythm). Back on the page's own background rather than
+   overlaid on the photograph: overlaying never read reliably across
+   different photos (contrast is unpredictable per-image), so typography
+   now always renders against the same #faf9f5 it was designed for.
+   Typography (font-sizes, colors, weights) and internal rhythm
+   (gap: 0.3rem, max-width: 620px) below are exactly what
+   ImageMetadata.jsx has always rendered -- only position changed. */
 .project-image-metadata {
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
   max-width: 620px;
+  margin-top: clamp(8px, 1vw, 12px);
+}
+
+/* Sequence indicator -- editorial rather than a carousel/progress
+   control: a numbered position ("01", "02"...) per image, current one
+   bracketed, framed by a short rule on each side that hugs the number
+   group itself rather than stretching toward the frame's edges (compare
+   .project-image-metadata's own max-width: 620px -- similarly a fixed,
+   modest measure rather than something viewport-scaled). For projects
+   with more images than WINDOW_THRESHOLD (see ImageViewer.jsx), this
+   shows a sliding window centered on the current image with an ellipsis
+   marking what's hidden on either side, rather than every number --
+   looking through a section of the archive, not a full index. Sits
+   beneath the caption with its own small margin, so image + caption +
+   sequence read as one unit (.project-navigation below is deliberately
+   given far more separation -- see its own margin-top). */
+.project-image-sequence {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(12px, 1.6vw, 20px);
+  margin-top: clamp(24px, 2.8vw, 32px);
+}
+
+.project-image-sequence__rule {
+  flex: 0 0 auto;
+  width: clamp(20px, 2.4vw, 32px);
+  height: 1px;
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.project-image-sequence__numbers {
+  display: flex;
+  align-items: baseline;
+  gap: clamp(14px, 1.6vw, 20px);
+}
+
+.project-image-sequence__number {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-family: "Neue Haas Grotesk Display", "Helvetica Neue", Helvetica,
+    Arial, sans-serif;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  color: #9d9d9d;
+  cursor: pointer;
+  transition: color 200ms ease;
+}
+
+.project-image-sequence__number:hover {
+  color: #1a1a1a;
+}
+
+.project-image-sequence__number--active {
+  color: #1a1a1a;
+}
+
+.project-image-sequence__ellipsis {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  color: #c7c5bd;
 }
 
 .project-image-metadata__number {
@@ -1778,7 +1929,19 @@ html.is-browsing .zoom-controls {
   justify-content: space-between;
   gap: clamp(16px, 2vw, 28px);
   padding-top: clamp(24px, 2.8vw, 36px);
-  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  /* Interaction-hierarchy pass: the border-top divider this used to have
+     is gone -- with the large margin-top below already doing the work of
+     separating "finished the sequence" from "here's the next
+     destination," a drawn line on top of that whitespace was redundant,
+     and secondary navigation reads more quietly without it. */
+  /* .project-content's flex `gap` runs directly between the image
+     sequence block and this element -- the one seam left to express
+     that separation. Deliberately much larger than the old ~32px
+     compensation value (which existed only to counteract
+     .project-content's tightened `gap`): Project Navigation should read
+     as arriving after a completed sequence, not as another peer block at
+     the same rhythm as the image->sequence spacing above it. */
+  margin-top: clamp(56px, 6vw, 88px);
 }
 
 .project-navigation__control {

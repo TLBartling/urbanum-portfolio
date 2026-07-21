@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import Header from "./Header";
 import ProjectHeader from "./ProjectHeader";
 import ImageViewer from "./ImageViewer";
-import ImageMetadata from "./ImageMetadata";
 import ProjectNavigation from "./ProjectNavigation";
 import { getProjectBySlug, resolveInitialImageId } from "./projectContent";
 import { navigate } from "./navigation";
@@ -54,7 +53,7 @@ export default function ProjectTemplate({ slug, imageId }) {
     null;
 
   // Used by both the initial-load resolution above and by ImageViewer's
-  // Image Navigation -- selecting an image updates the visible state
+  // sequence dots -- selecting an image updates the visible state
   // immediately and separately syncs the URL's ?image= param, so a refresh
   // or a shared link reproduces the same image without depending on the
   // Router re-rendering this component (it won't: the pathname doesn't
@@ -63,6 +62,16 @@ export default function ProjectTemplate({ slug, imageId }) {
   const handleSelectImage = (archiveNumber) => {
     setCurrentImageId(archiveNumber);
     navigate(`/projects/${project.slug}?image=${archiveNumber}`);
+  };
+
+  // Clicking the Project Title returns to this project's hero image --
+  // reusing resolveInitialImageId (with no requested id) rather than a new
+  // "first image" rule, so "return to the beginning" always means exactly
+  // what a fresh visit to this project already shows (Featured item, else
+  // lowest sortOrder). Goes through the same handleSelectImage as the
+  // sequence dots, so state and the URL stay in sync the same way.
+  const handleTitleClick = () => {
+    handleSelectImage(resolveInitialImageId(project));
   };
 
   return (
@@ -94,17 +103,14 @@ export default function ProjectTemplate({ slug, imageId }) {
             : undefined,
         }}
       >
-        <ProjectHeader project={project} />
+        <ProjectHeader project={project} onTitleClick={handleTitleClick} />
 
         {currentImage ? (
-          <>
-            <ImageViewer
-              image={currentImage}
-              images={project.images}
-              onSelectImage={handleSelectImage}
-            />
-            <ImageMetadata image={currentImage} />
-          </>
+          <ImageViewer
+            image={currentImage}
+            images={project.images}
+            onSelectImage={handleSelectImage}
+          />
         ) : (
           <p className="project-not-found">
             This project has no visible images yet.

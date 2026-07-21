@@ -40,8 +40,15 @@ export function getProjectBySlug(slug) {
 
   const ordered = getProjectsInOrder();
   const index = ordered.findIndex((p) => p.slug === slug);
-  const previous = index > 0 ? ordered[index - 1] : null;
-  const next = index < ordered.length - 1 ? ordered[index + 1] : null;
+  // Wraps rather than stopping at the ends: this is an archive, not a
+  // chronological feed, so Previous/Next should never dead-end. The
+  // `+ ordered.length` before the modulo is only needed for `index - 1`,
+  // since JS's `%` returns a negative result for a negative dividend
+  // (e.g. `-1 % 5 === -1`, not `4`) -- without it, wrapping backward from
+  // the first project would look up a nonexistent negative index instead
+  // of the last project.
+  const previous = ordered[(index - 1 + ordered.length) % ordered.length];
+  const next = ordered[(index + 1) % ordered.length];
 
   return {
     title: project.title,
@@ -53,11 +60,10 @@ export function getProjectBySlug(slug) {
     // previousProject/nextProject are handed down as {slug, title} rather
     // than full Project objects -- enough to render a nav link without a
     // second fetch, and avoids embedding a project's full data inside
-    // another project's payload.
-    previousProject: previous
-      ? { slug: previous.slug, title: previous.title }
-      : null,
-    nextProject: next ? { slug: next.slug, title: next.title } : null,
+    // another project's payload. Always resolve to something now (see
+    // above), so these are never null for a real, multi-project archive.
+    previousProject: { slug: previous.slug, title: previous.title },
+    nextProject: { slug: next.slug, title: next.title },
   };
 }
 

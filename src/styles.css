@@ -647,12 +647,24 @@ body {
   top: 0;
   z-index: 950;
   height: 100vh;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
   padding: 0 15px;
   background: transparent;
   pointer-events: none;
+}
+
+/* OpeningViewport: the passive viewport between the page frame
+   (.sticky-wrapper -- scroll-stickiness, stacking, side gutters) and the
+   archive world (.gallery-track). This is the ONLY element that owns the
+   clip boundary. marginTop and height are set inline in App.jsx directly
+   from Application Layout's openingGeometry -- this element never has its
+   own padding, so overflow:hidden here clips at exactly the opening's
+   geometry, with no box-sizing ambiguity. It is never a transform or
+   animation target and must stay that way -- Gallery Renderer writes only
+   to .gallery-track, below. */
+.opening-viewport {
+  overflow: hidden;
+  display: flex;
+  align-items: center;
 }
 
 .gallery-track {
@@ -661,6 +673,13 @@ body {
   height: 100%;
   will-change: transform, filter, opacity;
   transition: opacity 520ms var(--reveal-ease);
+  /* Required for the Gallery Renderer's scaleX/scaleY writes (see
+     applyTransform in App.jsx) to scale the track from its own world-space
+     origin rather than its visual center -- otherwise projectWorldToScreen's
+     math and the actual on-screen result disagree the moment scale != 1.
+     A no-op while scale was fixed at 1, which is why this was deferred
+     until now. */
+  transform-origin: 0 0;
 }
 
 /* Logo-triggered regeneration only (see handleLogoClick in App.jsx) --

@@ -117,6 +117,16 @@ const optimizedImageWidths = [400, 800, 1200];
 const minRenderOverscan = 1200;
 const maxRenderOverscan = 3600;
 
+// Camera Phase 1: discrete, un-eased zoom step wired to the existing +/-
+// controls (see handleZoomStep in App()). No easing, cursor-anchoring, or
+// inertia -- a click just moves viewportScaleRef.current by one step,
+// clamped to this range. Chosen so the four values this milestone is
+// verified against (0.75, 1, 1.5, 2) all land exactly on a step boundary
+// starting from the default of 1.
+const CAMERA_ZOOM_STEP = 0.25;
+const CAMERA_ZOOM_MIN = 0.5;
+const CAMERA_ZOOM_MAX = 2.5;
+
 function getImageName(src) {
   return src.split("/").pop()?.replace(/\.[^.]+$/, "") || "";
 }
@@ -238,7 +248,14 @@ function pickImage(pickerState, orientation) {
   return { src, nextPickerState };
 }
 
-function getColumnPatternMetrics() {
+// --- Application Layout ---------------------------------------------------
+// Owns page composition: how much room the header and the bottom controls
+// need, and therefore where the gallery's viewing-window opening sits on
+// the page (top/bottom) and how tall it is (height). Nothing downstream --
+// Archive, Gallery Renderer -- needs to know header/footer clearance
+// exists as a concept; they only ever receive plain numbers from here.
+// This function knows nothing about images, patterns, distance, or scale.
+function getViewportOpeningGeometry() {
   const viewportHeight =
     typeof window === "undefined" ? 800 : window.innerHeight;
   const viewportWidth =
@@ -252,24 +269,16 @@ function getColumnPatternMetrics() {
       ? clamp(viewportHeight * 0.14, 105, 145)
       : clamp(viewportHeight * 0.1, 95, 125),
   );
-  const topPadding = Math.max(viewportPadding, headerClearance);
+  const top = Math.max(viewportPadding, headerClearance);
   const bottomControlClearance = Math.round(
     isCompactViewport
       ? clamp(viewportHeight * 0.14, 105, 145)
       : clamp(viewportHeight * 0.1, 95, 125),
   );
-  const bottomPadding = Math.max(viewportPadding, bottomControlClearance);
-  const renderHeightPx = Math.max(
-    80,
-    viewportHeight - topPadding - bottomPadding,
-  );
+  const bottom = Math.max(viewportPadding, bottomControlClearance);
+  const height = Math.max(80, viewportHeight - top - bottom);
 
-  return {
-    galleryBottom: viewportHeight - bottomPadding,
-    isCompactViewport,
-    renderHeightPx,
-    topPadding,
-  };
+  return { top, bottom, height };
 }
 
 function getRandomOpacity() {
@@ -349,9 +358,12 @@ function pickPatternIndex(lastPatternIndex) {
 // place. The one remaining non-purity is the same Math.random()-driven
 // pattern/image selection this generator always had -- that's an
 // intentional design property (real visual variety), not a side effect.
-function createGalleryBatch(batchIndex, columnState) {
-  const metrics = getColumnPatternMetrics();
-  const seamGapPx = (SEAM_GAP_PCT / 100) * metrics.renderHeightPx;
+// worldCanvasHeight is a plain number -- how tall Archive's own canvas is,
+// supplied by the caller. This function never asks why it's that size and
+// never touches Application Layout's geometry function; that's the whole
+// point of the ownership boundary.
+function createGalleryBatch(batchIndex, columnState, worldCanvasHeight) {
+  const seamGapPx = (SEAM_GAP_PCT / 100) * worldCanvasHeight;
   const viewportWidth =
     typeof window === "undefined" ? 1200 : window.innerWidth;
   const targetBatchWidth = clamp(
@@ -378,7 +390,7 @@ function createGalleryBatch(batchIndex, columnState) {
     lastPatternIndex = patternIndex;
     const pattern = COLUMN_PATTERNS[patternIndex];
     const columnLeft = cursorX;
-    const columnWidthPx = pattern.aspect * metrics.renderHeightPx;
+    const columnWidthPx = pattern.aspect * worldCanvasHeight;
     // TEMPORARY DIAGNOSTIC (reversible) -- see createColumnState's
     // moduleIndex comment. Captured once per column/module, before the
     // cursor advances, so every tile in this column shares the same value.
@@ -390,9 +402,13 @@ function createGalleryBatch(batchIndex, columnState) {
       const { src, nextPickerState } = pickImage(pickerState, tile.orientation);
       pickerState = nextPickerState;
       const width = (tile.w / 100) * columnWidthPx;
-      const height = (tile.h / 100) * metrics.renderHeightPx;
+      const height = (tile.h / 100) * worldCanvasHeight;
       const left = columnLeft + (tile.left / 100) * columnWidthPx;
-      const top = metrics.topPadding + (tile.top / 100) * metrics.renderHeightPx;
+      // World-origin relative -- no frame offset added. This tile's
+      // vertical position is purely "where within my own canvas," never
+      // "where on the page." Application Layout, not Archive, is
+      // responsible for where that canvas is placed on the page.
+      const top = (tile.top / 100) * worldCanvasHeight;
 
       // Homepage -> Project navigation: an image only becomes clickable
       // (below, in the render) if it's also a mock Archive Item that
@@ -450,12 +466,20 @@ function createGalleryBatch(batchIndex, columnState) {
 // batchCount batches -- the caller (the mount/resize effects) is
 // responsible for storing that final columnState as the new starting point
 // for future extensions.
-function buildGalleryItems(columnState, batchCount = initialGalleryBatches) {
+function buildGalleryItems(
+  columnState,
+  batchCount = initialGalleryBatches,
+  worldCanvasHeight,
+) {
   let state = columnState;
   const allItems = [];
 
   for (let batchIndex = 0; batchIndex < batchCount; batchIndex++) {
-    const { items, nextColumnState } = createGalleryBatch(batchIndex, state);
+    const { items, nextColumnState } = createGalleryBatch(
+      batchIndex,
+      state,
+      worldCanvasHeight,
+    );
     allItems.push(...items);
     state = nextColumnState;
   }
@@ -553,6 +577,274 @@ function getClusterConnector(item, index, focusedRect) {
   };
 }
 
+// --- Renderer -------------------------------------------------------------
+// Per the ownership model adopted this milestone (Archive / Navigator /
+// Camera / Renderer / Interaction), the Renderer is the single owner of
+// every DOM write associated with the gallery track's presentation: the
+// transform that positions the track, the per-item entrance-reveal
+// animation, and the virtualization window that decides which
+// already-generated items are close enough to mount. It receives
+// world-space state (movement, galleryItems) and Camera state
+// (viewportScaleRef) as plain inputs -- it owns no state beyond the DOM
+// refs/closures it needs to perform its own writes, it never requests
+// archive generation, and it never reads archive internals beyond the
+// layout each item already carries.
+//
+// viewportScaleRef.current now drives the actual projection math below
+// (projectWorldToScreenX, getVerticalScaleCompensation, applyTransform) --
+// as of Camera Phase 1, it's a real, user-controlled value (see
+// handleZoomStep in App()), not the fixed 1.5 verification constant or the
+// unread placeholder this comment used to describe.
+function createGalleryRenderer({
+  track,
+  wrapperById,
+  animatedImages,
+  movement,
+  viewportScaleRef,
+  renderWindowRef,
+  setRenderWindowState,
+  focusedIdRef,
+  preEntryDistance,
+  renderWindowUpdateThreshold,
+  openingHeight,
+}) {
+  const setTrackX = gsap.quickSetter(track, "x", "px");
+  const setTrackY = gsap.quickSetter(track, "y", "px");
+  // Separate scaleX/scaleY quickSetters, not a single "scale" one --
+  // gsap.quickSetter(track, "scale") throws InvalidCharacterError against
+  // this element, the same issue hit and worked around earlier in this
+  // rebuild.
+  const setTrackScaleX = gsap.quickSetter(track, "scaleX");
+  const setTrackScaleY = gsap.quickSetter(track, "scaleY");
+
+  // The single horizontal world->screen projection path. Every horizontal
+  // screen-space position the Gallery Renderer produces -- the track's own
+  // transform, each item's entrance-animation position -- must be derived
+  // by calling this, not by re-deriving the relationship independently.
+  // Anchored on the viewport's own center rather than the world's
+  // coordinate origin: whatever world position currently sits at
+  // window.innerWidth/2 stays visually at window.innerWidth/2 regardless
+  // of scale (substitute worldX = anchorWorldX below and the scale term
+  // drops out entirely). At scale = 1 this reduces algebraically to
+  // anchorScreenX + (worldX - distance - anchorScreenX) = worldX -
+  // distance -- byte-identical to the pre-anchor formula, verified
+  // numerically after this function was written.
+  const projectWorldToScreenX = (worldX, distance, scale) => {
+    const anchorScreenX = window.innerWidth / 2;
+    const anchorWorldX = distance + anchorScreenX;
+    return anchorScreenX + (worldX - anchorWorldX) * scale;
+  };
+
+  // Deliberately NOT a projectWorldToScreenY. There is no vertical world
+  // coordinate to project -- Navigator owns no vertical distance, Camera
+  // owns no vertical position, and no item's vertical placement is ever
+  // individually computed in JS (each item's `top` is static world-space
+  // CSS, carried along by this element's own single transform). The only
+  // real vertical need is compensating for CSS scale()'s default
+  // top-left transform-origin so the anchor stays fixed vertically too.
+  // A function of scale alone -- no worldY parameter, because nothing
+  // varies along that axis today.
+  //
+  // Anchored on openingHeight/2 -- the viewing-window opening's OWN
+  // center, supplied by Application Layout -- not window.innerHeight/2.
+  // This element's local coordinate space now starts at the opening's own
+  // top-left (Archive no longer bakes any page-relative offset into tile
+  // positions), so the anchor has to be expressed in that same
+  // opening-relative space. Application Layout positions the opening
+  // itself on the page separately, via untransformed layout, so this
+  // function never needs to know where on the page that is.
+  const getVerticalScaleCompensation = (scale) => {
+    return (openingHeight / 2) * (1 - scale);
+  };
+
+  const applyTransform = (distance) => {
+    const scale = viewportScaleRef.current;
+    setTrackX(projectWorldToScreenX(0, distance, scale));
+    setTrackY(getVerticalScaleCompensation(scale));
+    setTrackScaleX(scale);
+    setTrackScaleY(scale);
+  };
+
+  const primeEntranceState = (galleryItems) => {
+    galleryItems.forEach((item) => {
+      const wrapper = wrapperById.get(item.id);
+      if (!wrapper) return;
+      if (animatedImages.has(item.id)) return;
+
+      gsap.set(wrapper, {
+        opacity: 0.18,
+        y: 12,
+        scale: 0.96,
+        filter: "blur(8px) saturate(0.72) brightness(0.94)",
+      });
+      wrapper.dataset.initialReveal = wrapper.dataset.initialReveal || "true";
+      wrapper.dataset.smoothX = "0";
+      wrapper.dataset.smoothY = "12";
+      wrapper.dataset.smoothScale = "0.96";
+    });
+  };
+
+  const updateEntranceAnimations = (galleryItems) => {
+    galleryItems.forEach((item) => {
+      const wrapper = wrapperById.get(item.id);
+      if (!wrapper) return;
+
+      const layoutLeft = Number.parseFloat(item.layout.left);
+      const layoutWidth = Number.parseFloat(item.layout.width);
+      const screenLeft = projectWorldToScreenX(
+        layoutLeft,
+        movement.distance,
+        viewportScaleRef.current,
+      );
+      const screenRight = screenLeft + layoutWidth;
+      const isVisible = screenRight > 0 && screenLeft < window.innerWidth;
+      const isNearViewport =
+        screenRight > -preEntryDistance &&
+        screenLeft < window.innerWidth + preEntryDistance;
+      const isAwayFromViewport =
+        screenRight < -preEntryDistance ||
+        screenLeft > window.innerWidth + preEntryDistance;
+      const wrapperCenter = screenLeft + layoutWidth / 2;
+      const viewportCenter = window.innerWidth / 2;
+      const centerAmount =
+        1 -
+        clamp(Math.abs(wrapperCenter - viewportCenter) / viewportCenter, 0, 1);
+      const centerScale = 1 - centerAmount * 0.05;
+      const relationshipProgress = item.layout.relationshipMotion
+        ? Number(wrapper.dataset.relationshipProgress || 0)
+        : 0;
+      const relationshipTarget =
+        item.layout.relationshipMotion && movement.direction >= 0 ? 1 : 0;
+      const nextRelationshipProgress =
+        relationshipProgress +
+        (relationshipTarget - relationshipProgress) * 0.08;
+      const relationshipX =
+        (item.layout.relationshipMotion?.targetX || 0) *
+        nextRelationshipProgress;
+      const relationshipY =
+        (item.layout.relationshipMotion?.targetY || 0) *
+        nextRelationshipProgress;
+
+      if (item.layout.relationshipMotion) {
+        wrapper.dataset.relationshipProgress = String(
+          nextRelationshipProgress,
+        );
+      }
+
+      if (isNearViewport && !animatedImages.has(item.id)) {
+        animatedImages.add(item.id);
+
+        const initialStagger =
+          wrapper.dataset.initialReveal === "true" && isVisible
+            ? clamp(screenLeft / window.innerWidth, 0, 1) * 0.42
+            : 0;
+
+        gsap.fromTo(
+          wrapper,
+          {
+            opacity: 0.18,
+            y: 12,
+            scale: 0.96,
+            filter: "blur(8px) saturate(0.72) brightness(0.94)",
+          },
+          {
+            opacity: item.opacity,
+            y: 0,
+            scale: 1,
+            filter: "blur(0px) saturate(1) brightness(1)",
+            duration: item.motion.duration,
+            delay: initialStagger + item.motion.delay,
+            ease: "power3.out",
+            onComplete: () => {
+              wrapper.dataset.initialReveal = "false";
+              wrapper.dataset.hasEntered = "true";
+              wrapper.dataset.smoothX = "0";
+              wrapper.dataset.smoothY = "0";
+              wrapper.dataset.smoothScale = "1";
+            },
+            overwrite: "auto",
+          },
+        );
+      }
+
+      if (
+        isVisible &&
+        animatedImages.has(item.id) &&
+        wrapper.dataset.hasEntered === "true"
+      ) {
+        const targetX = relationshipX;
+        const targetY = relationshipY;
+        const targetScale = centerScale;
+        const smoothX = Number(wrapper.dataset.smoothX || 0);
+        const smoothY = Number(wrapper.dataset.smoothY || 0);
+        const smoothScale = Number(wrapper.dataset.smoothScale || 1);
+        const nextX = smoothX + (targetX - smoothX) * 0.14;
+        const nextY = smoothY + (targetY - smoothY) * 0.14;
+        const nextScale =
+          smoothScale + (targetScale - smoothScale) * 0.14;
+
+        wrapper.dataset.smoothX = String(nextX);
+        wrapper.dataset.smoothY = String(nextY);
+        wrapper.dataset.smoothScale = String(nextScale);
+
+        gsap.set(wrapper, {
+          opacity: item.opacity,
+          x: nextX,
+          y: nextY,
+          scale: nextScale,
+          zIndex:
+            nextRelationshipProgress > 0.02
+              ? item.layout.relationshipMotion?.zIndex || item.layout.zIndex
+              : item.layout.zIndex,
+        });
+      }
+
+      if (isAwayFromViewport && animatedImages.has(item.id)) {
+        animatedImages.delete(item.id);
+        gsap.set(wrapper, {
+          opacity: 0.18,
+          x: 0,
+          y: 12,
+          scale: 0.96,
+          zIndex: item.layout.zIndex,
+          filter: "blur(8px) saturate(0.72) brightness(0.94)",
+        });
+        wrapper.dataset.relationshipProgress = "0";
+        wrapper.dataset.hasEntered = "false";
+        wrapper.dataset.smoothX = "0";
+        wrapper.dataset.smoothY = "12";
+        wrapper.dataset.smoothScale = "0.96";
+      }
+    });
+  };
+
+  const updateRenderWindow = () => {
+    if (focusedIdRef.current !== null) return;
+
+    const nextRenderWindow = getGalleryRenderWindow(movement.distance);
+    const currentRenderWindow = renderWindowRef.current;
+
+    if (
+      Math.abs(nextRenderWindow.left - currentRenderWindow.left) <
+        renderWindowUpdateThreshold &&
+      Math.abs(nextRenderWindow.right - currentRenderWindow.right) <
+        renderWindowUpdateThreshold
+    ) {
+      return;
+    }
+
+    renderWindowRef.current = nextRenderWindow;
+    setRenderWindowState(nextRenderWindow);
+  };
+
+  return {
+    applyTransform,
+    primeEntranceState,
+    updateEntranceAnimations,
+    updateRenderWindow,
+  };
+}
+
 function App() {
   const scrollContainerRef = useRef(null);
   const trackRef = useRef(null);
@@ -567,9 +859,30 @@ function App() {
   });
   const isExtendingGalleryRef = useRef(false);
   const animatedImagesRef = useRef(new Set());
+  // Camera owns this and only this: the current zoom scale, and nothing
+  // else (no vertical state, no interaction logic). Default is 1 -- the
+  // untouched, pre-camera baseline. A ref, not state, since it's read
+  // every animation frame by Gallery Renderer (galleryMovementRef's own
+  // reasoning applies here too: no React re-render is needed just because
+  // a frame ticked or a zoom button was clicked -- the next
+  // requestAnimationFrame tick picks up the new value on its own). Archive
+  // and Navigator still never read this. Set directly by handleZoomStep
+  // below -- Camera Phase 1 wires the existing zoom controls to this ref
+  // with a plain, un-eased assignment; no smoothing, cursor-anchoring, or
+  // inertia is introduced this milestone.
+  const viewportScaleRef = useRef(1);
   const focusTimelineRef = useRef(null);
   const focusedIdRef = useRef(null);
   const renderWindowRef = useRef(getGalleryRenderWindow());
+  // Application Layout's own state -- the viewing-window opening's
+  // position (top/bottom) and size (height) on the page. Read imperatively
+  // here (by extendGalleryIfNeeded and by the Gallery Renderer, both inside
+  // the per-frame effect) exactly the way renderWindowRef already is;
+  // mirrored into React state below purely so the JSX can apply top/height
+  // as real, untransformed marginTop/height on .opening-viewport -- the
+  // one element that owns the clip boundary (see OpeningViewport's own
+  // comment in the JSX and in styles.css).
+  const openingGeometryRef = useRef(getViewportOpeningGeometry());
   const columnStateRef = useRef(null);
   // Guards against a burst of logo clicks queueing up multiple
   // regenerations -- set true as soon as a logo-triggered regeneration
@@ -579,6 +892,9 @@ function App() {
   const [galleryItems, setGalleryItems] = useState([]);
   const [renderWindow, setRenderWindow] = useState(() =>
     getGalleryRenderWindow(),
+  );
+  const [openingGeometry, setOpeningGeometry] = useState(() =>
+    getViewportOpeningGeometry(),
   );
   const [focusedId, setFocusedId] = useState(null);
   const [focusedImage, setFocusedImage] = useState(null);
@@ -600,10 +916,17 @@ function App() {
   // refactored to support.
   const regenerateGallery = useCallback(() => {
     galleryMovementRef.current.distance = 0;
+    const nextOpeningGeometry = getViewportOpeningGeometry();
+    openingGeometryRef.current = nextOpeningGeometry;
+    setOpeningGeometry(nextOpeningGeometry);
     renderWindowRef.current = getGalleryRenderWindow(0);
     setRenderWindow(renderWindowRef.current);
     animatedImagesRef.current.clear();
-    const { items, nextColumnState } = buildGalleryItems(createColumnState());
+    const { items, nextColumnState } = buildGalleryItems(
+      createColumnState(),
+      initialGalleryBatches,
+      nextOpeningGeometry.height,
+    );
     columnStateRef.current = nextColumnState;
     setGalleryItems(items);
   }, []);
@@ -619,6 +942,21 @@ function App() {
 
   const getImageWrapper = useCallback((imageId) => {
     return trackRef.current?.querySelector(`[data-image-id="${imageId}"]`);
+  }, []);
+
+  // Camera Phase 1: the zoom controls' only job is to move Camera's one
+  // piece of state by a fixed step, clamped to a fixed range -- a plain
+  // synchronous assignment to the ref Gallery Renderer already reads every
+  // frame. No easing, no cursor anchoring, no inertia, no animation; the
+  // very next requestAnimationFrame tick (already running continuously)
+  // picks up the new value on its own, exactly the same way it already
+  // picks up movement.distance changes.
+  const handleZoomStep = useCallback((delta) => {
+    viewportScaleRef.current = clamp(
+      viewportScaleRef.current + delta,
+      CAMERA_ZOOM_MIN,
+      CAMERA_ZOOM_MAX,
+    );
   }, []);
 
   const handleExitFocus = useCallback(() => {
@@ -1014,8 +1352,6 @@ function App() {
 
     if (!scrollContainer || !track) return;
 
-    const setTrackX = gsap.quickSetter(track, "x", "px");
-
     const movement = galleryMovementRef.current;
     const animatedImages = animatedImagesRef.current;
     const preEntryDistance = 360;
@@ -1038,171 +1374,21 @@ function App() {
       wrapperById.set(element.dataset.imageId, element);
     });
 
-    galleryItems.forEach((item) => {
-      const wrapper = wrapperById.get(item.id);
-      if (!wrapper) return;
-      if (animatedImages.has(item.id)) return;
-
-      gsap.set(wrapper, {
-        opacity: 0.18,
-        y: 12,
-        scale: 0.96,
-        filter: "blur(8px) saturate(0.72) brightness(0.94)",
-      });
-      wrapper.dataset.initialReveal = wrapper.dataset.initialReveal || "true";
-      wrapper.dataset.smoothX = "0";
-      wrapper.dataset.smoothY = "12";
-      wrapper.dataset.smoothScale = "0.96";
+    const galleryRenderer = createGalleryRenderer({
+      track,
+      wrapperById,
+      animatedImages,
+      movement,
+      viewportScaleRef,
+      renderWindowRef,
+      setRenderWindowState: setRenderWindow,
+      focusedIdRef,
+      preEntryDistance,
+      renderWindowUpdateThreshold,
+      openingHeight: openingGeometryRef.current.height,
     });
 
-    const updateEntranceAnimations = () => {
-      galleryItems.forEach((item) => {
-        const wrapper = wrapperById.get(item.id);
-        if (!wrapper) return;
-
-        const layoutLeft = Number.parseFloat(item.layout.left);
-        const layoutWidth = Number.parseFloat(item.layout.width);
-        const screenLeft = layoutLeft - movement.distance;
-        const screenRight = screenLeft + layoutWidth;
-        const isVisible = screenRight > 0 && screenLeft < window.innerWidth;
-        const isNearViewport =
-          screenRight > -preEntryDistance &&
-          screenLeft < window.innerWidth + preEntryDistance;
-        const isAwayFromViewport =
-          screenRight < -preEntryDistance ||
-          screenLeft > window.innerWidth + preEntryDistance;
-        const wrapperCenter = screenLeft + layoutWidth / 2;
-        const viewportCenter = window.innerWidth / 2;
-        const centerAmount =
-          1 -
-          clamp(Math.abs(wrapperCenter - viewportCenter) / viewportCenter, 0, 1);
-        const centerScale = 1 - centerAmount * 0.05;
-        const relationshipProgress = item.layout.relationshipMotion
-          ? Number(wrapper.dataset.relationshipProgress || 0)
-          : 0;
-        const relationshipTarget =
-          item.layout.relationshipMotion && movement.direction >= 0 ? 1 : 0;
-        const nextRelationshipProgress =
-          relationshipProgress +
-          (relationshipTarget - relationshipProgress) * 0.08;
-        const relationshipX =
-          (item.layout.relationshipMotion?.targetX || 0) *
-          nextRelationshipProgress;
-        const relationshipY =
-          (item.layout.relationshipMotion?.targetY || 0) *
-          nextRelationshipProgress;
-
-        if (item.layout.relationshipMotion) {
-          wrapper.dataset.relationshipProgress = String(
-            nextRelationshipProgress,
-          );
-        }
-
-        if (isNearViewport && !animatedImages.has(item.id)) {
-          animatedImages.add(item.id);
-
-          const initialStagger =
-            wrapper.dataset.initialReveal === "true" && isVisible
-              ? clamp(screenLeft / window.innerWidth, 0, 1) * 0.42
-              : 0;
-
-          gsap.fromTo(
-            wrapper,
-            {
-              opacity: 0.18,
-              y: 12,
-              scale: 0.96,
-              filter: "blur(8px) saturate(0.72) brightness(0.94)",
-            },
-            {
-              opacity: item.opacity,
-              y: 0,
-              scale: 1,
-              filter: "blur(0px) saturate(1) brightness(1)",
-              duration: item.motion.duration,
-              delay: initialStagger + item.motion.delay,
-              ease: "power3.out",
-              onComplete: () => {
-                wrapper.dataset.initialReveal = "false";
-                wrapper.dataset.hasEntered = "true";
-                wrapper.dataset.smoothX = "0";
-                wrapper.dataset.smoothY = "0";
-                wrapper.dataset.smoothScale = "1";
-              },
-              overwrite: "auto",
-            },
-          );
-        }
-
-        if (
-          isVisible &&
-          animatedImages.has(item.id) &&
-          wrapper.dataset.hasEntered === "true"
-        ) {
-          const targetX = relationshipX;
-          const targetY = relationshipY;
-          const targetScale = centerScale;
-          const smoothX = Number(wrapper.dataset.smoothX || 0);
-          const smoothY = Number(wrapper.dataset.smoothY || 0);
-          const smoothScale = Number(wrapper.dataset.smoothScale || 1);
-          const nextX = smoothX + (targetX - smoothX) * 0.14;
-          const nextY = smoothY + (targetY - smoothY) * 0.14;
-          const nextScale =
-            smoothScale + (targetScale - smoothScale) * 0.14;
-
-          wrapper.dataset.smoothX = String(nextX);
-          wrapper.dataset.smoothY = String(nextY);
-          wrapper.dataset.smoothScale = String(nextScale);
-
-          gsap.set(wrapper, {
-            opacity: item.opacity,
-            x: nextX,
-            y: nextY,
-            scale: nextScale,
-            zIndex:
-              nextRelationshipProgress > 0.02
-                ? item.layout.relationshipMotion?.zIndex || item.layout.zIndex
-                : item.layout.zIndex,
-          });
-        }
-
-        if (isAwayFromViewport && animatedImages.has(item.id)) {
-          animatedImages.delete(item.id);
-          gsap.set(wrapper, {
-            opacity: 0.18,
-            x: 0,
-            y: 12,
-            scale: 0.96,
-            zIndex: item.layout.zIndex,
-            filter: "blur(8px) saturate(0.72) brightness(0.94)",
-          });
-          wrapper.dataset.relationshipProgress = "0";
-          wrapper.dataset.hasEntered = "false";
-          wrapper.dataset.smoothX = "0";
-          wrapper.dataset.smoothY = "12";
-          wrapper.dataset.smoothScale = "0.96";
-        }
-      });
-    };
-
-    const updateRenderWindow = () => {
-      if (focusedIdRef.current !== null) return;
-
-      const nextRenderWindow = getGalleryRenderWindow(movement.distance);
-      const currentRenderWindow = renderWindowRef.current;
-
-      if (
-        Math.abs(nextRenderWindow.left - currentRenderWindow.left) <
-          renderWindowUpdateThreshold &&
-        Math.abs(nextRenderWindow.right - currentRenderWindow.right) <
-          renderWindowUpdateThreshold
-      ) {
-        return;
-      }
-
-      renderWindowRef.current = nextRenderWindow;
-      setRenderWindow(nextRenderWindow);
-    };
+    galleryRenderer.primeEntranceState(galleryItems);
 
     const extendGalleryIfNeeded = () => {
       const remainingTrack = track.scrollWidth - movement.distance;
@@ -1250,8 +1436,11 @@ function App() {
       // mutates nothing, so replay is harmless by construction.
       const nextBatchIndex = getNextGalleryBatchIndex(galleryItems);
 
-      const { items: newBatch, nextColumnState } =
-        createGalleryBatch(nextBatchIndex, columnStateRef.current);
+      const { items: newBatch, nextColumnState } = createGalleryBatch(
+        nextBatchIndex,
+        columnStateRef.current,
+        openingGeometryRef.current.height,
+      );
 
       columnStateRef.current = nextColumnState;
 
@@ -1263,10 +1452,10 @@ function App() {
     };
 
     const updateGalleryMotion = () => {
-      setTrackX(-movement.distance);
+      galleryRenderer.applyTransform(movement.distance);
       extendGalleryIfNeeded();
-      updateRenderWindow();
-      updateEntranceAnimations();
+      galleryRenderer.updateRenderWindow();
+      galleryRenderer.updateEntranceAnimations(galleryItems);
       if (movement.distance > browsingThreshold) {
         movement.hasBrowsed = true;
       }
@@ -1376,14 +1565,27 @@ function App() {
         }}
       >
         <div className="sticky-wrapper">
+          {/* OpeningViewport: the only element that owns the visible
+              opening. It receives Application Layout's opening geometry
+              directly -- marginTop positions it, height sizes it -- and its
+              own overflow:hidden is the true clip boundary. It is never a
+              transform target: Gallery Renderer continues writing only to
+              .gallery-track below. */}
           <div
-            className={`gallery-track${
-              isGalleryTransitioning ? " is-regenerating" : ""
-            }`}
-            ref={trackRef}
-            style={{ width: `${getGalleryTrackWidth(galleryItems)}px` }}
+            className="opening-viewport"
+            style={{
+              marginTop: `${openingGeometry.top}px`,
+              height: `${openingGeometry.height}px`,
+            }}
           >
-            {renderedGalleryItems.map((item) => {
+            <div
+              className={`gallery-track${
+                isGalleryTransitioning ? " is-regenerating" : ""
+              }`}
+              ref={trackRef}
+              style={{ width: `${getGalleryTrackWidth(galleryItems)}px` }}
+            >
+              {renderedGalleryItems.map((item) => {
               const dimensions = getImageDimensions(item.src);
               // Click is navigation, per the approved Project Template
               // architecture: an image that belongs to a Project always
@@ -1464,15 +1666,26 @@ function App() {
                 </button>
               );
             })}
+            </div>
           </div>
         </div>
       </div>
 
       <div className="zoom-controls" aria-label="Zoom controls">
-        <button type="button" className="zoom-control" aria-label="Zoom out">
+        <button
+          type="button"
+          className="zoom-control"
+          aria-label="Zoom out"
+          onClick={() => handleZoomStep(-CAMERA_ZOOM_STEP)}
+        >
           -
         </button>
-        <button type="button" className="zoom-control" aria-label="Zoom in">
+        <button
+          type="button"
+          className="zoom-control"
+          aria-label="Zoom in"
+          onClick={() => handleZoomStep(CAMERA_ZOOM_STEP)}
+        >
           +
         </button>
       </div>

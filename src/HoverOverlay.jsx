@@ -1,4 +1,6 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
+import { findRelatedArchiveItems } from "./relationshipEngine";
+import { ARCHIVE_ITEMS } from "./mockArchiveItems";
 
 // HoverOverlay -- presentation, plus stable per-generation randomization of
 // theme/tag order.
@@ -77,6 +79,27 @@ function HoverOverlay({
   const shuffledTags = useMemo(
     () => seededShuffle(tags, hashSeed(`${itemId}:tags:${generation}`)),
     [tags, itemId, generation],
+  );
+
+  // Relationship Engine wiring (Commit 2 of 3): HoverOverlay is the first
+  // consumer of the Relationship Engine, but it does not perform matching
+  // itself -- per the Relationship Engine's own contract, it only supplies
+  // a relationship type + value and stores whatever Archive Numbers come
+  // back. There is no theme interaction yet (a later commit); for now this
+  // simply asks about the item's own first-shown theme, the same theme
+  // priority already used for rendering. Nothing here reads
+  // relatedArchiveNumbersRef.current yet -- it exists purely so a future
+  // commit has it ready to consume, the same role galleryGenerationRef
+  // plays for this component today. This has no effect on rendering,
+  // opacity, or any existing interaction: the value is never read by the
+  // JSX below.
+  const relatedArchiveNumbersRef = useRef([]);
+  relatedArchiveNumbersRef.current = useMemo(
+    () =>
+      shuffledThemes.length > 0
+        ? findRelatedArchiveItems("theme", shuffledThemes[0], ARCHIVE_ITEMS)
+        : [],
+    [shuffledThemes],
   );
 
   return (

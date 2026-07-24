@@ -136,6 +136,14 @@ const CAMERA_ZOOM_MAX = 2.5;
 // retune.
 const CAMERA_ZOOM_WHEEL_SENSITIVITY = 0.01;
 
+// Camera state/control split: Camera owns scale + pan, but does not decide
+// when they should return to default -- that decision belongs to whatever
+// higher-level behavior is generating a new gallery world (see
+// resetCameraToNeutral / regenerateGallery in App()). These are simply the
+// Camera's own default values, same ones the refs below are initialized to.
+const CAMERA_NEUTRAL_SCALE = 1;
+const CAMERA_NEUTRAL_PAN = 0;
+
 function getImageName(src) {
   return src.split("/").pop()?.replace(/\.[^.]+$/, "") || "";
 }
@@ -610,6 +618,7 @@ function createGalleryRenderer({
   animatedImages,
   movement,
   viewportScaleRef,
+  viewportPanXRef,
   renderWindowRef,
   setRenderWindowState,
   focusedIdRef,
@@ -638,30 +647,50 @@ function createGalleryRenderer({
   // anchorScreenX + (worldX - distance - anchorScreenX) = worldX -
   // distance -- byte-identical to the pre-anchor formula, verified
   // numerically after this function was written.
+  //
+  // Camera Phase 3A: + viewportPanXRef.current is the only addition. It's a
+  // second, purely Camera-owned value (see its declaration in App(), right
+  // next to viewportScaleRef) -- a constant horizontal offset, independent
+  // of worldX, so it doesn't disturb the screen = trackX + worldX*scale
+  // relationship this formula already guarantees (it just shifts trackX).
+  // handleZoomStep recomputes it, each time scale changes, to exactly
+  // cancel out the shift a center-anchored zoom would otherwise produce at
+  // whatever screen position the zoom is anchored on -- viewport center
+  // for the buttons, the cursor for wheel/pinch. Navigator's `distance`
+  // never appears in that recomputation and is never written here; at
+  // panRef = 0 (its default, and its value whenever every zoom so far has
+  // been anchored exactly at center) this is a no-op, so scale = 1 and
+  // center-anchored zoom stay byte-identical to Phase 1/2.
   const projectWorldToScreenX = (worldX, distance, scale) => {
     const anchorScreenX = window.innerWidth / 2;
     const anchorWorldX = distance + anchorScreenX;
-    return anchorScreenX + (worldX - anchorWorldX) * scale;
+    return anchorScreenX + (worldX - anchorWorldX) * scale + viewportPanXRef.current;
   };
 
-  // Deliberately NOT a projectWorldToScreenY. There is no vertical world
-  // coordinate to project -- Navigator owns no vertical distance, Camera
-  // owns no vertical position, and no item's vertical placement is ever
-  // individually computed in JS (each item's `top` is static world-space
-  // CSS, carried along by this element's own single transform). The only
-  // real vertical need is compensating for CSS scale()'s default
-  // top-left transform-origin so the anchor stays fixed vertically too.
-  // A function of scale alone -- no worldY parameter, because nothing
-  // varies along that axis today.
+  // Deliberately NOT a projectWorldToScreenY. There is still no vertical
+  // world coordinate to project -- Navigator owns no vertical distance,
+  // no item's vertical placement is ever individually computed in JS (each
+  // item's `top` is static world-space CSS, carried along by this
+  // element's own single transform), and this function still takes no
+  // worldY parameter, because nothing about an individual item's vertical
+  // position varies.
   //
-  // Anchored on openingHeight/2 -- the viewing-window opening's OWN
-  // center, supplied by Application Layout -- not window.innerHeight/2.
-  // This element's local coordinate space now starts at the opening's own
+  // Vertical framing is intentionally NOT cursor-anchored. The archive is
+  // horizontally navigable but has no vertical world to navigate -- its
+  // vertical position is a fixed composition centered on the OpeningViewport,
+  // not a place the cursor can be "over." This is the sole vertical term:
+  // pure opening-anchored scale compensation, anchored on openingHeight/2 --
+  // the viewing-window opening's OWN center, supplied by Application Layout
+  // -- not window.innerHeight/2 and not any interaction-time cursor position.
+  // This element's local coordinate space starts at the opening's own
   // top-left (Archive no longer bakes any page-relative offset into tile
   // positions), so the anchor has to be expressed in that same
-  // opening-relative space. Application Layout positions the opening
-  // itself on the page separately, via untransformed layout, so this
-  // function never needs to know where on the page that is.
+  // opening-relative space. Application Layout positions the opening itself
+  // on the page separately, via untransformed layout, so this function never
+  // needs to know where on the page that is. Because there is no cursor or
+  // pan term here, the composition returns to exactly this same vertical
+  // position at every scale, on every zoom in/out cycle, with no possibility
+  // of drift.
   const getVerticalScaleCompensation = (scale) => {
     return (openingHeight / 2) * (1 - scale);
   };
@@ -884,18 +913,29 @@ function App() {
   // stale relative to the DOM: registration and deregistration are React
   // mount/unmount events, not a periodic snapshot.
   const wrapperRegistryRef = useRef(new Map());
-  // Camera owns this and only this: the current zoom scale, and nothing
-  // else (no vertical state, no interaction logic). Default is 1 -- the
-  // untouched, pre-camera baseline. A ref, not state, since it's read
-  // every animation frame by Gallery Renderer (galleryMovementRef's own
-  // reasoning applies here too: no React re-render is needed just because
-  // a frame ticked or a zoom button was clicked -- the next
-  // requestAnimationFrame tick picks up the new value on its own). Archive
-  // and Navigator still never read this. Set directly by handleZoomStep
-  // below -- Camera Phase 1 wires the existing zoom controls to this ref
-  // with a plain, un-eased assignment; no smoothing, cursor-anchoring, or
-  // inertia is introduced this milestone.
+  // Camera owns this and this alone: the current zoom scale. No vertical
+  // state, no interaction logic. Default is 1 -- the untouched, pre-camera
+  // baseline. A ref, not state, since it's read every animation frame by
+  // Gallery Renderer (galleryMovementRef's own reasoning applies here too:
+  // no React re-render is needed just because a frame ticked or a zoom
+  // button was clicked -- the next requestAnimationFrame tick picks up the
+  // new value on its own). Archive and Navigator still never read this.
+  // Set directly by handleZoomStep below, with a plain, un-eased
+  // assignment; no smoothing or inertia.
   const viewportScaleRef = useRef(1);
+  // Camera owns two things total: scale, and one pan correction, on the X
+  // axis only. viewportPanXRef is a constant screen-px offset that makes
+  // horizontal zoom anchor on the cursor (or, for the buttons, viewport
+  // center) instead of always the center. Purely Camera's own correction
+  // term: it neither reads nor writes Navigator's `distance`, Archive never
+  // sees it, and it only ever changes inside handleZoomStep, in the same
+  // plain/un-eased way viewportScaleRef does. Defaults to 0, which is a
+  // total no-op in projectWorldToScreenX -- so scale = 1 and any zoom
+  // sequence anchored exactly at center are unaffected, byte-identical to
+  // Phase 1/2. There is deliberately no vertical counterpart: the archive
+  // has no vertical world to navigate, so Y has no cursor-derived pan term
+  // at all -- see getVerticalScaleCompensation's own comment.
+  const viewportPanXRef = useRef(0);
   const focusTimelineRef = useRef(null);
   const focusedIdRef = useRef(null);
   const renderWindowRef = useRef(getGalleryRenderWindow());
@@ -941,6 +981,7 @@ function App() {
   // refactored to support.
   const regenerateGallery = useCallback(() => {
     galleryMovementRef.current.distance = 0;
+    resetCameraToNeutral();
     const nextOpeningGeometry = getViewportOpeningGeometry();
     openingGeometryRef.current = nextOpeningGeometry;
     setOpeningGeometry(nextOpeningGeometry);
@@ -969,19 +1010,60 @@ function App() {
     return trackRef.current?.querySelector(`[data-image-id="${imageId}"]`);
   }, []);
 
-  // Camera Phase 1: the zoom controls' only job is to move Camera's one
-  // piece of state by a fixed step, clamped to a fixed range -- a plain
-  // synchronous assignment to the ref Gallery Renderer already reads every
-  // frame. No easing, no cursor anchoring, no inertia, no animation; the
-  // very next requestAnimationFrame tick (already running continuously)
-  // picks up the new value on its own, exactly the same way it already
-  // picks up movement.distance changes.
-  const handleZoomStep = useCallback((delta) => {
-    viewportScaleRef.current = clamp(
-      viewportScaleRef.current + delta,
-      CAMERA_ZOOM_MIN,
-      CAMERA_ZOOM_MAX,
-    );
+  // Camera Phase 1/3A: the zoom controls' (and now wheel/pinch's) only job
+  // is to move Camera's state by a step, clamped to a fixed range -- a
+  // plain synchronous assignment to the refs Gallery Renderer already
+  // reads every frame. No easing, no inertia, no animation; the very next
+  // requestAnimationFrame tick (already running continuously) picks up the
+  // new values on its own, exactly the same way it already picks up
+  // movement.distance changes.
+  //
+  // anchorClientX is the screen position this particular zoom should hold
+  // fixed horizontally -- event.clientX for wheel/pinch, or omitted for the
+  // buttons, which default to viewport center (no new state invented just
+  // for them, per Phase 3A's own constraint). This is the X axis's own pan
+  // update, the closed-form solution of "whatever world point currently
+  // projects to this anchor must still project to it after scale changes":
+  // with k = anchor-offset-from-viewport-center and r = newScale / oldScale,
+  // the only value of the pan ref that keeps that invariant is
+  // k*(1 - r) + oldPan*r -- derived directly from projectWorldToScreenX,
+  // solved for the new pan term with distance held fixed (Navigator is
+  // never read or written here). At k = 0 (buttons, or a wheel/pinch
+  // dead-center) this reduces to oldPan*r -- 0 stays 0, matching the old
+  // center-anchored behavior exactly. Because this is an exact algebraic
+  // solve rather than an iterative approximation, zooming in and back out
+  // over the same anchor returns the pan ref to its exact prior value -- no
+  // accumulated drift over repeated zoom cycles.
+  //
+  // There is deliberately no vertical counterpart. The vertical axis has no
+  // navigable world for a cursor position to be "over," so Y is never
+  // touched here at all -- it comes entirely from getVerticalScaleCompensation
+  // (opening-anchored scale compensation only), called directly by
+  // applyTransform. A second parameter for anchorClientY was deliberately
+  // not added; passing a Y coordinate into this function would invite exactly
+  // the cursor-derived vertical drift this architecture avoids.
+  const handleZoomStep = useCallback((delta, anchorClientX) => {
+    const oldScale = viewportScaleRef.current;
+    const newScale = clamp(oldScale + delta, CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX);
+    const scaleRatio = newScale / oldScale;
+
+    const viewportCenterX = window.innerWidth / 2;
+    const kX = (anchorClientX ?? viewportCenterX) - viewportCenterX;
+    viewportPanXRef.current =
+      kX * (1 - scaleRatio) + viewportPanXRef.current * scaleRatio;
+
+    viewportScaleRef.current = newScale;
+  }, []);
+
+  // Camera state/control split: this is a pure mechanism, not a policy.
+  // It synchronously restores scale and the (X-only) pan ref to their
+  // defaults -- nothing more. It does not watch scale, does not run on an
+  // effect, does not get invoked automatically at zoom limits, and does not
+  // infer intent from camera values. Camera exposes it; callers (e.g.
+  // regenerateGallery) decide when a reset is warranted.
+  const resetCameraToNeutral = useCallback(() => {
+    viewportScaleRef.current = CAMERA_NEUTRAL_SCALE;
+    viewportPanXRef.current = CAMERA_NEUTRAL_PAN;
   }, []);
 
   const handleExitFocus = useCallback(() => {
@@ -1401,6 +1483,7 @@ function App() {
       animatedImages,
       movement,
       viewportScaleRef,
+      viewportPanXRef,
       renderWindowRef,
       setRenderWindowState: setRenderWindow,
       focusedIdRef,
@@ -1528,11 +1611,18 @@ function App() {
       // browsers use internally to distinguish "the user is pinch-zooming"
       // from "the user is two-finger-scrolling") -- so this one check
       // covers both real Ctrl+wheel and a natural trackpad pinch, with no
-      // separate gesture-detection logic of its own. Camera Phase 1's own
-      // handleZoomStep is reused as-is: same clamp, same range, no new
-      // mutation path for viewportScaleRef.
+      // separate gesture-detection logic of its own. handleZoomStep is
+      // reused as-is: same clamp, same range, no new mutation path for
+      // viewportScaleRef. event.clientX (Phase 3A) is the cursor's actual
+      // screen position at the moment of this gesture -- the point
+      // handleZoomStep will keep visually anchored, horizontally only; the
+      // vertical composition stays fixed to the OpeningViewport regardless
+      // of where this gesture occurred.
       if (event.ctrlKey) {
-        handleZoomStep(-event.deltaY * CAMERA_ZOOM_WHEEL_SENSITIVITY);
+        handleZoomStep(
+          -event.deltaY * CAMERA_ZOOM_WHEEL_SENSITIVITY,
+          event.clientX,
+        );
         return;
       }
 

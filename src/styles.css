@@ -771,9 +771,17 @@ body {
    value as before between the number and the themes, now expressed as an
    actual gap between the two boxes rather than an offset from a fixed
    center line -- the same 1rem, just measured more directly. */
+/* Safe area: equal 0.5rem on all four sides, the same value already used
+   for the archive number's own padding and (previously) the left/right
+   inset on themes/tags -- reused here rather than a new value, now applied
+   once at the overlay level so top/bottom match left/right exactly, like
+   an evenly matted print. Themes/tags no longer set their own horizontal
+   padding (see below); the container's padding is the single source of
+   the safe-area inset on every side. */
 .hover-overlay {
   position: absolute;
   inset: 0;
+  padding: 0.5rem;
   container-type: size;
   container-name: hover-overlay;
   display: flex;
@@ -812,23 +820,26 @@ body {
   color: #1a1a1a;
 }
 
-/* Themes: still rendered centered beneath the archive number, same
-   typography/spacing as before this pass -- unchanged. Only its
-   positioning mechanism changed, alongside the archive number's above:
-   it's a normal flex-flow child again instead of independently absolutely
-   positioned, so the 1rem gap to the number (on .hover-overlay, above) and
-   this group's overall centering are both handled by the parent flex
-   layout rather than a fixed "50% + offset" calculation. padding: 0 0.5rem
-   preserves the same left/right safe-area distance from the image edges
-   as before. The responsive reveal behavior below (which breakpoint shows
-   which theme) is untouched by this pass. */
+/* Themes: typography/spacing unchanged from before this pass. Horizontal
+   padding moved to the overlay's own safe-area padding above (padding: 0
+   here just overrides the UA default ul indent, since list-style: none
+   alone doesn't zero it). max-height + overflow: hidden reserve this
+   region's own layout budget -- exactly tall enough for all 4 possible
+   theme lines at this fixed font-size/line-height (0.78rem * 2.2 = 1.716rem
+   per line x 4 = 6.864rem, rounded up slightly) and no taller, so this
+   region can never grow into the tags region below it regardless of how
+   many themes are shown. The responsive reveal behavior below (which
+   breakpoint shows which theme) is restructured by this pass; the
+   typography itself is untouched. */
 .hover-overlay__themes {
   align-self: center;
   display: none;
   flex-direction: column;
   align-items: center;
   margin: 0;
-  padding: 0 0.5rem;
+  padding: 0;
+  max-height: 6.9rem;
+  overflow: hidden;
   list-style: none;
   font-family: "Courier New", Courier, monospace;
   font-weight: 300;
@@ -845,43 +856,120 @@ body {
   display: none;
 }
 
-/* Reveal themes from the top of the list downward, one at a time, only
-   once the space below the archive number can fit that many complete
-   lines at this list's own (unchanged) font-size/line-height -- each
-   threshold below is derived from that fixed row height (0.78rem *
-   line-height 2.2, roughly 27.5px) plus the gap and safe-area padding
-   above, not guessed. A container that never reaches the first threshold
-   shows the archive number only; nothing here shortens a theme's label or
-   shows a partial one -- when there isn't room for one more complete
-   line, rendering simply stops at whichever nth-child threshold was last
-   reached. As the hovered image is zoomed larger, its overlay crosses
-   these thresholds the same way any other size increase would -- no
-   zoom-specific logic is involved. */
-@container hover-overlay (min-width: 110px) and (min-height: 110px) {
+/* Tier 2 (medium): Archive Number + Themes, never Tags. This is the entire
+   Theme region's reveal range -- every breakpoint here is below the Tier 3
+   / tags entry point further down, so all themes always finish revealing
+   before any tag ever appears. Minimum two themes together at first
+   reveal (per spec), one more added per breakpoint after that, each still
+   a complete line -- never a partial one -- and never more than the 4
+   lines this region's own max-height above already reserves. Thresholds
+   are grounded in the Archive's real tile-size distribution (measured
+   across representative viewport heights), not guessed: 120px is
+   comfortably reached by a meaningful share of real tiles, and 145/160px
+   remain realistically reachable at larger viewport heights. */
+@container hover-overlay (min-width: 120px) and (min-height: 120px) {
   .hover-overlay__themes {
     display: flex;
   }
 
-  .hover-overlay__themes li:nth-child(1) {
-    display: block;
-  }
-}
-
-@container hover-overlay (min-width: 160px) and (min-height: 160px) {
+  .hover-overlay__themes li:nth-child(1),
   .hover-overlay__themes li:nth-child(2) {
     display: block;
   }
 }
 
-@container hover-overlay (min-width: 220px) and (min-height: 220px) {
+@container hover-overlay (min-width: 145px) and (min-height: 145px) {
   .hover-overlay__themes li:nth-child(3) {
     display: block;
   }
 }
 
-@container hover-overlay (min-width: 270px) and (min-height: 270px) {
+@container hover-overlay (min-width: 160px) and (min-height: 160px) {
   .hover-overlay__themes li:nth-child(4) {
     display: block;
+  }
+}
+
+/* Tags: priority 3, its own reserved region -- Tier 3 only. The first tag
+   breakpoint (170px) is strictly above the largest theme breakpoint
+   (160px), so every theme is always fully shown before any tag ever
+   appears, and the two regions' reveal ranges never overlap. A smaller,
+   quieter visual hierarchy than themes: smaller font-size, tighter
+   line-height, and a muted ink (rgba, not the full #1a1a1a) rather than a
+   new color -- the overlay's own background color/opacity are untouched.
+   Rendered as one wrapped paragraph of inline spans (not one-per-line, per
+   spec), joined with a middle-dot separator inserted only before non-first
+   *structural* children -- since tags are always revealed as a
+   contiguous prefix from the first tag onward (never skipping one), this
+   never produces a dangling separator. Horizontal padding moved to the
+   overlay's own safe-area padding above, same as themes. max-height +
+   overflow: hidden reserve this region's own layout budget -- worst case
+   (each of the up to 4 tags needing a full line to itself, 0.68rem *
+   line-height 1.6 = 1.088rem per line x 4 = 4.352rem, rounded up
+   slightly) -- so this region can never grow into the themes region above
+   it, and vice versa. */
+.hover-overlay__tags {
+  display: none;
+  align-self: center;
+  margin: 0;
+  padding: 0;
+  max-width: 100%;
+  max-height: 4.4rem;
+  overflow: hidden;
+  font-family: "Courier New", Courier, monospace;
+  font-weight: 300;
+  font-size: 0.68rem;
+  line-height: 1.6;
+  letter-spacing: 0.02em;
+  text-align: center;
+  color: rgba(26, 26, 26, 0.62);
+}
+
+.hover-overlay__tag {
+  display: none;
+}
+
+.hover-overlay__tag:not(:first-child)::before {
+  content: " \00B7 ";
+}
+
+/* Tier 3 (large): Archive Number + Themes + Tags together -- the only tier
+   that ever shows tags. Reveal tags one at a time, the same
+   cumulative-prefix pattern as themes above: each threshold conservatively
+   assumes the newly-revealed tag needs a full line to itself (ignoring any
+   wrapping benefit from shorter tags sharing a line), so these are a safe
+   upper bound on the space actually required, never an underestimate --
+   tags can never overflow the reserved region or appear partially.
+   Thresholds start at 170px (strictly above every Tier 2 theme
+   breakpoint) and are grounded in the same real tile-size distribution
+   used for the theme tier -- occasionally reachable at real viewport
+   heights, unlike the previous 280-400px range which the read-only
+   investigation showed was almost never reached in practice. */
+@container hover-overlay (min-width: 170px) and (min-height: 170px) {
+  .hover-overlay__tags {
+    display: block;
+  }
+
+  .hover-overlay__tag:nth-child(1) {
+    display: inline;
+  }
+}
+
+@container hover-overlay (min-width: 190px) and (min-height: 190px) {
+  .hover-overlay__tag:nth-child(2) {
+    display: inline;
+  }
+}
+
+@container hover-overlay (min-width: 210px) and (min-height: 210px) {
+  .hover-overlay__tag:nth-child(3) {
+    display: inline;
+  }
+}
+
+@container hover-overlay (min-width: 230px) and (min-height: 230px) {
+  .hover-overlay__tag:nth-child(4) {
+    display: inline;
   }
 }
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import imageMetadata from "./image-metadata.json";
 import Header from "./Header";
+import HoverOverlay from "./HoverOverlay";
 import { navigate } from "./navigation";
 import { findArchiveItemBySrc } from "./mockArchiveItems";
 
@@ -949,6 +950,17 @@ function App() {
   // comment in the JSX and in styles.css).
   const openingGeometryRef = useRef(getViewportOpeningGeometry());
   const columnStateRef = useRef(null);
+  // Hover Overlay metadata feature: a plain counter, bumped once per
+  // regenerateGallery call below, and nowhere else. Not Archive generation
+  // itself (buildGalleryItems/createGalleryBatch/createColumnState are
+  // untouched) -- this is the same kind of cross-cutting, non-Archive-owned
+  // App-level bookkeeping regenerateGallery already does for
+  // movement.distance and animatedImagesRef. HoverOverlay uses it (passed
+  // down as `generation`) purely as an input to a deterministic per-item
+  // shuffle seed, so each item's randomized theme/tag order stays stable
+  // across re-renders, scrolling, and virtualization remounts, and only
+  // changes when this counter changes -- i.e. only on a real regeneration.
+  const galleryGenerationRef = useRef(0);
   // Guards against a burst of logo clicks queueing up multiple
   // regenerations -- set true as soon as a logo-triggered regeneration
   // begins (see handleLogoClick), cleared after the freshly regenerated
@@ -982,6 +994,7 @@ function App() {
   const regenerateGallery = useCallback(() => {
     galleryMovementRef.current.distance = 0;
     resetCameraToNeutral();
+    galleryGenerationRef.current += 1;
     const nextOpeningGeometry = getViewportOpeningGeometry();
     openingGeometryRef.current = nextOpeningGeometry;
     setOpeningGeometry(nextOpeningGeometry);
@@ -1803,6 +1816,21 @@ function App() {
                       decoding="async"
                     />
                   </picture>
+                  {/* Hover Overlay -- presentation only. Hardcoded example
+                      data; real archive number/theme/tag/CMS wiring is a
+                      later phase. Purely additive: an absolutely-positioned
+                      child, so it cannot affect this wrapper's own box,
+                      Masonry's layout.width/height/left/top above, or any
+                      sibling wrapper. itemId + generation are only a stable
+                      seed for HoverOverlay's own per-item theme/tag shuffle
+                      -- see galleryGenerationRef's comment above. */}
+                  <HoverOverlay
+                    archiveNumber="0287"
+                    themes={["Adaptive Reuse", "Material", "Community", "Threshold"]}
+                    tags={["brick", "museum", "competition", "adaptive reuse"]}
+                    itemId={item.id}
+                    generation={galleryGenerationRef.current}
+                  />
                 </button>
               );
             })}

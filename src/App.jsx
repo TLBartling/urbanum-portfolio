@@ -992,6 +992,30 @@ function App() {
   // regeneration (see handleLogoClick below and the matching .is-regenerating
   // rule in styles.css) -- mount and resize are untouched and stay instant.
   const [isGalleryTransitioning, setIsGalleryTransitioning] = useState(false);
+  // Relationship Highlight Pipeline (Commit 3): Gallery (this component) is
+  // the single owner of relatedArchiveNumbers, the shared state later
+  // commits will read to drive highlighting -- nothing renders from it yet.
+  // hoveredGalleryItemId just tracks which .gallery-image-wrapper is
+  // currently under the pointer, set by plain onMouseEnter/onMouseLeave
+  // below; relatedArchiveNumbers is populated by HoverOverlay's own
+  // onRelatedArchiveNumbersChange callback (see the call site below) and
+  // resets to [] the moment hover ends. Neither the Relationship Engine nor
+  // HoverOverlay hold this state -- this is purely where it's lifted to.
+  const [hoveredGalleryItemId, setHoveredGalleryItemId] = useState(null);
+  const [relatedArchiveNumbers, setRelatedArchiveNumbers] = useState([]);
+
+  // Relationship Highlight Pipeline (Commit 3): the only two handlers this
+  // pipeline needs. They just record which item is hovered -- no matching,
+  // no rendering decisions, no CSS. setRelatedArchiveNumbers itself is
+  // passed straight through to HoverOverlay as onRelatedArchiveNumbersChange
+  // below; it's already a stable setState function, so no extra useCallback
+  // wrapper is needed for it.
+  const handleGalleryImageHoverStart = useCallback((itemId) => {
+    setHoveredGalleryItemId(itemId);
+  }, []);
+  const handleGalleryImageHoverEnd = useCallback(() => {
+    setHoveredGalleryItemId(null);
+  }, []);
 
   // Shared regeneration sequence -- used on mount, on window resize, and
   // (see handleLogoClick below) when the logo is clicked on the homepage.
@@ -1782,6 +1806,8 @@ function App() {
                         ? () => handleImageClick(item.id)
                         : undefined
                   }
+                  onMouseEnter={() => handleGalleryImageHoverStart(item.id)}
+                  onMouseLeave={handleGalleryImageHoverEnd}
                   aria-label={
                     isProjectLinked
                       ? `View project: ${item.alt}`
@@ -1844,13 +1870,23 @@ function App() {
                       Masonry's layout.width/height/left/top above, or any
                       sibling wrapper. itemId + generation are only a stable
                       seed for HoverOverlay's own per-item theme/tag shuffle
-                      -- see galleryGenerationRef's comment above. */}
+                      -- see galleryGenerationRef's comment above.
+                      isHovered/onRelatedArchiveNumbersChange (Commit 3):
+                      HoverOverlay reports its already-computed related
+                      Archive Numbers up to this component's
+                      relatedArchiveNumbers state while isHovered is true,
+                      and reports [] the instant it goes false -- see the
+                      Relationship Highlight Pipeline comment near
+                      hoveredGalleryItemId's declaration above. Nothing
+                      renders from that state yet. */}
                   <HoverOverlay
                     archiveNumber={item.archiveNumber}
                     themes={item.theme ? [item.theme] : []}
                     tags={item.tags ?? []}
                     itemId={item.id}
                     generation={galleryGenerationRef.current}
+                    isHovered={hoveredGalleryItemId === item.id}
+                    onRelatedArchiveNumbersChange={setRelatedArchiveNumbers}
                   />
                 </button>
               );

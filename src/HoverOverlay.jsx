@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { findRelatedArchiveItems } from "./relationshipEngine";
 import { ARCHIVE_ITEMS } from "./mockArchiveItems";
 
@@ -7,15 +7,19 @@ import { ARCHIVE_ITEMS } from "./mockArchiveItems";
 //
 // A reusable, purely presentational component: given an image's metadata,
 // it renders a translucent metadata layer sized to fill its parent exactly.
-// It owns no interaction logic of its own -- visibility is driven entirely
-// by CSS (`.gallery-image-wrapper:hover .hover-overlay`, see styles.css),
-// not by React state or event handlers. That means hovering can never
-// trigger a re-render, a layout pass, or touch anything in the Camera /
-// Gallery Renderer / virtualization pipeline -- it's a compositor-only
-// opacity fade, fully decoupled from the animation-frame loop that drives
-// the archive itself. The only requirement of the parent is that it already
-// be a positioned element this component can fill via inset: 0, which
-// .gallery-image-wrapper already is.
+// Its own visibility is still driven entirely by CSS
+// (`.gallery-image-wrapper:hover .hover-overlay`, see styles.css) -- that
+// compositor-only opacity fade is untouched, still fully decoupled from the
+// animation-frame loop that drives the archive itself, and never re-runs
+// just because this component re-renders. As of the Relationship Highlight
+// Pipeline (Commit 3), this component does now also receive an `isHovered`
+// prop and report to a parent callback (see below) -- that is a parallel
+// JS-level data signal for the Relationship Engine pipeline only, kept
+// deliberately separate from the CSS opacity fade so the fade itself still
+// can't be affected by, or blocked on, any React state. The only
+// requirement of the parent is that it already be a positioned element
+// this component can fill via inset: 0, which .gallery-image-wrapper
+// already is.
 //
 // Responsive scaling (large images get more breathing room, small images
 // shrink proportionally) is handled entirely in CSS via container query
@@ -71,6 +75,8 @@ function HoverOverlay({
   dimensions,
   itemId,
   generation = 0,
+  isHovered = false,
+  onRelatedArchiveNumbersChange,
 }) {
   const shuffledThemes = useMemo(
     () => seededShuffle(themes, hashSeed(`${itemId}:themes:${generation}`)),
@@ -81,18 +87,13 @@ function HoverOverlay({
     [tags, itemId, generation],
   );
 
-  // Relationship Engine wiring (Commit 2 of 3): HoverOverlay is the first
+  // Relationship Engine wiring (Commit 2): HoverOverlay is the first
   // consumer of the Relationship Engine, but it does not perform matching
   // itself -- per the Relationship Engine's own contract, it only supplies
   // a relationship type + value and stores whatever Archive Numbers come
   // back. There is no theme interaction yet (a later commit); for now this
   // simply asks about the item's own first-shown theme, the same theme
-  // priority already used for rendering. Nothing here reads
-  // relatedArchiveNumbersRef.current yet -- it exists purely so a future
-  // commit has it ready to consume, the same role galleryGenerationRef
-  // plays for this component today. This has no effect on rendering,
-  // opacity, or any existing interaction: the value is never read by the
-  // JSX below.
+  // priority already used for rendering.
   const relatedArchiveNumbersRef = useRef([]);
   relatedArchiveNumbersRef.current = useMemo(
     () =>
@@ -101,6 +102,27 @@ function HoverOverlay({
         : [],
     [shuffledThemes],
   );
+
+  // Relationship Highlight Pipeline (Commit 3): lift the already-computed
+  // related Archive Numbers up to Gallery (App.jsx), which owns the
+  // shared relatedArchiveNumbers state -- HoverOverlay does not hold that
+  // shared state itself, it only reports into the callback the parent
+  // supplies. `isHovered` is likewise owned and set by the parent, via
+  // onMouseEnter/onMouseLeave on the actual hoverable element
+  // (.gallery-image-wrapper), which alone receives real pointer events --
+  // .hover-overlay itself has pointer-events: none (see styles.css,
+  // unchanged) and can't detect hover on its own DOM node. Reporting only
+  // happens on isHovered transitions: the parent's state fills in while
+  // hovering and resets to [] the instant hover ends. This is a parallel
+  // JS-level signal alongside the existing CSS-only opacity fade -- it
+  // does not touch that fade, its timing, or any CSS at all, and nothing
+  // downstream consumes the reported value yet.
+  useEffect(() => {
+    if (!onRelatedArchiveNumbersChange) return;
+    onRelatedArchiveNumbersChange(
+      isHovered ? relatedArchiveNumbersRef.current : [],
+    );
+  }, [isHovered, onRelatedArchiveNumbersChange]);
 
   return (
     <div className="hover-overlay" aria-hidden="true">

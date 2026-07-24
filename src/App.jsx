@@ -455,6 +455,17 @@ function createGalleryBatch(batchIndex, columnState, worldCanvasHeight) {
         tag: imageTags[src] || null,
         archiveNumber: archiveItem?.archiveNumber ?? null,
         project: archiveItem?.project ?? null,
+        // Prototype Data Contract (Commit 2.5): carry the Archive Item's
+        // own theme/tags onto the gallery item alongside the
+        // archiveNumber/project fields already carried above -- same
+        // null-safe pattern, same source (mockArchiveItems.js via
+        // archiveItem, looked up above by findArchiveItemBySrc). This adds
+        // data fields only; it does not change any procedural
+        // geometry/randomization this function already performs. Distinct
+        // from the pre-existing singular `tag` field above, which comes
+        // from the unrelated imageTags map and is untouched.
+        theme: archiveItem?.theme ?? null,
+        tags: archiveItem?.tags ?? [],
         motion: getRandomImageMotion(),
       });
 
@@ -1816,18 +1827,28 @@ function App() {
                       decoding="async"
                     />
                   </picture>
-                  {/* Hover Overlay -- presentation only. Hardcoded example
-                      data; real archive number/theme/tag/CMS wiring is a
-                      later phase. Purely additive: an absolutely-positioned
+                  {/* Hover Overlay -- presentation only. Metadata now comes
+                      directly from the Archive Item itself (item.theme /
+                      item.tags / item.archiveNumber, carried through by
+                      createGalleryBatch above from mockArchiveItems.js --
+                      see the Prototype Data Contract comment there); no
+                      hardcoded literals remain. theme is a single string on
+                      the Archive Item contract, so it's wrapped in a
+                      one-element array to match HoverOverlay's themes prop
+                      shape -- HoverOverlay itself is unchanged. Items with
+                      no matching Archive Item (most of the 34 stock photos)
+                      simply pass null/[]; HoverOverlay's own existing
+                      empty-state checks already handle that, same as
+                      before. Purely additive: an absolutely-positioned
                       child, so it cannot affect this wrapper's own box,
                       Masonry's layout.width/height/left/top above, or any
                       sibling wrapper. itemId + generation are only a stable
                       seed for HoverOverlay's own per-item theme/tag shuffle
                       -- see galleryGenerationRef's comment above. */}
                   <HoverOverlay
-                    archiveNumber="0287"
-                    themes={["Adaptive Reuse", "Material", "Community", "Threshold"]}
-                    tags={["brick", "museum", "competition", "adaptive reuse"]}
+                    archiveNumber={item.archiveNumber}
+                    themes={item.theme ? [item.theme] : []}
+                    tags={item.tags ?? []}
                     itemId={item.id}
                     generation={galleryGenerationRef.current}
                   />

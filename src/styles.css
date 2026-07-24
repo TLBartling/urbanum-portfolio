@@ -761,12 +761,16 @@ body {
    border or drop shadow, meant only to keep the hovered image's silhouette
    legible against the page while the overlay is up. Position, inset,
    container-type, the :hover trigger, and the opacity transition itself
-   are all unchanged from Phase 1. justify-content is flex-end so that
-   .hover-overlay__themes (this container's only remaining flex-flow
-   child now that the archive number is independently centered via its
-   own absolute positioning below) stays flush at the bottom edge --
-   geometrically identical to where it already sat under the previous
-   two-child space-between layout, so themes are visually unaffected. */
+   are all unchanged from Phase 1. Design refinement: the archive number
+   and theme list are now both normal flex-flow children again (instead
+   of each independently self-positioned), so justify-content: center
+   packs them as a single group and centers that group as a whole within
+   the overlay -- fixing the upward bias the previous approach had, where
+   the number was pinned to the exact optical center regardless of how
+   much theme content followed below it. gap: 1rem is the same spacing
+   value as before between the number and the themes, now expressed as an
+   actual gap between the two boxes rather than an offset from a fixed
+   center line -- the same 1rem, just measured more directly. */
 .hover-overlay {
   position: absolute;
   inset: 0;
@@ -774,7 +778,8 @@ body {
   container-name: hover-overlay;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
+  justify-content: center;
+  gap: 1rem;
   opacity: 0;
   pointer-events: none;
   background: rgba(231, 223, 208, 0.75);
@@ -787,24 +792,16 @@ body {
   opacity: 1;
 }
 
-/* Archive number: finalized to a single positioning rule at every image
-   size, no thumbnail/standard distinction, no size-based breakpoints for
-   position. Absolutely positioned to fill the overlay independently of
-   the themes flex flow above, then centered on both axes within that box
-   via flex centering -- one rule, always centered, regardless of whether
-   themes happens to be visible below it. Font-size is the only property
-   that responds to image size, via clamp() + cqmin against the same
-   container this overlay already establishes (container-type: size on
-   .hover-overlay, above) -- continuous proportional scaling rather than
-   a breakpoint, per this pass's explicit direction. The small fixed
-   padding is only a floor so the number never touches the image edges at
-   the very smallest sizes; it no longer anchors to a corner. */
+/* Archive number: typography, font-size scaling, and formatting are exactly
+   as before this pass -- unchanged. Only its positioning mechanism changed,
+   to fix the composition-centering bias above: rather than being
+   absolutely positioned to fill/center within the entire overlay on its
+   own (which pinned it to the exact optical center regardless of the
+   theme content below it), it's a normal flex-flow child again, centered
+   horizontally via align-self, with the group of it + themes centered
+   together by the parent's justify-content: center. */
 .hover-overlay__number {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  align-self: center;
   padding: 0.5rem;
   font-family: "Courier New", Courier, monospace;
   font-weight: 300;
@@ -815,50 +812,75 @@ body {
   color: #1a1a1a;
 }
 
-/* Themes: bottom left, strictly left-aligned (every <li> starts at the same
-   x-position -- margin/padding zeroed below so nothing can nudge a line
-   off that edge), stacked with generous line spacing. Fixed size, not
-   clamp()-scaled, per the same "don't shrink type to fit" refinement as
-   the archive number. Responsiveness is now handled by which content shows
-   (see the container queries below), not by shrinking this text -- hidden
-   by default (small / very small thumbnails: archive number only), then
-   progressively revealed as the hovered image's own rendered box grows. */
+/* Themes: still rendered centered beneath the archive number, same
+   typography/spacing as before this pass -- unchanged. Only its
+   positioning mechanism changed, alongside the archive number's above:
+   it's a normal flex-flow child again instead of independently absolutely
+   positioned, so the 1rem gap to the number (on .hover-overlay, above) and
+   this group's overall centering are both handled by the parent flex
+   layout rather than a fixed "50% + offset" calculation. padding: 0 0.5rem
+   preserves the same left/right safe-area distance from the image edges
+   as before. The responsive reveal behavior below (which breakpoint shows
+   which theme) is untouched by this pass. */
 .hover-overlay__themes {
-  align-self: flex-start;
+  align-self: center;
+  display: none;
+  flex-direction: column;
+  align-items: center;
   margin: 0;
-  padding: 1.25rem;
+  padding: 0 0.5rem;
   list-style: none;
   font-family: "Courier New", Courier, monospace;
   font-weight: 300;
   font-size: 0.78rem;
   line-height: 2.2;
   letter-spacing: 0.02em;
-  text-align: left;
+  text-align: center;
   color: #1a1a1a;
-  display: none;
 }
 
 .hover-overlay__themes li {
   margin: 0;
   padding: 0;
+  display: none;
 }
 
-/* Medium: archive number + first two themes. The rest stay in the DOM
-   (HoverOverlay.jsx is unchanged -- still renders every theme) and are
-   simply not displayed; no "+N" indicator or ellipsis is introduced. */
-@container hover-overlay (min-width: 220px) and (min-height: 220px) {
+/* Reveal themes from the top of the list downward, one at a time, only
+   once the space below the archive number can fit that many complete
+   lines at this list's own (unchanged) font-size/line-height -- each
+   threshold below is derived from that fixed row height (0.78rem *
+   line-height 2.2, roughly 27.5px) plus the gap and safe-area padding
+   above, not guessed. A container that never reaches the first threshold
+   shows the archive number only; nothing here shortens a theme's label or
+   shows a partial one -- when there isn't room for one more complete
+   line, rendering simply stops at whichever nth-child threshold was last
+   reached. As the hovered image is zoomed larger, its overlay crosses
+   these thresholds the same way any other size increase would -- no
+   zoom-specific logic is involved. */
+@container hover-overlay (min-width: 110px) and (min-height: 110px) {
   .hover-overlay__themes {
+    display: flex;
+  }
+
+  .hover-overlay__themes li:nth-child(1) {
     display: block;
   }
+}
 
-  .hover-overlay__themes li:nth-child(n + 3) {
-    display: none;
+@container hover-overlay (min-width: 160px) and (min-height: 160px) {
+  .hover-overlay__themes li:nth-child(2) {
+    display: block;
   }
 }
 
-/* Large: archive number + all themes. */
-@container hover-overlay (min-width: 340px) and (min-height: 340px) {
-  .hover-overlay__themes li {
+@container hover-overlay (min-width: 220px) and (min-height: 220px) {
+  .hover-overlay__themes li:nth-child(3) {
+    display: block;
+  }
+}
+
+@container hover-overlay (min-width: 270px) and (min-height: 270px) {
+  .hover-overlay__themes li:nth-child(4) {
     display: block;
   }
 }

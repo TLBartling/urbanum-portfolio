@@ -465,6 +465,15 @@ function createGalleryBatch(batchIndex, columnState, worldCanvasHeight) {
         // from the pre-existing singular `tag` field above, which comes
         // from the unrelated imageTags map and is untouched.
         theme: archiveItem?.theme ?? null,
+        // HoverOverlay wiring fix: mockArchiveItems.js (Commit 3.5) already
+        // carries a plural `themes` array (2-3 entries) per Archive Item,
+        // but this function was only ever carrying the singular `theme`
+        // through to the gallery item -- so `item.themes` was always
+        // undefined here, no matter how rich the mock data got. Carried
+        // the same null-safe way as theme/tags; `theme` itself is
+        // untouched, still the same value as before, for the JSX fallback
+        // below and any other existing reader.
+        themes: archiveItem?.themes ?? [],
         tags: archiveItem?.tags ?? [],
         motion: getRandomImageMotion(),
       });
@@ -1854,23 +1863,31 @@ function App() {
                     />
                   </picture>
                   {/* Hover Overlay -- presentation only. Metadata now comes
-                      directly from the Archive Item itself (item.theme /
-                      item.tags / item.archiveNumber, carried through by
-                      createGalleryBatch above from mockArchiveItems.js --
-                      see the Prototype Data Contract comment there); no
-                      hardcoded literals remain. theme is a single string on
-                      the Archive Item contract, so it's wrapped in a
-                      one-element array to match HoverOverlay's themes prop
-                      shape -- HoverOverlay itself is unchanged. Items with
-                      no matching Archive Item (most of the 34 stock photos)
-                      simply pass null/[]; HoverOverlay's own existing
-                      empty-state checks already handle that, same as
-                      before. Purely additive: an absolutely-positioned
-                      child, so it cannot affect this wrapper's own box,
-                      Masonry's layout.width/height/left/top above, or any
-                      sibling wrapper. itemId + generation are only a stable
-                      seed for HoverOverlay's own per-item theme/tag shuffle
-                      -- see galleryGenerationRef's comment above.
+                      directly from the Archive Item itself (item.themes /
+                      item.theme / item.tags / item.archiveNumber, carried
+                      through by createGalleryBatch above from
+                      mockArchiveItems.js -- see the Prototype Data Contract
+                      comment there); no hardcoded literals remain.
+                      HoverOverlay's themes prop wiring fix: prefer the
+                      richer plural item.themes (2-3 entries per the
+                      Commit 3.5 mock data) whenever it's present and
+                      non-empty; only fall back to wrapping the legacy
+                      singular item.theme in a one-element array when
+                      item.themes is missing/empty. theme itself is
+                      untouched and still exists on the Archive Item
+                      contract, so this stays backward compatible with any
+                      record that only ever sets the singular field.
+                      HoverOverlay itself is unchanged -- both paths hand it
+                      the same array shape it always accepted. Items with no
+                      matching Archive Item simply pass null/[]/[];
+                      HoverOverlay's own existing empty-state checks already
+                      handle that, same as before. Purely additive: an
+                      absolutely-positioned child, so it cannot affect this
+                      wrapper's own box, Masonry's
+                      layout.width/height/left/top above, or any sibling
+                      wrapper. itemId + generation are only a stable seed
+                      for HoverOverlay's own per-item theme/tag shuffle --
+                      see galleryGenerationRef's comment above.
                       isHovered/onRelatedArchiveNumbersChange (Commit 3):
                       HoverOverlay reports its already-computed related
                       Archive Numbers up to this component's
@@ -1881,7 +1898,13 @@ function App() {
                       renders from that state yet. */}
                   <HoverOverlay
                     archiveNumber={item.archiveNumber}
-                    themes={item.theme ? [item.theme] : []}
+                    themes={
+                      item.themes?.length
+                        ? item.themes
+                        : item.theme
+                          ? [item.theme]
+                          : []
+                    }
                     tags={item.tags ?? []}
                     itemId={item.id}
                     generation={galleryGenerationRef.current}

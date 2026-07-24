@@ -127,6 +127,15 @@ const CAMERA_ZOOM_STEP = 0.25;
 const CAMERA_ZOOM_MIN = 0.5;
 const CAMERA_ZOOM_MAX = 2.5;
 
+// Camera Phase 2: converts a single wheel event's deltaY into a scale
+// delta, fed straight into the same handleZoomStep used by the buttons --
+// same clamp, same range, no separate smoothing layer. Continuous rather
+// than a fixed step (unlike CAMERA_ZOOM_STEP) because that's what makes
+// wheel/trackpad zoom feel native; it's still a single, immediate,
+// un-eased assignment per event, not smoothing. A plain default, easy to
+// retune.
+const CAMERA_ZOOM_WHEEL_SENSITIVITY = 0.01;
+
 function getImageName(src) {
   return src.split("/").pop()?.replace(/\.[^.]+$/, "") || "";
 }
@@ -859,6 +868,22 @@ function App() {
   });
   const isExtendingGalleryRef = useRef(false);
   const animatedImagesRef = useRef(new Set());
+  // Registry ownership fix: a single persistent Map(item id -> wrapper DOM
+  // node), maintained entirely by each wrapper's own callback ref (see the
+  // ref prop on .gallery-image-wrapper below) -- set on mount, deleted on
+  // unmount. Replaces the old wrapperById, which was a Map built once via
+  // querySelectorAll per run of the big navigation effect (i.e. only when
+  // `galleryItems` changed). That snapshot went stale the moment a wrapper
+  // was mounted or unmounted for any OTHER reason -- a renderWindow update
+  // or a focusedId toggle, both of which run on their own schedule,
+  // independent of `galleryItems` -- leaving Gallery Renderer's entrance
+  // animations pointed at a detached node (or no node) while React had
+  // already mounted a different, untouched one for the same id. This Map
+  // is the same object for the lifetime of the component (never
+  // reassigned, only mutated by the ref callbacks), so it can never go
+  // stale relative to the DOM: registration and deregistration are React
+  // mount/unmount events, not a periodic snapshot.
+  const wrapperRegistryRef = useRef(new Map());
   // Camera owns this and only this: the current zoom scale, and nothing
   // else (no vertical state, no interaction logic). Default is 1 -- the
   // untouched, pre-camera baseline. A ref, not state, since it's read
@@ -1363,20 +1388,16 @@ function App() {
 
     scrollContainer.style.height = "100vh";
 
-    // Look up each image wrapper by id via a Map built once per effect run,
-    // instead of re-querying the DOM with an attribute selector for every
-    // item on every animation frame. The per-frame querySelector cost scales
-    // with total DOM size, so with the denser real-photo column patterns
-    // (some columns pack 25-37 tiles) that cost adds up fast and was the
-    // main source of scroll jank.
-    const wrapperById = new Map();
-    track.querySelectorAll("[data-image-id]").forEach((element) => {
-      wrapperById.set(element.dataset.imageId, element);
-    });
-
+    // wrapperRegistryRef.current is the same persistent Map for the whole
+    // component lifetime, kept correct by each wrapper's own callback ref
+    // (mount/unmount), not rebuilt here -- see wrapperRegistryRef's own
+    // comment. Passing the Map itself (not a snapshot copy) means every
+    // registration/deregistration that happens after this effect starts is
+    // still visible through this same reference, exactly like
+    // viewportScaleRef or renderWindowRef already are for their own state.
     const galleryRenderer = createGalleryRenderer({
       track,
-      wrapperById,
+      wrapperById: wrapperRegistryRef.current,
       animatedImages,
       movement,
       viewportScaleRef,
@@ -1496,7 +1517,25 @@ function App() {
     };
 
     const handleWheel = (event) => {
+      // preventDefault unconditionally, before branching -- this is what
+      // stops the browser's own native page-zoom, which Chrome/Firefox/
+      // Safari all trigger from a ctrlKey wheel event (see below) exactly
+      // as they would from an actual Ctrl+scroll.
       event.preventDefault();
+
+      // Browsers report a trackpad pinch gesture as a wheel event with
+      // ctrlKey set to true (a deliberate synthesized signal, the same one
+      // browsers use internally to distinguish "the user is pinch-zooming"
+      // from "the user is two-finger-scrolling") -- so this one check
+      // covers both real Ctrl+wheel and a natural trackpad pinch, with no
+      // separate gesture-detection logic of its own. Camera Phase 1's own
+      // handleZoomStep is reused as-is: same clamp, same range, no new
+      // mutation path for viewportScaleRef.
+      if (event.ctrlKey) {
+        handleZoomStep(-event.deltaY * CAMERA_ZOOM_WHEEL_SENSITIVITY);
+        return;
+      }
+
       addGalleryVelocity(event.deltaY + event.deltaX);
     };
 
@@ -1600,6 +1639,17 @@ function App() {
               return (
                 <button
                   key={item.id}
+                  ref={(node) => {
+                    // Registry ownership fix: register/deregister with the
+                    // persistent wrapperRegistryRef Map directly on
+                    // mount/unmount -- see that ref's own comment. This is
+                    // the only place anything writes to that Map.
+                    if (node) {
+                      wrapperRegistryRef.current.set(item.id, node);
+                    } else {
+                      wrapperRegistryRef.current.delete(item.id);
+                    }
+                  }}
                   type="button"
                   data-image-id={item.id}
                   data-batch-index={item.batchIndex}

@@ -733,6 +733,136 @@ body {
   will-change: transform;
 }
 
+/* HoverOverlay -- Phase 1 (presentation only). A translucent metadata layer
+   over exactly one hovered image, "tracing paper laid over one photograph."
+   Visibility is driven entirely by :hover on .gallery-image-wrapper below --
+   no JS state, no event handlers -- so it is a pure CSS opacity fade,
+   decoupled from the Camera/Gallery Renderer's own animation-frame loop.
+   pointer-events: none keeps it fully transparent to clicks and to the
+   wrapper's own hover detection, so existing click-to-navigate and focus
+   behavior are completely unaffected, and it never intercepts the hover
+   that triggers its own visibility. It is an absolutely-positioned child of
+   an already-absolutely-positioned wrapper, so it participates in no flow,
+   has no size of its own outside inset: 0, and cannot affect that wrapper's
+   box, Masonry's per-item layout, or any neighboring image. container-type
+   is declared on this element's own root -- not on .gallery-image-wrapper
+   itself -- so it introduces no containment change to the wrapper or to
+   Masonry; it only gives this component's own children (the number and
+   theme list) a query context sized to the hovered image's actual rendered
+   box, which is how the responsive scaling below works without any JS
+   measurement of image dimensions. */
+/* Design refinement pass: warm stone paper rather than the page's own
+   near-white (#faf9f5) -- the original color was close enough to the page
+   background that the hovered image read as merging into the page instead
+   of as an object the overlay sits on top of. This is measurably darker
+   and warmer across all three channels (not a neutral gray -- R > G > B),
+   still translucent enough for the photograph to read through it. The
+   inset box-shadow is a barely-perceptible 1px tonal hairline, not a
+   border or drop shadow, meant only to keep the hovered image's silhouette
+   legible against the page while the overlay is up. Position, inset,
+   container-type, the :hover trigger, and the opacity transition itself
+   are all unchanged from Phase 1. justify-content is flex-end so that
+   .hover-overlay__themes (this container's only remaining flex-flow
+   child now that the archive number is independently centered via its
+   own absolute positioning below) stays flush at the bottom edge --
+   geometrically identical to where it already sat under the previous
+   two-child space-between layout, so themes are visually unaffected. */
+.hover-overlay {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+  container-name: hover-overlay;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  opacity: 0;
+  pointer-events: none;
+  background: rgba(231, 223, 208, 0.75);
+  box-shadow: inset 0 0 0 1px rgba(26, 26, 26, 0.04);
+  transition: opacity 180ms ease-out;
+  will-change: opacity;
+}
+
+.gallery-image-wrapper:hover .hover-overlay {
+  opacity: 1;
+}
+
+/* Archive number: finalized to a single positioning rule at every image
+   size, no thumbnail/standard distinction, no size-based breakpoints for
+   position. Absolutely positioned to fill the overlay independently of
+   the themes flex flow above, then centered on both axes within that box
+   via flex centering -- one rule, always centered, regardless of whether
+   themes happens to be visible below it. Font-size is the only property
+   that responds to image size, via clamp() + cqmin against the same
+   container this overlay already establishes (container-type: size on
+   .hover-overlay, above) -- continuous proportional scaling rather than
+   a breakpoint, per this pass's explicit direction. The small fixed
+   padding is only a floor so the number never touches the image edges at
+   the very smallest sizes; it no longer anchors to a corner. */
+.hover-overlay__number {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  font-family: "Courier New", Courier, monospace;
+  font-weight: 300;
+  font-size: clamp(0.65rem, 7cqmin, 1.15rem);
+  line-height: 1;
+  letter-spacing: 0.03em;
+  text-align: center;
+  color: #1a1a1a;
+}
+
+/* Themes: bottom left, strictly left-aligned (every <li> starts at the same
+   x-position -- margin/padding zeroed below so nothing can nudge a line
+   off that edge), stacked with generous line spacing. Fixed size, not
+   clamp()-scaled, per the same "don't shrink type to fit" refinement as
+   the archive number. Responsiveness is now handled by which content shows
+   (see the container queries below), not by shrinking this text -- hidden
+   by default (small / very small thumbnails: archive number only), then
+   progressively revealed as the hovered image's own rendered box grows. */
+.hover-overlay__themes {
+  align-self: flex-start;
+  margin: 0;
+  padding: 1.25rem;
+  list-style: none;
+  font-family: "Courier New", Courier, monospace;
+  font-weight: 300;
+  font-size: 0.78rem;
+  line-height: 2.2;
+  letter-spacing: 0.02em;
+  text-align: left;
+  color: #1a1a1a;
+  display: none;
+}
+
+.hover-overlay__themes li {
+  margin: 0;
+  padding: 0;
+}
+
+/* Medium: archive number + first two themes. The rest stay in the DOM
+   (HoverOverlay.jsx is unchanged -- still renders every theme) and are
+   simply not displayed; no "+N" indicator or ellipsis is introduced. */
+@container hover-overlay (min-width: 220px) and (min-height: 220px) {
+  .hover-overlay__themes {
+    display: block;
+  }
+
+  .hover-overlay__themes li:nth-child(n + 3) {
+    display: none;
+  }
+}
+
+/* Large: archive number + all themes. */
+@container hover-overlay (min-width: 340px) and (min-height: 340px) {
+  .hover-overlay__themes li {
+    display: block;
+  }
+}
+
 .gallery-overlay {
   position: fixed;
   inset: 0;

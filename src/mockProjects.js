@@ -43,4 +43,45 @@ export const PROJECTS = [
     dates: "2025",
     sortOrder: 3,
   },
+  // Added in the Prototype Metadata Population commit (Commit 3.5),
+  // alongside the matching Archive Items in mockArchiveItems.js -- needed
+  // so those items' `project` links actually resolve to a real Project
+  // page, rather than the "not found" state getProjectBySlug returns for
+  // an unknown slug. Same shape as the three above.
+  {
+    title: "Harbor View Commons",
+    slug: "harbor-view-commons",
+    description:
+      "A civic waterfront commons reclaiming a stretch of working harbor for public gathering, framed by a continuous covered promenade.",
+    location: "Baltimore, Maryland, USA",
+    dates: "2022 – 2025",
+    sortOrder: 4,
+  },
+  {
+    title: "Elm Grove Campus",
+    slug: "elm-grove-campus",
+    description:
+      "A small liberal-arts campus expansion organized around a sequence of shaded courtyards linking existing and new academic buildings.",
+    location: "Ann Arbor, Michigan, USA",
+    dates: "2022 – 2025",
+    sortOrder: 5,
+  },
+  {
+    title: "Kestrel House",
+    slug: "kestrel-house",
+    description:
+      "A ground-up-feeling renovation of a derelict rowhouse, keeping its brick shell and timber structure while reorganizing the interior around a new stair.",
+    location: "Philadelphia, Pennsylvania, USA",
+    dates: "2023 – 2026",
+    sortOrder: 6,
+  },
+  {
+    title: "Meridian Civic Hall",
+    slug: "meridian-civic-hall",
+    description:
+      "A competition-winning civic hall reasserting a small city's public realm, wrapping a double-height hall in a load-bearing concrete colonnade.",
+    location: "Richmond, Virginia, USA",
+    dates: "2022 – 2026",
+    sortOrder: 7,
+  },
 ];

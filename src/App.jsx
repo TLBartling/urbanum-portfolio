@@ -5,9 +5,9 @@ import Header from "./Header";
 import HoverOverlay from "./HoverOverlay";
 import { navigate } from "./navigation";
 import { findArchiveItemBySrc, ARCHIVE_ITEMS } from "./mockArchiveItems";
-// Metadata Query Engine wiring (Search): the one place Gallery reaches into
-// queryArchive. Gallery itself performs no matching of its own -- see
-// handleSearchSubmit in App() below, the only call site.
+// Metadata Query Engine wiring (Search + Filter): the one place Gallery
+// reaches into queryArchive. Gallery itself performs no matching of its
+// own -- see applyMetadataQuery in App() below, the only call site.
 import { queryArchive } from "./metadataQueryEngine";
 
 export const allImages = [
@@ -238,13 +238,13 @@ function buildImagesByOrientation(imageSrcs) {
 // pickImage() below to refill an exhausted bag.
 const imagesByOrientation = buildImagesByOrientation(allImages);
 
-// Search Query Wiring: pickImage (below) no longer closes over
+// Metadata Query Wiring: pickImage (below) no longer closes over
 // allImages/imagesByOrientation directly -- it reads whichever "image pool"
 // its caller hands it, so the exact same picker/bag mechanism can draw from
-// either the full library (DEFAULT_IMAGE_POOL, used whenever no search is
+// either the full library (DEFAULT_IMAGE_POOL, used whenever no query is
 // active -- identical in content to this file's pre-Search behavior) or the
 // Metadata Query Engine's matching Archive Items' own images (built fresh
-// via buildImagePool whenever a search commits -- see handleSearchSubmit in
+// whenever Search and/or Filter change -- see applyMetadataQuery in
 // App()). This is the only thing that changes: COLUMN_PATTERNS,
 // createGalleryBatch's tile-filling loop, and every other piece of
 // procedural generation are untouched -- they still just ask pickImage for
@@ -1010,15 +1010,17 @@ function App() {
   // comment in the JSX and in styles.css).
   const openingGeometryRef = useRef(getViewportOpeningGeometry());
   const columnStateRef = useRef(null);
-  // Search Query Wiring: which image pool the procedural generator
+  // Metadata Query Wiring: which image pool the procedural generator
   // (buildGalleryItems/createGalleryBatch/pickImage, all untouched) should
   // draw from -- DEFAULT_IMAGE_POOL (the full library, byte-identical to
-  // this file's pre-Search behavior) until a search commits, at which
-  // point handleSearchSubmit below points this at the Metadata Query
-  // Engine's matching Archive Items' own images instead. Read imperatively
-  // by regenerateGallery and extendGalleryIfNeeded, the same way
-  // columnStateRef/openingGeometryRef already are, so neither needs this
-  // value threaded through as a dependency.
+  // this file's pre-Search behavior) until Search and/or Filter produce a
+  // non-empty match, at which point applyMetadataQuery below points this
+  // at the Metadata Query Engine's matching Archive Items' own images
+  // instead. Read imperatively by regenerateGallery and
+  // extendGalleryIfNeeded, the same way columnStateRef/openingGeometryRef
+  // already are, so neither needs this value threaded through as a
+  // dependency -- this is also what keeps infinite scroll drawing from
+  // whatever pool is currently active, combined query or not.
   const activeImagePoolRef = useRef(DEFAULT_IMAGE_POOL);
   // Hover Overlay metadata feature: a plain counter, bumped once per
   // regenerateGallery call below, and nowhere else. Not Archive generation
@@ -1047,23 +1049,29 @@ function App() {
   const [focusedImage, setFocusedImage] = useState(null);
   const [isIndexDrawerOpen, setIsIndexDrawerOpen] = useState(false);
   const [indexDrawerHeight, setIndexDrawerHeight] = useState(0);
-  // Filter Query State (state management only -- this commit deliberately
-  // stops here): the single source of truth for Filter's half of the
-  // future combined Metadata Query, shaped to match queryArchive's query
+  // Filter Query State: the single source of truth for Filter's half of
+  // the combined Metadata Query, shaped to match queryArchive's query
   // object exactly (theme/tag/project/year, every field an array). Header
-  // owns the Filter UI and already reports every selection change here via
-  // onFilterChange, unchanged from before -- the only thing new is that
-  // Gallery now actually keeps what it's handed instead of the prop going
-  // unused. Nothing reads this yet: no queryArchive call, no
-  // regenerateGallery, no change to activeImagePoolRef. A later commit is
-  // what combines this with Search's own committed query and actually
-  // drives the gallery from both together.
+  // owns the Filter UI and reports every selection change here via
+  // onFilterChange (now handleFilterChange, below, which is what actually
+  // combines this with committedSearch and runs the query -- see
+  // applyMetadataQuery).
   const [activeFilterQuery, setActiveFilterQuery] = useState({
     theme: [],
     tag: [],
     project: [],
     year: [],
   });
+  // Metadata Query Wiring: Gallery's own copy of the committed search
+  // string. Header still owns the Search UI and its own internal
+  // committedSearch (what actually renders the chip) -- this is purely so
+  // a Filter-only change (handleFilterChange below) can rebuild the full
+  // {search, theme, tag, project, year} query without Search having to
+  // change at the same moment. null means "no active search," exactly the
+  // value queryArchive's own matchesSearch already treats as "no
+  // constraint" (see metadataQueryEngine.js) -- so this needs no special
+  // casing anywhere below.
+  const [committedSearch, setCommittedSearch] = useState(null);
   // Drives a brief opacity dip on the gallery track during a logo-triggered
   // regeneration (see handleLogoClick below and the matching .is-regenerating
   // rule in styles.css) -- mount and resize are untouched and stay instant.
@@ -1344,18 +1352,20 @@ function App() {
     }
   }, [handleExitFocus, regenerateGallery]);
 
-  // Search Query Wiring: the one place Gallery hands a committed query off
-  // to the Metadata Query Engine. Header owns the Search UI itself (typing,
-  // the Enter-to-commit behavior, the collapsed chip) and knows nothing
-  // about ARCHIVE_ITEMS, queryArchive, or gallery regeneration -- it only
-  // ever calls this with the plain query string once the visitor presses
-  // Enter. This is also the one seam that changes, and the only one, when
-  // ARCHIVE_ITEMS is later replaced by a real Sanity query: everything
-  // below keeps working unchanged as long as whatever replaces it is still
-  // an array of Archive Items.
-  const handleSearchSubmit = useCallback(
-    (rawQuery) => {
-      const matched = queryArchive({ search: rawQuery }, ARCHIVE_ITEMS);
+  // Metadata Query Wiring (final commit): the one place a {search, theme,
+  // tag, project, year} query object actually gets built and handed to
+  // queryArchive -- handleSearchSubmit/handleSearchClear and
+  // handleFilterChange (all below) each build their own version of that
+  // object (combining whichever of committedSearch/activeFilterQuery just
+  // changed with whatever the other one currently is) and funnel through
+  // this same function, so there is exactly one query-running/regeneration
+  // path for Search and Filter both, not two separate ones. Gallery still
+  // knows nothing about ARCHIVE_ITEMS beyond this: it never matches
+  // anything itself, and this is also the one seam that changes, and the
+  // only one, when ARCHIVE_ITEMS is later replaced by a real Sanity query.
+  const applyMetadataQuery = useCallback(
+    (query) => {
+      const matched = queryArchive(query, ARCHIVE_ITEMS);
 
       if (matched.length === 0) {
         // No results: there is no procedural batch a genuinely empty image
@@ -1377,15 +1387,44 @@ function App() {
     [regenerateGallery],
   );
 
-  // Clicking the chip's x (in Header): back to exactly the same "no active
-  // query" state the gallery already starts in on mount -- same default
-  // pool, same regenerateGallery call, nothing bespoke to a "cleared"
-  // state.
+  // Header owns the Search UI itself (typing, the Enter-to-commit
+  // behavior, the collapsed chip) and knows nothing about ARCHIVE_ITEMS,
+  // queryArchive, or gallery regeneration -- it only ever calls this with
+  // the plain query string once the visitor presses Enter. rawQuery is
+  // used directly (not the committedSearch state, which hasn't re-rendered
+  // yet) so this always runs against the value that was just typed, paired
+  // with whatever Filter selection is currently active.
+  const handleSearchSubmit = useCallback(
+    (rawQuery) => {
+      setCommittedSearch(rawQuery);
+      applyMetadataQuery({ search: rawQuery, ...activeFilterQuery });
+    },
+    [activeFilterQuery, applyMetadataQuery],
+  );
+
+  // Clicking the chip's x (in Header): search: null is exactly the value
+  // matchesSearch already treats as "no constraint" (see
+  // metadataQueryEngine.js), so this is just the combined query with
+  // search cleared -- whatever Filter currently has selected is preserved
+  // and re-applied, not reset to the full library.
   const handleSearchClear = useCallback(() => {
-    setHasNoSearchResults(false);
-    activeImagePoolRef.current = DEFAULT_IMAGE_POOL;
-    regenerateGallery();
-  }, [regenerateGallery]);
+    setCommittedSearch(null);
+    applyMetadataQuery({ search: null, ...activeFilterQuery });
+  }, [activeFilterQuery, applyMetadataQuery]);
+
+  // Header owns the Filter UI itself (Theme/Project/Year selection,
+  // toggle-add/remove) and reports every change here with the field it
+  // just changed already applied (nextFilterQuery) -- so, symmetrically
+  // with handleSearchSubmit above, this combines that fresh value with
+  // whatever Search currently has committed, rather than reading
+  // activeFilterQuery's own not-yet-updated state.
+  const handleFilterChange = useCallback(
+    (nextFilterQuery) => {
+      setActiveFilterQuery(nextFilterQuery);
+      applyMetadataQuery({ search: committedSearch, ...nextFilterQuery });
+    },
+    [committedSearch, applyMetadataQuery],
+  );
 
   const handleImageClick = useCallback(
     (imageId) => {
@@ -1864,7 +1903,7 @@ function App() {
     <div className="app-shell">
       <Header
         onFilterOpenChange={setIsIndexDrawerOpen}
-        onFilterChange={setActiveFilterQuery}
+        onFilterChange={handleFilterChange}
         onDrawerHeightChange={setIndexDrawerHeight}
         onLogoClick={handleLogoClick}
         onSearchSubmit={handleSearchSubmit}
@@ -1907,14 +1946,15 @@ function App() {
               style={{ width: `${getGalleryTrackWidth(galleryItems)}px` }}
             >
               {hasNoSearchResults ? (
-                // Search Query Wiring: the only UI this commit adds beyond
-                // the existing Search field/chip. Deliberately plain --
-                // no redesign, no animation -- just a placeholder covering
-                // the gallery area while a committed search matches
-                // nothing. galleryItems itself is left untouched (see
-                // handleSearchSubmit), so clearing the search (Header's
-                // chip x) or a fresh non-empty search both just resume
-                // rendering renderedGalleryItems below normally.
+                // Metadata Query Wiring: the only UI this commit adds
+                // beyond the existing Search field/chip and Filter drawer.
+                // Deliberately plain -- no redesign, no animation -- just a
+                // placeholder covering the gallery area while the combined
+                // Search+Filter query matches nothing. galleryItems itself
+                // is left untouched (see applyMetadataQuery), so clearing
+                // Search, changing Filter, or a fresh query that matches
+                // again all just resume rendering renderedGalleryItems
+                // below normally.
                 <p
                   className="archive-empty-state"
                   style={{

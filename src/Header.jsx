@@ -81,6 +81,14 @@ export default function Header({
   onFilterChange,
   onDrawerHeightChange,
   onLogoClick,
+  // Search Query Wiring: Header still owns the Search UI entirely (typing,
+  // when to open/close the input line, the collapsed chip below) and knows
+  // nothing about ARCHIVE_ITEMS/queryArchive/gallery regeneration -- it
+  // only ever calls these two with the plain committed query string (submit)
+  // or with nothing at all (clear). App.jsx is the only thing that actually
+  // knows what those mean.
+  onSearchSubmit,
+  onSearchClear,
 }) {
   // Computed first (rather than down where it originally lived, alongside
   // isChildPageScrolled) because the initial state below now depends on it:
@@ -180,6 +188,25 @@ export default function Header({
     () => pendingIntent?.type === "search"
   );
   const searchInputRef = useRef(null);
+  // Search Query Wiring: null until the homepage's own Enter-to-commit
+  // (see handleSearchKeyDown) sets it -- the one flag that decides whether
+  // the input line or the compact chip renders below. Deliberately starts
+  // null even on a Search return-trip arrival (pendingIntent.type ===
+  // "search"): that arrival restores the *typed* text into the still-open
+  // field, same as before this commit, not an already-committed query --
+  // committing on the homepage is still a fresh Enter press, same as
+  // typing it fresh. Purely local UI state; the actual query string this
+  // holds is never read by anything outside this component -- App.jsx
+  // only ever receives it once, as onSearchSubmit's argument.
+  const [committedSearch, setCommittedSearch] = useState(null);
+  // Mirrors Filter's own removeArmedValue (see its comment above), just
+  // scoped to a single boolean since Search only ever has one committed
+  // value at a time rather than a multi-select list. Same purpose: only
+  // ever set true by a deliberate mouseenter/focus, so the chip's x grows
+  // in the identical way Filter's own selected-option x does -- this is a
+  // pure visual reuse of that same reveal mechanism, not shared state.
+  const [isSearchChipRemoveArmed, setIsSearchChipRemoveArmed] =
+    useState(false);
 
   // Derived read-only flags over drawerSection.
   const isFilterOpen = drawerSection === "filter";
@@ -331,14 +358,43 @@ export default function Header({
   // archive is the homepage -- so Enter here doesn't try to search the
   // child page itself. It quietly returns to the homepage carrying the
   // typed text, which arrives already restored into this same field (see
-  // the searchValue/isSearchOpen initializers above). No search actually
-  // runs yet on the homepage either -- there's no gallery search behavior
-  // to hand this off to today -- so this only ever adapts the navigation
-  // flow, exactly as scoped. On the homepage itself this is a no-op, same
-  // as before this change.
+  // the searchValue/isSearchOpen initializers above) -- unchanged by this
+  // commit, still not itself committed as a search (see committedSearch's
+  // own comment above); wiring that return-trip straight into a committed
+  // search on arrival is a separate concern this commit doesn't touch.
+  //
+  // Search Query Wiring: on the homepage itself, Enter now does something
+  // for the first time -- a non-empty typed value commits (closing the
+  // input line and swapping in the chip below) and is handed to
+  // onSearchSubmit, which is the only thing that knows how to turn it into
+  // gallery results. An empty field is a no-op either way, same as before.
   const handleSearchKeyDown = (event) => {
-    if (event.key !== "Enter" || !isChildPage) return;
-    beginGentleReturnHome({ type: "search", query: searchValue });
+    if (event.key !== "Enter") return;
+
+    if (isChildPage) {
+      beginGentleReturnHome({ type: "search", query: searchValue });
+      return;
+    }
+
+    const query = searchValue.trim();
+    if (!query) return;
+
+    setCommittedSearch(query);
+    setIsSearchOpen(false);
+    searchInputRef.current?.blur();
+    onSearchSubmit?.(query);
+  };
+
+  // Clicking the chip (its bracketed text or its x -- one click target,
+  // same as Filter's own selected options): clears the committed query,
+  // collapses the chip back into the plain closed "Search" state (empty
+  // field, same as a fresh visit), and hands off to onSearchClear so
+  // Gallery can return to the full Archive dataset.
+  const handleSearchClear = () => {
+    setCommittedSearch(null);
+    setSearchValue("");
+    setIsSearchChipRemoveArmed(false);
+    onSearchClear?.();
   };
 
   // Menu is the one section that still fully takes over: opening it closes
@@ -523,38 +579,88 @@ export default function Header({
             <div className="nav-divider"></div>
 
             <div className="search-control">
-              <button
-                type="button"
-                className="text-control text-control--muted"
-                aria-expanded={isSearchOpen}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={handleSearchToggle}
-              >
-                Search
-              </button>
-              <input
-                ref={searchInputRef}
-                type="text"
-                aria-label="Search"
-                className={`search-control__input${
-                  isSearchOpen ? " is-open" : ""
-                }`}
-                autoComplete="off"
-                value={searchValue}
-                onChange={(event) => setSearchValue(event.target.value)}
-                onKeyDown={handleSearchKeyDown}
-                onFocus={() => {
-                  setIsSearchOpen(true);
-                  setDrawerSection((current) =>
-                    current === "menu" ? null : current
-                  );
-                }}
-                onBlur={() => {
-                  if (!searchValue) {
-                    setIsSearchOpen(false);
-                  }
-                }}
-              />
+              {committedSearch ? (
+                // Search Query Wiring: the collapsed committed state. Pure
+                // visual reuse of Filter's own selected-option styling
+                // (index-drawer__option/-selected/-bracket/-remove --
+                // bracketed text, x hidden until a deliberate
+                // hover/focus) -- not shared state or a shared component,
+                // just the identical class names/markup shape so the two
+                // read as one consistent design language. One click
+                // target for the whole chip, same as Filter's own
+                // selected options (see handleOptionToggle above).
+                <button
+                  type="button"
+                  className={`index-drawer__option index-drawer__option--selected${
+                    isSearchChipRemoveArmed
+                      ? " index-drawer__option--remove-armed"
+                      : ""
+                  }`}
+                  onMouseEnter={() => setIsSearchChipRemoveArmed(true)}
+                  onMouseLeave={() => setIsSearchChipRemoveArmed(false)}
+                  onFocus={() => setIsSearchChipRemoveArmed(true)}
+                  onBlur={() => setIsSearchChipRemoveArmed(false)}
+                  onClick={handleSearchClear}
+                  aria-label={`Clear search "${committedSearch}"`}
+                >
+                  <span
+                    className="index-drawer__option-bracket"
+                    aria-hidden="true"
+                  >
+                    [
+                  </span>
+                  <span className="index-drawer__option-text">
+                    {committedSearch}
+                  </span>
+                  <span
+                    className="index-drawer__option-remove"
+                    aria-hidden="true"
+                  >
+                    ×
+                  </span>
+                  <span
+                    className="index-drawer__option-bracket"
+                    aria-hidden="true"
+                  >
+                    ]
+                  </span>
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="text-control text-control--muted"
+                    aria-expanded={isSearchOpen}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={handleSearchToggle}
+                  >
+                    Search
+                  </button>
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    aria-label="Search"
+                    className={`search-control__input${
+                      isSearchOpen ? " is-open" : ""
+                    }`}
+                    autoComplete="off"
+                    value={searchValue}
+                    onChange={(event) => setSearchValue(event.target.value)}
+                    onKeyDown={handleSearchKeyDown}
+                    onFocus={() => {
+                      setIsSearchOpen(true);
+                      setDrawerSection((current) =>
+                        current === "menu" ? null : current
+                      );
+                    }}
+                    onBlur={() => {
+                      if (!searchValue) {
+                        setIsSearchOpen(false);
+                      }
+                    }}
+                  />
+                </>
+              )}
             </div>
           </div>
           <button

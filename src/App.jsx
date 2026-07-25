@@ -4,7 +4,11 @@ import imageMetadata from "./image-metadata.json";
 import Header from "./Header";
 import HoverOverlay from "./HoverOverlay";
 import { navigate } from "./navigation";
-import { findArchiveItemBySrc } from "./mockArchiveItems";
+import { findArchiveItemBySrc, ARCHIVE_ITEMS } from "./mockArchiveItems";
+// Metadata Query Engine wiring (Search): the one place Gallery reaches into
+// queryArchive. Gallery itself performs no matching of its own -- see
+// handleSearchSubmit in App() below, the only call site.
+import { queryArchive } from "./metadataQueryEngine";
 
 export const allImages = [
   "/img/pexels-adrien-olichon-1257089-3137038.jpg",
@@ -217,13 +221,38 @@ function getImageOrientation(src) {
   return "square";
 }
 
+// Groups an arbitrary list of image srcs by orientation. Factored out of
+// what used to be a one-off inline forEach so Search Query Wiring (below)
+// can build the identical shape for whatever subset of images a committed
+// search currently matches, without duplicating this grouping logic.
+function buildImagesByOrientation(imageSrcs) {
+  const grouped = { landscape: [], portrait: [], square: [] };
+  imageSrcs.forEach((src) => {
+    grouped[getImageOrientation(src)].push(src);
+  });
+  return grouped;
+}
+
 // Static grouping of every image by orientation -- computed once, at module
 // load, since allImages/getImageOrientation never change. Used by
 // pickImage() below to refill an exhausted bag.
-const imagesByOrientation = { landscape: [], portrait: [], square: [] };
-allImages.forEach((src) => {
-  imagesByOrientation[getImageOrientation(src)].push(src);
-});
+const imagesByOrientation = buildImagesByOrientation(allImages);
+
+// Search Query Wiring: pickImage (below) no longer closes over
+// allImages/imagesByOrientation directly -- it reads whichever "image pool"
+// its caller hands it, so the exact same picker/bag mechanism can draw from
+// either the full library (DEFAULT_IMAGE_POOL, used whenever no search is
+// active -- identical in content to this file's pre-Search behavior) or the
+// Metadata Query Engine's matching Archive Items' own images (built fresh
+// via buildImagePool whenever a search commits -- see handleSearchSubmit in
+// App()). This is the only thing that changes: COLUMN_PATTERNS,
+// createGalleryBatch's tile-filling loop, and every other piece of
+// procedural generation are untouched -- they still just ask pickImage for
+// "the next image of this orientation" the same way they always have.
+function buildImagePool(imageSrcs) {
+  return { all: imageSrcs, byOrientation: buildImagesByOrientation(imageSrcs) };
+}
+const DEFAULT_IMAGE_POOL = { all: allImages, byOrientation: imagesByOrientation };
 
 // A self-refilling, per-orientation shuffled "bag" of real photos so
 // consecutive draws of the same orientation don't repeat until the bag is
@@ -248,13 +277,13 @@ function createImagePickerState() {
 // nextPickerState }. Draws from the end of the current bag for that
 // orientation (equivalent to the old bags[orientation].pop()), refilling
 // with a freshly shuffled bag first if the current one is empty.
-function pickImage(pickerState, orientation) {
+function pickImage(pickerState, orientation, imagePool = DEFAULT_IMAGE_POOL) {
   let bag = pickerState.bags[orientation];
 
   if (bag.length === 0) {
-    const source = imagesByOrientation[orientation].length
-      ? imagesByOrientation[orientation]
-      : allImages;
+    const source = imagePool.byOrientation[orientation].length
+      ? imagePool.byOrientation[orientation]
+      : imagePool.all;
     bag = shuffleArray(source);
   }
 
@@ -380,7 +409,12 @@ function pickPatternIndex(lastPatternIndex) {
 // supplied by the caller. This function never asks why it's that size and
 // never touches Application Layout's geometry function; that's the whole
 // point of the ownership boundary.
-function createGalleryBatch(batchIndex, columnState, worldCanvasHeight) {
+function createGalleryBatch(
+  batchIndex,
+  columnState,
+  worldCanvasHeight,
+  imagePool = DEFAULT_IMAGE_POOL,
+) {
   const seamGapPx = (SEAM_GAP_PCT / 100) * worldCanvasHeight;
   const viewportWidth =
     typeof window === "undefined" ? 1200 : window.innerWidth;
@@ -417,7 +451,11 @@ function createGalleryBatch(batchIndex, columnState, worldCanvasHeight) {
     moduleCount += 1;
 
     pattern.tiles.forEach((tile) => {
-      const { src, nextPickerState } = pickImage(pickerState, tile.orientation);
+      const { src, nextPickerState } = pickImage(
+        pickerState,
+        tile.orientation,
+        imagePool,
+      );
       pickerState = nextPickerState;
       const width = (tile.w / 100) * columnWidthPx;
       const height = (tile.h / 100) * worldCanvasHeight;
@@ -508,6 +546,7 @@ function buildGalleryItems(
   columnState,
   batchCount = initialGalleryBatches,
   worldCanvasHeight,
+  imagePool = DEFAULT_IMAGE_POOL,
 ) {
   let state = columnState;
   const allItems = [];
@@ -517,6 +556,7 @@ function buildGalleryItems(
       batchIndex,
       state,
       worldCanvasHeight,
+      imagePool,
     );
     allItems.push(...items);
     state = nextColumnState;
@@ -970,6 +1010,16 @@ function App() {
   // comment in the JSX and in styles.css).
   const openingGeometryRef = useRef(getViewportOpeningGeometry());
   const columnStateRef = useRef(null);
+  // Search Query Wiring: which image pool the procedural generator
+  // (buildGalleryItems/createGalleryBatch/pickImage, all untouched) should
+  // draw from -- DEFAULT_IMAGE_POOL (the full library, byte-identical to
+  // this file's pre-Search behavior) until a search commits, at which
+  // point handleSearchSubmit below points this at the Metadata Query
+  // Engine's matching Archive Items' own images instead. Read imperatively
+  // by regenerateGallery and extendGalleryIfNeeded, the same way
+  // columnStateRef/openingGeometryRef already are, so neither needs this
+  // value threaded through as a dependency.
+  const activeImagePoolRef = useRef(DEFAULT_IMAGE_POOL);
   // Hover Overlay metadata feature: a plain counter, bumped once per
   // regenerateGallery call below, and nowhere else. Not Archive generation
   // itself (buildGalleryItems/createGalleryBatch/createColumnState are
@@ -1002,23 +1052,43 @@ function App() {
   // rule in styles.css) -- mount and resize are untouched and stay instant.
   const [isGalleryTransitioning, setIsGalleryTransitioning] = useState(false);
   // Relationship Highlight Pipeline (Commit 3): Gallery (this component) is
-  // the single owner of relatedArchiveNumbers, the shared state later
-  // commits will read to drive highlighting -- nothing renders from it yet.
-  // hoveredGalleryItemId just tracks which .gallery-image-wrapper is
-  // currently under the pointer, set by plain onMouseEnter/onMouseLeave
-  // below; relatedArchiveNumbers is populated by HoverOverlay's own
-  // onRelatedArchiveNumbersChange callback (see the call site below) and
-  // resets to [] the moment hover ends. Neither the Relationship Engine nor
-  // HoverOverlay hold this state -- this is purely where it's lifted to.
+  // the single owner of relatedArchiveNumbers, the shared state that drives
+  // highlighting below. hoveredGalleryItemId tracks which
+  // .gallery-image-wrapper is currently under the pointer, set by plain
+  // onMouseEnter/onMouseLeave below; relatedArchiveNumbers is populated by
+  // HoverOverlay's own onRelatedArchiveNumbersChange callback (see the call
+  // site below), fired only by that component's per-theme/per-tag hover
+  // handlers, and resets to [] the moment a theme/tag hover ends. Neither
+  // the Relationship Engine nor HoverOverlay hold this state -- this is
+  // purely where it's lifted to.
+  //
+  // State-management correction (bug fix, post-metadata-hover-rename):
+  // hoveredGalleryItemId no longer has any bearing on isDimmed below --
+  // Relationship Mode is driven purely by relatedArchiveNumbers, which is
+  // only ever non-empty while a theme/tag is actively hovered. It's kept
+  // here, still set on plain image hover, because nothing about image-level
+  // hover tracking was broken; it simply isn't a dimming input anymore. The
+  // overlay's own visibility remains pure CSS (:hover in styles.css) and
+  // was never driven by this state.
   const [hoveredGalleryItemId, setHoveredGalleryItemId] = useState(null);
   const [relatedArchiveNumbers, setRelatedArchiveNumbers] = useState([]);
+  // Search Query Wiring: true only while a committed search matches zero
+  // Archive Items. Doesn't hold the query string itself or the matched
+  // items -- Header owns the query string (for the chip's own label) and
+  // nothing downstream of this needs the matched items again once
+  // activeImagePoolRef has already been built from them. Purely what
+  // decides whether the gallery area renders the placeholder message
+  // instead of the procedurally generated track (see the render below).
+  const [hasNoSearchResults, setHasNoSearchResults] = useState(false);
 
   // Relationship Highlight Pipeline (Commit 3): the only two handlers this
   // pipeline needs. They just record which item is hovered -- no matching,
-  // no rendering decisions, no CSS. setRelatedArchiveNumbers itself is
-  // passed straight through to HoverOverlay as onRelatedArchiveNumbersChange
-  // below; it's already a stable setState function, so no extra useCallback
-  // wrapper is needed for it.
+  // no rendering decisions, no CSS, and (as of the state-management
+  // correction above) no effect on Relationship Mode/dimming either.
+  // setRelatedArchiveNumbers itself is passed straight through to
+  // HoverOverlay as onRelatedArchiveNumbersChange below; it's already a
+  // stable setState function, so no extra useCallback wrapper is needed for
+  // it.
   const handleGalleryImageHoverStart = useCallback((itemId) => {
     setHoveredGalleryItemId(itemId);
   }, []);
@@ -1049,6 +1119,7 @@ function App() {
       createColumnState(),
       initialGalleryBatches,
       nextOpeningGeometry.height,
+      activeImagePoolRef.current,
     );
     columnStateRef.current = nextColumnState;
     setGalleryItems(items);
@@ -1255,6 +1326,49 @@ function App() {
       beginRegeneration();
     }
   }, [handleExitFocus, regenerateGallery]);
+
+  // Search Query Wiring: the one place Gallery hands a committed query off
+  // to the Metadata Query Engine. Header owns the Search UI itself (typing,
+  // the Enter-to-commit behavior, the collapsed chip) and knows nothing
+  // about ARCHIVE_ITEMS, queryArchive, or gallery regeneration -- it only
+  // ever calls this with the plain query string once the visitor presses
+  // Enter. This is also the one seam that changes, and the only one, when
+  // ARCHIVE_ITEMS is later replaced by a real Sanity query: everything
+  // below keeps working unchanged as long as whatever replaces it is still
+  // an array of Archive Items.
+  const handleSearchSubmit = useCallback(
+    (rawQuery) => {
+      const matched = queryArchive({ search: rawQuery }, ARCHIVE_ITEMS);
+
+      if (matched.length === 0) {
+        // No results: there is no procedural batch a genuinely empty image
+        // pool could safely build (see pickImage's own bag-refill
+        // fallback), so this path deliberately never reaches
+        // buildGalleryItems/regenerateGallery at all. Whatever gallery is
+        // already on screen is left exactly as it is, untouched; the
+        // placeholder rendered below covers the gallery area in its place.
+        setHasNoSearchResults(true);
+        return;
+      }
+
+      setHasNoSearchResults(false);
+      activeImagePoolRef.current = buildImagePool(
+        matched.map((item) => item.image),
+      );
+      regenerateGallery();
+    },
+    [regenerateGallery],
+  );
+
+  // Clicking the chip's x (in Header): back to exactly the same "no active
+  // query" state the gallery already starts in on mount -- same default
+  // pool, same regenerateGallery call, nothing bespoke to a "cleared"
+  // state.
+  const handleSearchClear = useCallback(() => {
+    setHasNoSearchResults(false);
+    activeImagePoolRef.current = DEFAULT_IMAGE_POOL;
+    regenerateGallery();
+  }, [regenerateGallery]);
 
   const handleImageClick = useCallback(
     (imageId) => {
@@ -1601,6 +1715,7 @@ function App() {
         nextBatchIndex,
         columnStateRef.current,
         openingGeometryRef.current.height,
+        activeImagePoolRef.current,
       );
 
       columnStateRef.current = nextColumnState;
@@ -1734,6 +1849,8 @@ function App() {
         onFilterOpenChange={setIsIndexDrawerOpen}
         onDrawerHeightChange={setIndexDrawerHeight}
         onLogoClick={handleLogoClick}
+        onSearchSubmit={handleSearchSubmit}
+        onSearchClear={handleSearchClear}
       />
 
       <div
@@ -1771,7 +1888,30 @@ function App() {
               ref={trackRef}
               style={{ width: `${getGalleryTrackWidth(galleryItems)}px` }}
             >
-              {renderedGalleryItems.map((item) => {
+              {hasNoSearchResults ? (
+                // Search Query Wiring: the only UI this commit adds beyond
+                // the existing Search field/chip. Deliberately plain --
+                // no redesign, no animation -- just a placeholder covering
+                // the gallery area while a committed search matches
+                // nothing. galleryItems itself is left untouched (see
+                // handleSearchSubmit), so clearing the search (Header's
+                // chip x) or a fresh non-empty search both just resume
+                // rendering renderedGalleryItems below normally.
+                <p
+                  className="archive-empty-state"
+                  style={{
+                    width: "100%",
+                    textAlign: "center",
+                    padding: "6rem 1.5rem",
+                    color: "#9d9d9d",
+                    fontSize: "0.85rem",
+                    letterSpacing: "0.04em",
+                  }}
+                >
+                  No archive items match your search.
+                </p>
+              ) : (
+                renderedGalleryItems.map((item) => {
               const dimensions = getImageDimensions(item.src);
               // Click is navigation, per the approved Project Template
               // architecture: an image that belongs to a Project always
@@ -1782,6 +1922,29 @@ function App() {
               // properly separated as their own later task.
               const isProjectLinked = Boolean(item.project);
               const isInteractive = isProjectLinked || imageFocusEnabled;
+              // Relationship Visualization (Commit 4), corrected by the
+              // state-management bug fix below: consumes only
+              // relatedArchiveNumbers -- no new matching here, just a
+              // membership check against state that's already computed.
+              // Relationship Mode is active exactly when
+              // relatedArchiveNumbers is non-empty, which (per HoverOverlay)
+              // is only while an individual theme/tag is being hovered.
+              // Plain image hover no longer has any effect here: it only
+              // ever reveals the HoverOverlay card (pure CSS), never dims
+              // anything on its own. Nothing is dimmed when Relationship
+              // Mode isn't active. Everything is dimmed unless its
+              // archiveNumber is in relatedArchiveNumbers -- there is no
+              // "hovered item" exclusion anymore because the hovered image
+              // itself isn't guaranteed to be the one currently reporting
+              // relatedArchiveNumbers (a theme/tag inside any card can be
+              // hovered), so membership in relatedArchiveNumbers is the only
+              // test.
+              const isDimmed =
+                relatedArchiveNumbers.length > 0 &&
+                !(
+                  item.archiveNumber &&
+                  relatedArchiveNumbers.includes(item.archiveNumber)
+                );
 
               return (
                 <button
@@ -1852,7 +2015,9 @@ function App() {
                     <img
                       src={getOptimizedImageSrc(item.src)}
                       alt={item.alt}
-                      className="gallery-image"
+                      className={`gallery-image${
+                        isDimmed ? " gallery-image--dimmed" : ""
+                      }`}
                       width={dimensions.width}
                       height={dimensions.height}
                       loading={shouldEagerLoadImage(item) ? "eager" : "lazy"}
@@ -1888,14 +2053,21 @@ function App() {
                       wrapper. itemId + generation are only a stable seed
                       for HoverOverlay's own per-item theme/tag shuffle --
                       see galleryGenerationRef's comment above.
-                      isHovered/onRelatedArchiveNumbersChange (Commit 3):
-                      HoverOverlay reports its already-computed related
-                      Archive Numbers up to this component's
-                      relatedArchiveNumbers state while isHovered is true,
-                      and reports [] the instant it goes false -- see the
-                      Relationship Highlight Pipeline comment near
-                      hoveredGalleryItemId's declaration above. Nothing
-                      renders from that state yet. */}
+                      onRelatedArchiveNumbersChange: moved off image hover
+                      onto individual theme/tag hover in an earlier commit --
+                      HoverOverlay itself decides when to call this, per
+                      metadata item, and no longer needs to know whether
+                      this specific image is hovered to do so (the
+                      isHovered prop it used to take is gone). This
+                      component still just receives the reported Archive
+                      Numbers into relatedArchiveNumbers, same as before.
+                      State-management bug fix (this commit): isDimmed below
+                      now reads only relatedArchiveNumbers, not
+                      hoveredGalleryItemId -- see the Relationship Highlight
+                      Pipeline comment near hoveredGalleryItemId's
+                      declaration above and the isDimmed comment below for
+                      why. Plain image hover here only ever reveals this
+                      card; it no longer has any bearing on dimming. */}
                   <HoverOverlay
                     archiveNumber={item.archiveNumber}
                     themes={
@@ -1908,12 +2080,12 @@ function App() {
                     tags={item.tags ?? []}
                     itemId={item.id}
                     generation={galleryGenerationRef.current}
-                    isHovered={hoveredGalleryItemId === item.id}
                     onRelatedArchiveNumbersChange={setRelatedArchiveNumbers}
                   />
                 </button>
               );
-            })}
+            })
+              )}
             </div>
           </div>
         </div>

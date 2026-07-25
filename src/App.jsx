@@ -5,6 +5,13 @@ import Header from "./Header";
 import HoverOverlay from "./HoverOverlay";
 import { navigate } from "./navigation";
 import { findArchiveItemBySrc, ARCHIVE_ITEMS } from "./mockArchiveItems";
+// Project Filter Alignment: the real Project catalog (title + slug),
+// already used elsewhere for Project-page navigation/getProjectBySlug
+// (see projectContent.js, untouched by this commit) -- now also the
+// source of truth for Filter's Project category (see PROJECT_TITLES/
+// PROJECT_SLUG_BY_TITLE and the projects prop on <Header> below), instead
+// of Header's own unrelated placeholder MOCK_PROJECTS default.
+import { PROJECTS } from "./mockProjects";
 // Metadata Query Engine wiring (Search + Filter): the one place Gallery
 // reaches into queryArchive. Gallery itself performs no matching of its
 // own -- see applyMetadataQuery in App() below, the only call site.
@@ -260,6 +267,23 @@ function buildImagePool(imageSrcs) {
   return { all: imageSrcs, byOrientation: buildImagesByOrientation(imageSrcs) };
 }
 const DEFAULT_IMAGE_POOL = { all: allImages, byOrientation: imagesByOrientation };
+
+// Project Filter Alignment: Filter's Project category displays/selects
+// each Project's human-readable title -- the same way Theme/Year already
+// display real, directly matchable values -- via PROJECT_TITLES (passed
+// as Header's `projects` prop below). But mockArchiveItems.js's own
+// `project` field (what queryArchive's project matcher actually compares
+// against) is each Project's slug, not its title, since that's also what
+// Project-page navigation/getProjectBySlug already depend on elsewhere
+// (see projectContent.js) and isn't something this commit touches.
+// PROJECT_SLUG_BY_TITLE is the one place that reconciles the two --
+// see handleFilterChange below, its only call site. Built once from the
+// same mockProjects.js data Project-page navigation already reads, so it
+// can never drift out of sync with it.
+const PROJECT_TITLES = PROJECTS.map((project) => project.title);
+const PROJECT_SLUG_BY_TITLE = new Map(
+  PROJECTS.map((project) => [project.title, project.slug]),
+);
 
 // A self-refilling, per-orientation shuffled "bag" of real photos so
 // consecutive draws of the same orientation don't repeat until the bag is
@@ -1426,10 +1450,25 @@ function App() {
   // with handleSearchSubmit above, this combines that fresh value with
   // whatever Search currently has committed, rather than reading
   // activeFilterQuery's own not-yet-updated state.
+  //
+  // Project Filter Alignment: nextFilterQuery.project arrives as Project
+  // titles (Header's Project category now displays/selects PROJECT_TITLES,
+  // real values instead of the old unrelated placeholder names) --
+  // resolved to slugs here, once, via PROJECT_SLUG_BY_TITLE, before
+  // activeFilterQuery is stored or combined into a query. Every other
+  // field passes through untouched. queryArchive itself never sees a
+  // title, exactly as before this commit; it just keeps comparing
+  // item.project against a slug, unaware anything changed upstream of it.
   const handleFilterChange = useCallback(
     (nextFilterQuery) => {
-      setActiveFilterQuery(nextFilterQuery);
-      applyMetadataQuery({ search: committedSearch, ...nextFilterQuery });
+      const resolvedFilterQuery = {
+        ...nextFilterQuery,
+        project: nextFilterQuery.project.map(
+          (title) => PROJECT_SLUG_BY_TITLE.get(title) ?? title,
+        ),
+      };
+      setActiveFilterQuery(resolvedFilterQuery);
+      applyMetadataQuery({ search: committedSearch, ...resolvedFilterQuery });
     },
     [committedSearch, applyMetadataQuery],
   );
@@ -1934,6 +1973,7 @@ function App() {
   return (
     <div className="app-shell">
       <Header
+        projects={PROJECT_TITLES}
         onFilterOpenChange={setIsIndexDrawerOpen}
         onFilterChange={handleFilterChange}
         onDrawerHeightChange={setIndexDrawerHeight}

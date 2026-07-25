@@ -9,6 +9,13 @@ import { findArchiveItemBySrc, ARCHIVE_ITEMS } from "./mockArchiveItems";
 // reaches into queryArchive. Gallery itself performs no matching of its
 // own -- see applyMetadataQuery in App() below, the only call site.
 import { queryArchive } from "./metadataQueryEngine";
+// Relationship Mode Visibility Gate: separate from the Relationship
+// Engine (relationshipEngine.js, reached only through HoverOverlay,
+// untouched here) -- this decides whether the candidate archive numbers
+// the engine already found are worth visualizing right now. See
+// relationshipModeEvaluator.js for the full rationale; see
+// isRelationshipModeActive below for the one call site.
+import { shouldActivateRelationshipMode } from "./relationshipModeEvaluator";
 
 export const allImages = [
   "/img/pexels-adrien-olichon-1257089-3137038.jpg",
@@ -1089,12 +1096,13 @@ function App() {
   //
   // State-management correction (bug fix, post-metadata-hover-rename):
   // hoveredGalleryItemId no longer has any bearing on isDimmed below --
-  // Relationship Mode is driven purely by relatedArchiveNumbers, which is
-  // only ever non-empty while a theme/tag is actively hovered. It's kept
-  // here, still set on plain image hover, because nothing about image-level
-  // hover tracking was broken; it simply isn't a dimming input anymore. The
-  // overlay's own visibility remains pure CSS (:hover in styles.css) and
-  // was never driven by this state.
+  // relatedArchiveNumbers being non-empty is necessary but, since the
+  // Relationship Mode Visibility Gate below, no longer sufficient on its
+  // own to activate Relationship Mode (see isRelationshipModeActive further
+  // down). hoveredGalleryItemId is kept here, still set on plain image
+  // hover, because nothing about image-level hover tracking was broken; it
+  // simply isn't a dimming input. The overlay's own visibility remains
+  // pure CSS (:hover in styles.css) and was never driven by this state.
   const [hoveredGalleryItemId, setHoveredGalleryItemId] = useState(null);
   const [relatedArchiveNumbers, setRelatedArchiveNumbers] = useState([]);
   // Search Query Wiring: true only while a committed search matches zero
@@ -1899,6 +1907,30 @@ function App() {
       ? galleryItems.filter((item) => isItemInRenderWindow(item, renderWindow))
       : galleryItems;
 
+  // Relationship Mode Visibility Gate: evaluated once per render, not per
+  // item -- shouldActivateRelationshipMode doesn't depend on which item is
+  // being rendered, only on the current candidate list
+  // (relatedArchiveNumbers, from the Relationship Engine via HoverOverlay,
+  // untouched) and the current active gallery. Deliberately reads
+  // galleryItems here, not renderedGalleryItems: "active gallery" means
+  // whatever Search/Filter/mount/logo-click most recently generated (the
+  // full current pool), not whichever slice happens to be inside the
+  // virtualization render window at this exact scroll position -- a
+  // visitor scrolling shouldn't flip Relationship Mode on or off on its
+  // own. This is also precisely why Search, Filter, and any future Zoom
+  // Mode need no special-casing here: each of those already only changes
+  // galleryItems (via activeImagePoolRef/regenerateGallery -- see
+  // applyMetadataQuery), so this gate automatically evaluates against
+  // whichever of them is currently active without knowing any of them
+  // exist.
+  const activeGalleryArchiveNumbers = galleryItems
+    .map((item) => item.archiveNumber)
+    .filter(Boolean);
+  const isRelationshipModeActive = shouldActivateRelationshipMode(
+    relatedArchiveNumbers,
+    activeGalleryArchiveNumbers,
+  );
+
   return (
     <div className="app-shell">
       <Header
@@ -1981,24 +2013,32 @@ function App() {
               const isProjectLinked = Boolean(item.project);
               const isInteractive = isProjectLinked || imageFocusEnabled;
               // Relationship Visualization (Commit 4), corrected by the
-              // state-management bug fix below: consumes only
-              // relatedArchiveNumbers -- no new matching here, just a
-              // membership check against state that's already computed.
-              // Relationship Mode is active exactly when
-              // relatedArchiveNumbers is non-empty, which (per HoverOverlay)
-              // is only while an individual theme/tag is being hovered.
-              // Plain image hover no longer has any effect here: it only
-              // ever reveals the HoverOverlay card (pure CSS), never dims
-              // anything on its own. Nothing is dimmed when Relationship
-              // Mode isn't active. Everything is dimmed unless its
-              // archiveNumber is in relatedArchiveNumbers -- there is no
-              // "hovered item" exclusion anymore because the hovered image
-              // itself isn't guaranteed to be the one currently reporting
+              // state-management bug fix, and now gated by the
+              // Relationship Mode Visibility Gate above: consumes only
+              // relatedArchiveNumbers and isRelationshipModeActive -- no
+              // new matching here, just a membership check against state
+              // that's already computed. Relationship Mode is active only
+              // when isRelationshipModeActive says so -- i.e. at least two
+              // of the current candidate archive numbers are actually
+              // present in the active gallery (see
+              // relationshipModeEvaluator.js) -- not merely whenever
+              // relatedArchiveNumbers is non-empty. A lone match (one
+              // visible related image, or matches that exist in the
+              // archive but aren't part of the currently active
+              // gallery) leaves the interface exactly as it was, per the
+              // Relationship Mode Visibility Gate's own design intent.
+              // Plain image hover still has no effect here either way: it
+              // only ever reveals the HoverOverlay card (pure CSS), never
+              // dims anything on its own. When Relationship Mode is
+              // active, everything is dimmed unless its archiveNumber is
+              // in relatedArchiveNumbers -- there is no "hovered item"
+              // exclusion because the hovered image itself isn't
+              // guaranteed to be the one currently reporting
               // relatedArchiveNumbers (a theme/tag inside any card can be
-              // hovered), so membership in relatedArchiveNumbers is the only
-              // test.
+              // hovered), so membership in relatedArchiveNumbers is the
+              // only test.
               const isDimmed =
-                relatedArchiveNumbers.length > 0 &&
+                isRelationshipModeActive &&
                 !(
                   item.archiveNumber &&
                   relatedArchiveNumbers.includes(item.archiveNumber)
@@ -2119,13 +2159,15 @@ function App() {
                       isHovered prop it used to take is gone). This
                       component still just receives the reported Archive
                       Numbers into relatedArchiveNumbers, same as before.
-                      State-management bug fix (this commit): isDimmed below
-                      now reads only relatedArchiveNumbers, not
-                      hoveredGalleryItemId -- see the Relationship Highlight
-                      Pipeline comment near hoveredGalleryItemId's
-                      declaration above and the isDimmed comment below for
-                      why. Plain image hover here only ever reveals this
-                      card; it no longer has any bearing on dimming. */}
+                      State-management bug fix: isDimmed below reads
+                      isRelationshipModeActive (derived from
+                      relatedArchiveNumbers via the Relationship Mode
+                      Visibility Gate), never hoveredGalleryItemId -- see
+                      the Relationship Highlight Pipeline comment near
+                      hoveredGalleryItemId's declaration above and the
+                      isDimmed comment below for why. Plain image hover
+                      here only ever reveals this card; it has no bearing
+                      on dimming either way. */}
                   <HoverOverlay
                     archiveNumber={item.archiveNumber}
                     themes={

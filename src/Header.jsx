@@ -142,8 +142,25 @@ export default function Header({
   // Each category now holds an array -- every field is multi-select.
   // Selecting a value appends it; it stays selected until individually
   // removed (via its own hover-revealed x), not replaced by the next pick.
+  //
+  // Filter Query State (state management only -- no gallery/queryArchive
+  // wiring yet): this is also the active filter query itself, shaped to
+  // match the Metadata Query Engine's query object exactly -- theme/tag/
+  // project/year, every field an array so a later commit's OR-within-field
+  // behavior (queryArchive's own contract -- see metadataQueryEngine.js)
+  // works the moment it's wired up, without this shape needing to change.
+  // `tag` is included for that same reason even though nothing in this
+  // Filter UI can populate it yet (there is no Tag category here today --
+  // see INDEX_ENTRIES below); it simply always stays []. Every update still
+  // flows to App.jsx via onFilterChange (see handleOptionToggle below),
+  // exactly as it already did -- what's new is only that App.jsx now
+  // actually keeps what it's handed (see activeFilterQuery in App()),
+  // rather than that prop going unused. Search stays entirely separate
+  // state (committedSearch, owned by this same component) -- this commit
+  // does not touch it and does not combine the two.
   const [selection, setSelection] = useState({
     theme: [],
+    tag: [],
     project: [],
     year: [],
   });

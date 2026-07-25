@@ -1047,6 +1047,23 @@ function App() {
   const [focusedImage, setFocusedImage] = useState(null);
   const [isIndexDrawerOpen, setIsIndexDrawerOpen] = useState(false);
   const [indexDrawerHeight, setIndexDrawerHeight] = useState(0);
+  // Filter Query State (state management only -- this commit deliberately
+  // stops here): the single source of truth for Filter's half of the
+  // future combined Metadata Query, shaped to match queryArchive's query
+  // object exactly (theme/tag/project/year, every field an array). Header
+  // owns the Filter UI and already reports every selection change here via
+  // onFilterChange, unchanged from before -- the only thing new is that
+  // Gallery now actually keeps what it's handed instead of the prop going
+  // unused. Nothing reads this yet: no queryArchive call, no
+  // regenerateGallery, no change to activeImagePoolRef. A later commit is
+  // what combines this with Search's own committed query and actually
+  // drives the gallery from both together.
+  const [activeFilterQuery, setActiveFilterQuery] = useState({
+    theme: [],
+    tag: [],
+    project: [],
+    year: [],
+  });
   // Drives a brief opacity dip on the gallery track during a logo-triggered
   // regeneration (see handleLogoClick below and the matching .is-regenerating
   // rule in styles.css) -- mount and resize are untouched and stay instant.
@@ -1847,6 +1864,7 @@ function App() {
     <div className="app-shell">
       <Header
         onFilterOpenChange={setIsIndexDrawerOpen}
+        onFilterChange={setActiveFilterQuery}
         onDrawerHeightChange={setIndexDrawerHeight}
         onLogoClick={handleLogoClick}
         onSearchSubmit={handleSearchSubmit}

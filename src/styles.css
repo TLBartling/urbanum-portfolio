@@ -261,6 +261,15 @@ body {
   border-bottom-color: rgba(0, 0, 0, 0.18);
 }
 
+/* Persistent Search Label (refinement): the one spacing rule this commit
+   adds. SEARCH is now always visible beside whatever sits next to it, so
+   the committed chip needs the identical left margin
+   .search-control__input.is-open already used for that same role -- no
+   other spacing, typography, or transition value changes. */
+.search-control__chip {
+  margin-left: 10px;
+}
+
 /* Index drawer — the header unfolding into its own catalog (theme /
    project / year). Not a dropdown: it lives inside .site-header, in
    normal document flow beneath .site-header__row1, so .site-header's own
@@ -731,6 +740,35 @@ body {
   object-fit: cover;
   display: block;
   will-change: transform;
+  /* Relationship Visualization (Commit 4): the opacity transition/value the
+     dimmed state below animates through. Deliberately placed on the <img>
+     itself, not on .gallery-image-wrapper -- the wrapper's own opacity is
+     already continuously driven imperatively by GSAP (item.opacity, the
+     entrance/relationship-motion animation-frame loop in
+     updateEntranceAnimations, and the focus-exit restore tween), so a CSS
+     class toggle there would just get overwritten on the next frame.
+     .hover-overlay is unaffected either way -- it's a sibling of this
+     element, not a descendant, so this dim never touches its own opacity
+     or timing. 180ms ease-out reuses .hover-overlay's own existing
+     transition value (see below) rather than introducing a new one. */
+  transition: opacity 180ms ease-out;
+}
+
+/* Applied only to the <img>, only while something else is hovered and this
+   image's Archive Number isn't in the Gallery's relatedArchiveNumbers
+   state (see the isDimmed computation at this component's render call
+   site). Opacity only, per spec -- no scale/blur/movement/transform/filter/
+   color change, no pointer-events change (this element was never
+   interactive to begin with; the wrapper button's own click/hover
+   handling is untouched). Third calibration pass: 0.46, then 0.22, then
+   0.15 -- 0.10 pushes unrelated images almost out of legibility while
+   staying just above fully invisible, so they remain technically visible
+   and hoverable (the wrapper underneath is unchanged) without competing
+   with the related cluster. Transition (.gallery-image above) and every
+   other value here remain unchanged -- only this one opacity number moved
+   again. */
+.gallery-image--dimmed {
+  opacity: 0.1;
 }
 
 /* HoverOverlay -- Phase 1 (presentation only). A translucent metadata layer
@@ -854,6 +892,15 @@ body {
   margin: 0;
   padding: 0;
   display: none;
+  /* Interaction architecture change: themes are now individually
+     hoverable to drive the Relationship Engine (see HoverOverlay.jsx).
+     .hover-overlay itself keeps pointer-events: none (unchanged) so the
+     card as a whole still never intercepts clicks meant for the image
+     beneath it; this single child property opts each theme item back in
+     to real pointer events without changing that. No effect on hidden
+     (display: none) items -- they still never receive events either way,
+     same as before this change. No opacity/transition/typography touched. */
+  pointer-events: auto;
 }
 
 /* Tier 2 (medium): Archive Number + Themes, never Tags. This is the entire
@@ -927,6 +974,11 @@ body {
 
 .hover-overlay__tag {
   display: none;
+  /* Same interaction change as .hover-overlay__themes li above: tags are
+     now individually hoverable to drive the Relationship Engine, via this
+     one property, with .hover-overlay's own pointer-events: none
+     otherwise unchanged. */
+  pointer-events: auto;
 }
 
 .hover-overlay__tag:not(:first-child)::before {

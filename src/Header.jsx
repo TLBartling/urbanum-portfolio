@@ -579,6 +579,22 @@ export default function Header({
             <div className="nav-divider"></div>
 
             <div className="search-control">
+              {/* Persistent Search Label (refinement): SEARCH itself is no
+                  longer part of the committed/idle ternary below -- it's
+                  the fixed anchor now, always rendered, exactly like
+                  before a search is ever committed. Only what sits beside
+                  it (the growing input line, or the committed chip) still
+                  swaps. handleSearchToggle/isSearchOpen are untouched --
+                  clicking SEARCH still does exactly what it always did. */}
+              <button
+                type="button"
+                className="text-control text-control--muted"
+                aria-expanded={isSearchOpen}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={handleSearchToggle}
+              >
+                Search
+              </button>
               {committedSearch ? (
                 // Search Query Wiring: the collapsed committed state. Pure
                 // visual reuse of Filter's own selected-option styling
@@ -589,9 +605,13 @@ export default function Header({
                 // read as one consistent design language. One click
                 // target for the whole chip, same as Filter's own
                 // selected options (see handleOptionToggle above).
+                // search-control__chip only supplies the small left margin
+                // SEARCH's own label needs now that it's always visible
+                // beside this (see .search-control__chip in styles.css) --
+                // no other visual property of the reused classes changes.
                 <button
                   type="button"
-                  className={`index-drawer__option index-drawer__option--selected${
+                  className={`index-drawer__option index-drawer__option--selected search-control__chip${
                     isSearchChipRemoveArmed
                       ? " index-drawer__option--remove-armed"
                       : ""
@@ -626,40 +646,29 @@ export default function Header({
                   </span>
                 </button>
               ) : (
-                <>
-                  <button
-                    type="button"
-                    className="text-control text-control--muted"
-                    aria-expanded={isSearchOpen}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={handleSearchToggle}
-                  >
-                    Search
-                  </button>
-                  <input
-                    ref={searchInputRef}
-                    type="text"
-                    aria-label="Search"
-                    className={`search-control__input${
-                      isSearchOpen ? " is-open" : ""
-                    }`}
-                    autoComplete="off"
-                    value={searchValue}
-                    onChange={(event) => setSearchValue(event.target.value)}
-                    onKeyDown={handleSearchKeyDown}
-                    onFocus={() => {
-                      setIsSearchOpen(true);
-                      setDrawerSection((current) =>
-                        current === "menu" ? null : current
-                      );
-                    }}
-                    onBlur={() => {
-                      if (!searchValue) {
-                        setIsSearchOpen(false);
-                      }
-                    }}
-                  />
-                </>
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  aria-label="Search"
+                  className={`search-control__input${
+                    isSearchOpen ? " is-open" : ""
+                  }`}
+                  autoComplete="off"
+                  value={searchValue}
+                  onChange={(event) => setSearchValue(event.target.value)}
+                  onKeyDown={handleSearchKeyDown}
+                  onFocus={() => {
+                    setIsSearchOpen(true);
+                    setDrawerSection((current) =>
+                      current === "menu" ? null : current
+                    );
+                  }}
+                  onBlur={() => {
+                    if (!searchValue) {
+                      setIsSearchOpen(false);
+                    }
+                  }}
+                />
               )}
             </div>
           </div>

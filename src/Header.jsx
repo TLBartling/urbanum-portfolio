@@ -41,6 +41,13 @@ const INDEX_ENTRIES = [
   { key: "year", label: "Year" },
 ];
 
+// Filter UX -- Clear All: the one shape "no active filters" means,
+// reused as both selection's own initial state and the value
+// handleFilterClearAll resets straight back to -- so there is exactly one
+// place that defines what "cleared" looks like, not two literals that
+// could drift apart later (e.g. if a real Tag category is added).
+const EMPTY_FILTER_SELECTION = { theme: [], tag: [], project: [], year: [] };
+
 // Menu is the same drawer showing different content: no categories or
 // selection state, just a small set of top-level destinations.
 const MENU_LINKS = ["About", "Journal"];
@@ -158,12 +165,14 @@ export default function Header({
   // rather than that prop going unused. Search stays entirely separate
   // state (committedSearch, owned by this same component) -- this commit
   // does not touch it and does not combine the two.
-  const [selection, setSelection] = useState({
-    theme: [],
-    tag: [],
-    project: [],
-    year: [],
-  });
+  const [selection, setSelection] = useState(EMPTY_FILTER_SELECTION);
+  // Filter UX -- Clear All: mirrors removeArmedValue's own arm/disarm
+  // pattern below, just scoped to this one control instead of a per-value
+  // lookup, since there's only ever one Clear All control. Armed by
+  // hovering (or focusing) the shared Filter control -- the same
+  // hover-reveal language Search's own chip and Filter's per-value chips
+  // already use -- and reveals the x that clears every active filter.
+  const [isFilterClearArmed, setIsFilterClearArmed] = useState(false);
   const drawerRef = useRef(null);
   // One DOM node per Context field, collected as they render, so the
   // Active Panel can measure where the currently selected Context sits
@@ -322,6 +331,17 @@ export default function Header({
   // View All control should appear for it at all.
   const visibleValues = isExpanded ? activeValues : previewValues;
   const hasHiddenValues = !isExpanded && activeValues.length > previewValues.length;
+  // Filter UX -- Clear All: total selections across every category,
+  // tag included (future-safe, even though nothing can populate it yet --
+  // see selection's own comment above). This is the closed Filter
+  // control's own count, entirely separate from the per-category (n)
+  // shown inside the open drawer next to Theme/Project/Year (values[key]
+  // above) -- that per-category count is untouched by this commit.
+  const totalFilterCount =
+    selection.theme.length +
+    selection.tag.length +
+    selection.project.length +
+    selection.year.length;
 
   // onFilterOpenChange is specifically about Filter's own open state, so it
   // only fires when Filter itself transitions -- an explicit toggle, or
@@ -462,6 +482,25 @@ export default function Header({
     });
   };
 
+  // Filter UX -- Clear All: resets every category to empty in one action.
+  // Deliberately reuses the exact same setSelection/onFilterChange pair
+  // handleOptionToggle above already calls per value -- this isn't a new
+  // pipeline, it's that same pipeline handed the fully-cleared shape all
+  // at once instead of one field at a time, so the result is identical to
+  // removing every chip individually. App.jsx's own handleFilterChange
+  // (untouched by this commit) still does everything it already does with
+  // any Filter change: resolve Project values, combine with whatever
+  // Search is currently committed, run the one existing query, and
+  // regenerate the gallery once. This never touches drawerSection,
+  // activeEntry, or isExpanded, so the drawer's own open/closed state and
+  // whichever category panel is showing are completely unaffected --  it
+  // simply re-renders with every value deselected, exactly as "removing
+  // every chip one-by-one" would leave it.
+  const handleFilterClearAll = () => {
+    setSelection(EMPTY_FILTER_SELECTION);
+    onFilterChange?.(EMPTY_FILTER_SELECTION);
+  };
+
   // Arms the "settled" state once the slow expansion has had time to
   // finish -- 1500ms comfortably clears the drawer's own 1400ms reveal.
   // Closing resets it immediately, so the next open cycle always replays
@@ -582,16 +621,73 @@ export default function Header({
         </button>
         <nav className="top-menu" aria-label="Gallery navigation">
           <div className="top-menu__group" aria-label="Browse tools">
-            <button
-              type="button"
-              className={`text-control text-control--active text-control--filter${
-                isFilterOpen ? " text-control--engaged" : ""
-              }`}
-              aria-expanded={isFilterOpen}
-              onClick={handleFilterToggle}
+            {/* Filter UX -- Clear All: filter-control wraps the existing
+                Filter toggle button and the new Clear All control as
+                siblings (not nested -- a clickable x inside a <button> is
+                invalid HTML), so hovering anywhere across the pair arms
+                the x the same way hovering Search's own chip does.
+                Clicking the Filter button itself is completely unchanged
+                (still just handleFilterToggle); only the separate,
+                sibling Clear All button clears anything. */}
+            <div
+              className="filter-control"
+              onMouseEnter={() => setIsFilterClearArmed(true)}
+              onMouseLeave={() => setIsFilterClearArmed(false)}
             >
-              <span>Filter</span>
-            </button>
+              <button
+                type="button"
+                className={`text-control text-control--active text-control--filter${
+                  isFilterOpen ? " text-control--engaged" : ""
+                }`}
+                aria-expanded={isFilterOpen}
+                onClick={handleFilterToggle}
+              >
+                <span>Filter</span>
+                {totalFilterCount > 0 && (
+                  <span className="filter-count">
+                    <span
+                      className="index-drawer__option-bracket"
+                      aria-hidden="true"
+                    >
+                      [
+                    </span>
+                    {totalFilterCount}
+                  </span>
+                )}
+              </button>
+              {totalFilterCount > 0 && (
+                // Reuses index-drawer__option/-remove/--remove-armed
+                // as-is (no new CSS for this control itself) -- the same
+                // muted, understated styling and hover-reveal mechanics
+                // Filter's own per-value chips already use, just applied
+                // to "clear everything" instead of "clear one value."
+                <button
+                  type="button"
+                  className={`index-drawer__option${
+                    isFilterClearArmed
+                      ? " index-drawer__option--remove-armed"
+                      : ""
+                  }`}
+                  onClick={handleFilterClearAll}
+                  onFocus={() => setIsFilterClearArmed(true)}
+                  onBlur={() => setIsFilterClearArmed(false)}
+                  aria-label="Clear all active filters"
+                >
+                  <span
+                    className="index-drawer__option-remove"
+                    aria-hidden="true"
+                  >
+                    ×
+                  </span>
+                  <span
+                    className="index-drawer__option-bracket"
+                    aria-hidden="true"
+                  >
+                    ]
+                  </span>
+                </button>
+              )}
+            </div>
 
             <div className="nav-divider"></div>
 

@@ -626,6 +626,14 @@ body {
   opacity: 1;
 }
 
+/* Filter UX -- Clear All: lays the Filter toggle button and the new
+   sibling Clear All button out side by side instead of stacked, exactly
+   like .search-control already does for Search's own label + chip. */
+.filter-control {
+  display: inline-flex;
+  align-items: baseline;
+}
+
 /* The active-filter count beside "Filter" -- understated, lower in the
    visual hierarchy than the label itself, using the same separator
    glyph as the theme label/value pairing for one consistent language. */
@@ -634,6 +642,13 @@ body {
   color: #9d9d9d;
   opacity: 0.6;
   letter-spacing: 0.1em;
+}
+
+/* Filter UX -- Clear All: matches .index-drawer__count's own spacing
+   convention now that .filter-count is actually rendered (previously
+   unused, so its spacing had never been tuned). */
+.filter-count {
+  margin-left: 4px;
 }
 
 /* GSAP ScrollTrigger Horizontal Gallery */

@@ -1999,13 +1999,64 @@ html.is-browsing .zoom-controls {
    .about-hero__title/__location for the title block (see ProjectHeader.jsx
    -- both already carry the site's restrained editorial type scale, same
    as About/Projects/Journal). Everything below is new: the large image
-   frame, its zoom/image-navigation controls (zoom reuses the existing
-   .zoom-controls/.zoom-control), the per-image metadata block, and the
-   previous/next Project row. */
+   frame, its image-navigation control, the per-image metadata block, and
+   the previous/next Project row. (Zoom was removed from this page -- see
+   ImageViewer.jsx -- so .zoom-controls/.zoom-control are no longer used
+   here, but are left in place since the homepage gallery still owns
+   them.)
+
+   Presentation-only pass for the prototype review: this reverts the
+   nested .project-column wrapper/experiment (title, image, metadata, and
+   nav are direct children of .project-content again, exactly like the
+   Project Page's original structure) and goes back to simple, uniform
+   padding as the one thing narrowing the page -- no separate max-width,
+   no extra flex container. Title and image already shared a left edge
+   under that simpler model (both are direct children of the same flex
+   column with no width of their own), so nothing here reintroduces any
+   alignment risk; the full componentized-column architecture can be
+   revisited after client feedback if it's still wanted. */
 .project-content {
   display: flex;
   flex-direction: column;
   gap: clamp(20px, 2.4vw, 32px);
+  /* Project-Page-only spacing, scoped via longhand overrides rather than
+     touching .about-content itself (still shared by About/Projects/
+     Journal): equal specificity + later source order lets these three
+     properties win over .about-content's shorthand `padding`, while
+     padding-bottom continues to inherit that shared value unchanged. */
+  /* Reuses .site-header__row1's own `7vw` term (height: clamp(80px, 7vw,
+     102px)) plus a constant +12px, so this page's top clearance always
+     tracks exactly 12px below the header's real rendered height at every
+     viewport width -- not a guessed constant. */
+  padding-top: clamp(92px, calc(7vw + 12px), 114px);
+  /* Exactly triple .about-content's own horizontal padding term
+     (clamp(34px, 4vw, 60px)) -- widened from Brick 1's double, purely a
+     presentation adjustment toward the client mockup's proportions. This
+     is the one and only thing narrowing the page now: title, image, and
+     metadata all stretch to fill whatever width is left inside it, so
+     they can't end up on separate horizontal systems. */
+  padding-left: clamp(102px, 12vw, 180px);
+  padding-right: clamp(102px, 12vw, 180px);
+}
+
+/* Typography refinement, kept from the earlier composition pass --
+   scoped to `.project-content` rather than editing
+   .about-hero__title/__location directly, since those base classes are
+   shared verbatim by About/Projects' own hero text (see ProjectHeader.jsx's
+   own comment). */
+.project-content .about-hero__title {
+  /* ~10% smaller plus one full step lighter (700 -> 600): together this
+     reads as roughly a 15-20% reduction in visual weight, so the title
+     stays visually subordinate and the image reads as the page's
+     dominant focal point. */
+  font-size: clamp(1.62rem, 2.34vw, 2.16rem);
+  font-weight: 600;
+}
+
+.project-content .about-hero__location {
+  /* Tightens the title/location pairing into one intentional unit (was
+     0.4rem, inherited from the shared .about-hero__location rule). */
+  margin-top: 0.2rem;
 }
 
 .project-image-viewer {
@@ -2014,15 +2065,20 @@ html.is-browsing .zoom-controls {
 
 .project-image-frame {
   width: 100%;
-  aspect-ratio: 16 / 9;
+  /* No fixed aspect-ratio and no object-fit: cover -- either would crop
+     any source image that isn't exactly 16:9. The frame's height now
+     derives naturally from the image's own intrinsic ratio (see
+     .project-image-frame__img below), so every image displays at its
+     full, uncropped, unstretched proportions, just resized to fit the
+     new (narrower) content width. */
   overflow: hidden;
   background: #eeece6;
 }
 
 .project-image-frame__img {
+  display: block;
   width: 100%;
-  height: 100%;
-  object-fit: cover;
+  height: auto;
   transition: transform 320ms ease-out;
 }
 

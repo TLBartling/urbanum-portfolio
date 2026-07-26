@@ -1,31 +1,23 @@
-import { useState } from "react";
-
-// The template's large image, plus the two navigation affordances that
-// live directly on it: zoom (visual only, affects this image alone), and
-// Image Navigation -- moving to a different Archive Item within the same
-// Project. Image Navigation is deliberately separate from Project
-// Navigation (ProjectNavigation.jsx): it never changes which Project is
-// loaded and never leaves this page, it only changes which image is
-// current, via the same onSelectImage callback ProjectTemplate already
-// uses to resolve the initial image from the URL.
+// The template's large image, plus the one navigation affordance that
+// lives directly on it: Image Navigation -- moving to a different Archive
+// Item within the same Project. Image Navigation is deliberately separate
+// from Project Navigation (ProjectNavigation.jsx): it never changes which
+// Project is loaded and never leaves this page, it only changes which
+// image is current, via the same onSelectImage callback ProjectTemplate
+// already uses to resolve the initial image from the URL.
 //
-// Zoom reuses the site's existing .zoom-controls/.zoom-control -- the same
-// fixed bottom-center control already styled (and currently unwired) on
-// the homepage gallery -- so this is the first place it actually does
-// anything, not a new visual language.
+// Zoom controls have been removed from this page (presentation-only
+// change -- the image now simply displays at its designed presentation
+// size). The shared .zoom-controls/.zoom-control CSS is left untouched,
+// since the homepage gallery still owns those classes.
 //
 // The prev/next image control here is a minimal, functional placeholder --
 // arrows plus a plain count -- since neither the mockup nor the approved
 // architecture specified a visual treatment for "continue exploring the
 // remaining images" (a filmstrip, thumbnails, etc.). Worth a design pass
 // before this is considered final.
-const ZOOM_STEP = 0.2;
-const MIN_ZOOM = 1;
-const MAX_ZOOM = 1.6;
 
 export default function ImageViewer({ image, images, onSelectImage }) {
-  const [zoom, setZoom] = useState(MIN_ZOOM);
-
   const currentIndex = images.findIndex(
     (item) => item.archiveNumber === image.archiveNumber,
   );
@@ -35,7 +27,6 @@ export default function ImageViewer({ image, images, onSelectImage }) {
 
   const handleSelect = (target) => {
     if (!target) return;
-    setZoom(MIN_ZOOM);
     onSelectImage(target.archiveNumber);
   };
 
@@ -46,7 +37,6 @@ export default function ImageViewer({ image, images, onSelectImage }) {
           className="project-image-frame__img"
           src={image.image}
           alt={image.title || image.caption || `Archive ${image.archiveNumber}`}
-          style={{ transform: `scale(${zoom})` }}
         />
       </div>
 
@@ -75,31 +65,6 @@ export default function ImageViewer({ image, images, onSelectImage }) {
           </button>
         </div>
       )}
-
-      <div className="zoom-controls" aria-label="Zoom controls">
-        <button
-          type="button"
-          className="zoom-control"
-          aria-label="Zoom out"
-          onClick={() =>
-            setZoom((z) => Math.max(MIN_ZOOM, +(z - ZOOM_STEP).toFixed(2)))
-          }
-          disabled={zoom <= MIN_ZOOM}
-        >
-          -
-        </button>
-        <button
-          type="button"
-          className="zoom-control"
-          aria-label="Zoom in"
-          onClick={() =>
-            setZoom((z) => Math.min(MAX_ZOOM, +(z + ZOOM_STEP).toFixed(2)))
-          }
-          disabled={zoom >= MAX_ZOOM}
-        >
-          +
-        </button>
-      </div>
     </div>
   );
 }

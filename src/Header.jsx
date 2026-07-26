@@ -173,6 +173,12 @@ export default function Header({
   // hover-reveal language Search's own chip and Filter's per-value chips
   // already use -- and reveals the x that clears every active filter.
   const [isFilterClearArmed, setIsFilterClearArmed] = useState(false);
+  // Layout Bug Fix -- Gallery Shift on Filter Open (Camera-based revision):
+  // measures the drawer's own live rendered height so App.jsx's Camera
+  // system can compute exactly how much viewport scale reduction it
+  // currently needs -- see the ResizeObserver effect and onDrawerHeightChange
+  // below. This ref exists purely to be observed; nothing here reads its
+  // node for any other purpose.
   const drawerRef = useRef(null);
   // One DOM node per Context field, collected as they render, so the
   // Active Panel can measure where the currently selected Context sits
@@ -573,10 +579,14 @@ export default function Header({
     return () => window.removeEventListener("resize", updateOffset);
   }, [activeEntry]);
 
-  // Reports the drawer's own live rendered height (0 when closed, and
-  // updating continuously as the grid-template-rows animation opens/closes)
-  // so the archive below can lower by exactly that amount instead of the
-  // header simply overlaying it.
+  // Layout Bug Fix -- Gallery Shift on Filter Open (Camera-based revision):
+  // reports the drawer's own live rendered height (0 when closed, and
+  // updating continuously through the grid-template-rows open/close
+  // animation, and through every Theme/Project/Year expand/collapse and
+  // "View All" toggle, since all of those change this same element's
+  // rendered height) purely as a scale INPUT for App.jsx's Camera system
+  // -- never a position, margin, or transform target here or there. This
+  // is the only consumer; Header itself does nothing else with the value.
   useEffect(() => {
     const node = drawerRef.current;
     if (!node || typeof ResizeObserver === "undefined") {
@@ -799,8 +809,17 @@ export default function Header({
       </div>
 
       {/* The index drawer: another sheet of the archive's own catalog
-          unfolding beneath the header, not a floating menu. Its own
-          rendered height (measured above) is what pushes the archive down. */}
+          unfolding beneath the header, not a floating menu. .site-header is
+          position:fixed, so this growing in place never pushes the archive
+          out of flow the way an in-flow element would -- the archive's own
+          vertical placement stays owned entirely by Application Layout's
+          viewport-opening geometry in App.jsx (mount/resize only), and the
+          archive simply dims in place while this is open (see
+          .scroll-container--drawer-open). This element's own rendered
+          height (ref'd below) is measured continuously and fed to App.jsx's
+          Camera system, which scales the gallery down by exactly enough to
+          keep clearing this drawer at whatever height it currently is --
+          closed, mid-animation, or any category fully expanded. */}
       <div
         ref={drawerRef}
         className={`index-drawer${isDrawerOpen ? " is-open" : ""}${

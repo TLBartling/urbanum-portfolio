@@ -163,6 +163,45 @@ const CAMERA_ZOOM_WHEEL_SENSITIVITY = 0.01;
 const CAMERA_NEUTRAL_SCALE = 1;
 const CAMERA_NEUTRAL_PAN = 0;
 
+// Layout Bug Fix -- Gallery Shift on Filter Open (Camera-based revision):
+// the Filter drawer's own influence on the gallery's viewport, expressed
+// entirely as a second, independent input into Camera's existing scale --
+// never a new transform, never a position change. viewportScaleRef stays
+// exactly what it always was (the visitor's own zoom level, via the zoom
+// controls/wheel/pinch); this is a separate multiplier the drawer alone
+// controls, combined with viewportScaleRef only at the point Gallery
+// Renderer actually projects/paints (see getEffectiveScale in
+// createGalleryRenderer), so handleZoomStep/resetCameraToNeutral/the zoom
+// clamp range are untouched and cannot conflict with it. Because
+// getVerticalScaleCompensation and projectWorldToScreenX already center
+// and anchor around whatever scale they're given, this combined value
+// gets that same centering for free -- no new vertical/horizontal
+// centering math is needed for the drawer at all, for any drawer state --
+// see updateGalleryMotion's own comment (in App()) for the derivation of
+// exactly how much scale reduction any given drawer height needs, and why
+// it is a real formula rather than a flat guess.
+//
+// Per-frame ease-toward-target rate for viewportDrawerScaleRef, in the same
+// smoothX/smoothY/smoothScale lerp style updateEntranceAnimations already
+// uses (see its own `smoothScale + (targetScale - smoothScale) * 0.14`) --
+// reusing that exact idiom rather than inventing a new easing approach.
+const FILTER_DRAWER_ZOOM_EASE = 0.14;
+
+// The drawer's own scale reduction is bounded here, deliberately separate
+// from CAMERA_ZOOM_MIN/MAX. Those describe how far a VISITOR may
+// deliberately zoom out by choice; this describes how far an AUTOMATIC
+// accommodation is allowed to go before it would stop reading as "subtly
+// making room" and start reading as a jarring, unrequested shrink. For a
+// small drawer state (closed, opening, or the default single row) the
+// derived formula in updateGalleryMotion asks for far less than this floor
+// -- it only engages for a heavily expanded state (a category open with a
+// long "View All" list). Past this floor, the composition stops shrinking
+// further and simply relies on the pre-existing .scroll-container--
+// drawer-open dim (see styles.css) for whatever clearance the bounded
+// scale alone can't provide -- the same "dim rather than distort" fallback
+// this codebase already uses, not a new one invented for this case.
+const FILTER_DRAWER_ZOOM_FLOOR = 0.85;
+
 function getImageName(src) {
   return src.split("/").pop()?.replace(/\.[^.]+$/, "") || "";
 }
@@ -703,13 +742,17 @@ function getClusterConnector(item, index, focusedRect) {
 // (projectWorldToScreenX, getVerticalScaleCompensation, applyTransform) --
 // as of Camera Phase 1, it's a real, user-controlled value (see
 // handleZoomStep in App()), not the fixed 1.5 verification constant or the
-// unread placeholder this comment used to describe.
+// unread placeholder this comment used to describe. As of the Filter
+// drawer's viewport-scale fix, the value that actually reaches those three
+// is getEffectiveScale()'s combination of this with viewportDrawerScaleRef
+// -- see that helper's own comment, just below.
 function createGalleryRenderer({
   track,
   wrapperById,
   animatedImages,
   movement,
   viewportScaleRef,
+  viewportDrawerScaleRef,
   viewportPanXRef,
   renderWindowRef,
   setRenderWindowState,
@@ -726,6 +769,22 @@ function createGalleryRenderer({
   // rebuild.
   const setTrackScaleX = gsap.quickSetter(track, "scaleX");
   const setTrackScaleY = gsap.quickSetter(track, "scaleY");
+
+  // The ONE place viewportScaleRef (the visitor's own zoom) and
+  // viewportDrawerScaleRef (the Filter drawer's temporary influence,
+  // eased once per frame in App()'s own animation loop toward whatever
+  // scale the drawer's actual current height requires -- see
+  // updateGalleryMotion's own comment for the derivation) are combined
+  // into the single scale every projection/paint below actually uses.
+  // Every reader of "the current scale" in this function calls this
+  // instead of reading
+  // viewportScaleRef.current directly, so the drawer's influence is never
+  // partially applied (e.g. track visually scaled down but entrance
+  // animations still projected at the visitor's raw zoom) and there is
+  // still exactly one number representing "the current scale" at any
+  // given moment.
+  const getEffectiveScale = () =>
+    viewportScaleRef.current * viewportDrawerScaleRef.current;
 
   // The single horizontal world->screen projection path. Every horizontal
   // screen-space position the Gallery Renderer produces -- the track's own
@@ -788,7 +847,7 @@ function createGalleryRenderer({
   };
 
   const applyTransform = (distance) => {
-    const scale = viewportScaleRef.current;
+    const scale = getEffectiveScale();
     setTrackX(projectWorldToScreenX(0, distance, scale));
     setTrackY(getVerticalScaleCompensation(scale));
     setTrackScaleX(scale);
@@ -824,7 +883,7 @@ function createGalleryRenderer({
       const screenLeft = projectWorldToScreenX(
         layoutLeft,
         movement.distance,
-        viewportScaleRef.current,
+        getEffectiveScale(),
       );
       const screenRight = screenLeft + layoutWidth;
       const isVisible = screenRight > 0 && screenLeft < window.innerWidth;
@@ -1028,6 +1087,34 @@ function App() {
   // has no vertical world to navigate, so Y has no cursor-derived pan term
   // at all -- see getVerticalScaleCompensation's own comment.
   const viewportPanXRef = useRef(0);
+  // Layout Bug Fix -- Gallery Shift on Filter Open: the Filter drawer's own,
+  // entirely separate multiplier on top of viewportScaleRef -- see
+  // getEffectiveScale in createGalleryRenderer, the one place the two are
+  // combined. Eased once per animation frame (see updateGalleryMotion
+  // below) toward a TARGET that's recomputed every frame from the
+  // drawer's actual current height (indexDrawerHeightRef, just below) and
+  // the opening's own height -- not a flat guess, so it's correct whether
+  // the drawer is closed, mid-open, showing its default row, or fully
+  // expanded with Theme/Project/Year's "View All" and however many
+  // secondary rows that produces. Same per-frame ease-toward-target idiom
+  // updateEntranceAnimations already uses for smoothScale. Never set
+  // directly, never touched by handleZoomStep/resetCameraToNeutral, so the
+  // visitor's own zoom level is completely unaffected by the drawer
+  // opening or closing.
+  const viewportDrawerScaleRef = useRef(CAMERA_NEUTRAL_SCALE);
+  // The Filter drawer's own live rendered height in px (0 when closed),
+  // reported by Header.jsx's ResizeObserver via onDrawerHeightChange --
+  // read every animation frame by updateGalleryMotion below, exactly the
+  // way viewportScaleRef/openingGeometryRef already are, so no re-render
+  // is needed just because the drawer's height changed (whether from
+  // opening/closing or from a category expanding/collapsing inside it).
+  // This is purely a scale INPUT now -- it never drives any transform,
+  // margin, or position; see getEffectiveScale/updateGalleryMotion for the
+  // one place it's actually used.
+  const indexDrawerHeightRef = useRef(0);
+  const handleDrawerHeightChange = useCallback((height) => {
+    indexDrawerHeightRef.current = height;
+  }, []);
   const focusTimelineRef = useRef(null);
   const focusedIdRef = useRef(null);
   const renderWindowRef = useRef(getGalleryRenderWindow());
@@ -1079,7 +1166,6 @@ function App() {
   const [focusedId, setFocusedId] = useState(null);
   const [focusedImage, setFocusedImage] = useState(null);
   const [isIndexDrawerOpen, setIsIndexDrawerOpen] = useState(false);
-  const [indexDrawerHeight, setIndexDrawerHeight] = useState(0);
   // Filter Query State: the single source of truth for Filter's half of
   // the combined Metadata Query, shaped to match queryArchive's query
   // object exactly (theme/tag/project/year, every field an array). Header
@@ -1757,6 +1843,7 @@ function App() {
       animatedImages,
       movement,
       viewportScaleRef,
+      viewportDrawerScaleRef,
       viewportPanXRef,
       renderWindowRef,
       setRenderWindowState: setRenderWindow,
@@ -1831,6 +1918,67 @@ function App() {
     };
 
     const updateGalleryMotion = () => {
+      // Layout Bug Fix -- Gallery Shift on Filter Open: recomputes, every
+      // frame this loop already runs, exactly how much scale reduction the
+      // drawer's CURRENT real height requires, then eases
+      // viewportDrawerScaleRef toward it -- the same requestAnimationFrame
+      // cadence Camera's own zoom and Navigator's own movement already
+      // rely on, not a second animation system.
+      //
+      // Derivation (pure geometry, no tuned/magic constant): Gallery
+      // Renderer scales the track around the opening's own center
+      // (getVerticalScaleCompensation), so at scale s the visible
+      // composition's top edge sits (openingHeight / 2) * (1 - s) below
+      // where it would sit at scale 1 -- and by the same symmetric-scaling
+      // fact, its bottom edge gains that identical amount of clearance
+      // above .opening-viewport's own bottom edge. Application Layout's
+      // openingGeometry.top already reserves enough room for the CLOSED
+      // header; what the open drawer needs is that same amount of *extra*
+      // top clearance equal to its own real height (indexDrawerHeightRef).
+      // Solving (openingHeight / 2) * (1 - s) >= drawerHeight for s gives
+      // s <= 1 - (2 * drawerHeight) / openingHeight -- the exact scale that
+      // guarantees no header overlap for whatever the drawer's real height
+      // currently is, whether that's 0 (closed), the default single row,
+      // mid-animation, or Theme/Project/Year fully expanded with however
+      // many "View All" secondary rows that produces. The same formula
+      // also guarantees the symmetric extra clearance at the bottom, so it
+      // covers "no footer overlap" for free -- there is no separate case
+      // for that.
+      //
+      // Bounded below by FILTER_DRAWER_ZOOM_FLOOR, not CAMERA_ZOOM_MIN --
+      // see that constant's own comment for why an automatic accommodation
+      // and a visitor's deliberate zoom-out are deliberately kept as two
+      // separate bounds. A heavily expanded drawer (a long "View All" list)
+      // can therefore ask for more reduction than the floor allows; past
+      // that point the composition stops shrinking further and the
+      // pre-existing .scroll-container--drawer-open dim covers whatever
+      // clearance the bounded scale alone doesn't -- a deliberate,
+      // documented trade-off (bounded subtlety over an unbounded shrink),
+      // not a silent gap. Never above CAMERA_NEUTRAL_SCALE, since the
+      // drawer should only ever ask for LESS scale, never more.
+      const openingHeight = openingGeometryRef.current.height;
+      const requiredDrawerScale =
+        openingHeight > 0
+          ? 1 - (2 * indexDrawerHeightRef.current) / openingHeight
+          : CAMERA_NEUTRAL_SCALE;
+      const drawerScaleTarget = clamp(
+        requiredDrawerScale,
+        FILTER_DRAWER_ZOOM_FLOOR,
+        CAMERA_NEUTRAL_SCALE,
+      );
+      // Ease-toward-target, same idiom updateEntranceAnimations already
+      // uses for smoothScale; snaps once close enough, matching
+      // movement.velocity's own exact-zero snap above, so the multiplier
+      // settles at precisely its target rather than approaching it forever.
+      const nextDrawerScale =
+        viewportDrawerScaleRef.current +
+        (drawerScaleTarget - viewportDrawerScaleRef.current) *
+          FILTER_DRAWER_ZOOM_EASE;
+      viewportDrawerScaleRef.current =
+        Math.abs(nextDrawerScale - drawerScaleTarget) < 0.0005
+          ? drawerScaleTarget
+          : nextDrawerScale;
+
       galleryRenderer.applyTransform(movement.distance);
       extendGalleryIfNeeded();
       galleryRenderer.updateRenderWindow();
@@ -1976,25 +2124,34 @@ function App() {
         projects={PROJECT_TITLES}
         onFilterOpenChange={setIsIndexDrawerOpen}
         onFilterChange={handleFilterChange}
-        onDrawerHeightChange={setIndexDrawerHeight}
+        onDrawerHeightChange={handleDrawerHeightChange}
         onLogoClick={handleLogoClick}
         onSearchSubmit={handleSearchSubmit}
         onSearchClear={handleSearchClear}
       />
 
+      {/* Layout Bug Fix -- Gallery Shift on Filter Open: this container
+          itself carries no drawer-driven style at all -- no transform, no
+          margin, no size change. .site-header is position:fixed, so an
+          open drawer growing the header never actually consumes any of
+          this container's layout space; there is nothing here to push out
+          of the way. The drawer's only influence on the gallery is
+          entirely inside Camera -- viewportDrawerScaleRef, eased every
+          frame toward whatever scale the drawer's real, currently
+          measured height (indexDrawerHeightRef) requires, combined with
+          the visitor's own zoom in getEffectiveScale
+          (createGalleryRenderer) -- which reads as the composition
+          zooming out slightly to make room, via the exact same
+          scale/centering math the zoom controls already use, correct for
+          the drawer closed, mid-open, showing its default row, or any
+          category fully expanded, rather than any second positioning
+          system. .scroll-container--drawer-open's opacity dim still
+          applies alongside it, unrelated and untouched. */}
       <div
         className={`scroll-container${
           isIndexDrawerOpen ? " scroll-container--drawer-open" : ""
         }`}
         ref={scrollContainerRef}
-        style={{
-          // The extra few px beyond the drawer's own measured height keeps
-          // a sliver of breathing room between the header's shadow and the
-          // archive, rather than the archive butting directly against it.
-          transform: indexDrawerHeight
-            ? `translateY(${Math.round(indexDrawerHeight) + 8}px)`
-            : undefined,
-        }}
       >
         <div className="sticky-wrapper">
           {/* OpeningViewport: the only element that owns the visible

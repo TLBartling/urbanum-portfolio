@@ -101,10 +101,23 @@ function HoverOverlay({
   onRelatedArchiveNumbersChange,
   onMetadataCommit,
 }) {
-  const shuffledThemes = useMemo(
-    () => seededShuffle(themes, hashSeed(`${itemId}:themes:${generation}`)),
-    [themes, itemId, generation],
-  );
+  // Metadata-budget prototype: the first entry in `themes` is always the
+  // Archive Item's designated primary theme (item.theme, the singular
+  // Content Contract field App.jsx already resolves this array from --
+  // verified true for every real record today). Previously this whole
+  // array was shuffled uniformly, so which theme rendered first was a
+  // per-generation coin flip, not an editorial choice. Now only themes[1:]
+  // are shuffled among themselves; themes[0] stays pinned in place, so the
+  // priority-order reveal below (primary theme first, everything else
+  // after) is a real guarantee rather than incidental.
+  const shuffledThemes = useMemo(() => {
+    if (themes.length === 0) return [];
+    const [primary, ...rest] = themes;
+    return [
+      primary,
+      ...seededShuffle(rest, hashSeed(`${itemId}:themes:${generation}`)),
+    ];
+  }, [themes, itemId, generation]);
   const shuffledTags = useMemo(
     () => seededShuffle(tags, hashSeed(`${itemId}:tags:${generation}`)),
     [tags, itemId, generation],

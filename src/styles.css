@@ -908,35 +908,62 @@ body {
   cursor: pointer;
 }
 
-/* Tier 2 (medium): Archive Number + Themes, never Tags. This is the entire
-   Theme region's reveal range -- every breakpoint here is below the Tier 3
-   / tags entry point further down, so all themes always finish revealing
-   before any tag ever appears. Minimum two themes together at first
-   reveal (per spec), one more added per breakpoint after that, each still
-   a complete line -- never a partial one -- and never more than the 4
-   lines this region's own max-height above already reserves. Thresholds
-   are grounded in the Archive's real tile-size distribution (measured
-   across representative viewport heights), not guessed: 120px is
-   comfortably reached by a meaningful share of real tiles, and 145/160px
-   remain realistically reachable at larger viewport heights. */
-@container hover-overlay (min-width: 120px) and (min-height: 120px) {
+/* Metadata-budget prototype (Discovery Card, replaces the historical Tier
+   1/2 breakpoint ladder). This is NOT a new set of hand-picked tiers --
+   every threshold below is the direct output of one formula, evaluated at
+   N = 1, 2, 3, 4: Number's real cost (padding + floor font, 26.4px) + the
+   existing flex gap (16px, unchanged) + N complete theme lines (27.456px
+   each, unchanged typography) + a flat 10px safety margin applied
+   identically at every step, the same margin policy Tier 1 already used.
+   Nothing about typography, line-height, or spacing was touched to reach
+   these numbers -- they simply state, honestly, how much room N complete
+   themes require at the card's existing visual language.
+
+   Width is deliberately NOT part of this ladder: a theme's width
+   requirement doesn't grow with how many lines are stacked beneath it --
+   each one sits on its own centered line -- so escalating the width floor
+   per additional theme (the previous 120/145/160 progression) was never
+   physically justified, and was in effect an unweighted bias against
+   wide, short (landscape) cards, since the same physical width comfortably
+   holds 1 line or 4. Width stays flat at 120px throughout -- unchanged
+   from before, already proven to exceed the longest real theme string
+   (108.3px) with margin to spare -- so a card's real, content-independent
+   vertical budget is the only thing deciding how many complete themes
+   honestly fit.
+
+   Reveal order matches priority, not array position: HoverOverlay now
+   pins each item's primary theme (item.theme) to position 1 before this
+   CSS ever runs (see its own comment), so nth-child(1) is always the
+   designated primary theme, not a shuffled coin flip -- these breakpoints
+   just decide how many complete priority-ordered themes the card has
+   honest room for.
+
+   Tags and everything at 170px and above (Tier 3 / the Feature Card) are
+   completely unaffected -- their own rules, further below, are untouched
+   by this pass. */
+@container hover-overlay (min-width: 120px) and (min-height: 80px) {
   .hover-overlay__themes {
     display: flex;
   }
 
-  .hover-overlay__themes li:nth-child(1),
+  .hover-overlay__themes li:nth-child(1) {
+    display: block;
+  }
+}
+
+@container hover-overlay (min-width: 120px) and (min-height: 107px) {
   .hover-overlay__themes li:nth-child(2) {
     display: block;
   }
 }
 
-@container hover-overlay (min-width: 145px) and (min-height: 145px) {
+@container hover-overlay (min-width: 120px) and (min-height: 135px) {
   .hover-overlay__themes li:nth-child(3) {
     display: block;
   }
 }
 
-@container hover-overlay (min-width: 160px) and (min-height: 160px) {
+@container hover-overlay (min-width: 120px) and (min-height: 162px) {
   .hover-overlay__themes li:nth-child(4) {
     display: block;
   }

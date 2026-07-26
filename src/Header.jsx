@@ -831,9 +831,9 @@ export default function Header({
           {isMenuOpen ? (
             /* Menu displaying inside the exact same drawer surface Filter
                uses -- same wrapper, same is-open/is-settled classes, same
-               reveal/stagger CSS -- just a different content row. Contact
-               is the one interactive field here, and it reuses the
-               identical field/label/handleAddClick pattern
+               unified (no per-field stagger) reveal CSS -- just a different
+               content row. Contact is the one interactive field here, and
+               it reuses the identical field/label/handleAddClick pattern
                Theme/Project/Year use below -- see the shared Active Panel
                further down for its reveal. */
             <div className="index-drawer__row index-drawer__row--menu">

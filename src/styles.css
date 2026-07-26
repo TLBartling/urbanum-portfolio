@@ -277,15 +277,15 @@ body {
    lets the frame itself grow to contain the subheader rather than the
    subheader overflowing past a fixed-height box.
 
-   Motion is deliberately sequenced in three slow, gentle stages so it
-   reads as metadata being uncovered, not a menu dropping open:
+   Motion reads as metadata being uncovered, not a menu dropping open:
      1. The frame itself gently unfolds (this rule's height transition --
         slow, eased, no bounce -- the "expansion" the user actually sees).
-     2. Only once that's essentially settled, each category (Theme,
-        Project, Year) softly fades in on its own, generously staggered
-        (see .index-drawer__field below).
+     2. Theme, Project, and Year (or Menu's own row, when that's what's
+        showing) all fade in together, as one unified panel, matching the
+        Menu/About row's own presentation (see .index-drawer__field below)
+        -- not one at a time.
      3. Opening one category's value list is a smaller version of the
-        same two-stage idea, nested beneath that category alone.
+        same idea, nested beneath that category alone.
    Closing reverses and compresses this: content fades out quickly first,
    then the frame folds back -- a brisker, more direct close, the way an
    archival drawer eases open slowly but shuts more plainly.
@@ -364,9 +364,9 @@ body {
 }
 
 /* Menu's row is the same .index-drawer__row (identical gap, padding,
-   alignment, field/stagger behavior) with one override: its content reads
-   right-aligned, directly beneath the Menu control it belongs to, instead
-   of left-aligned like Filter's Theme/Project/Year row. */
+   alignment, unified field-reveal behavior) with one override: its content
+   reads right-aligned, directly beneath the Menu control it belongs to,
+   instead of left-aligned like Filter's Theme/Project/Year row. */
 .index-drawer__row--menu {
   justify-content: flex-end;
 }
@@ -378,11 +378,12 @@ body {
    as they actually need, with natural whitespace between them rather
    than a rigid equal-width grid.
 
-   Each field fades in on its own -- opacity only, no movement, no scale
-   -- rather than the whole row appearing as one block. Closing fades all
-   three out together, quickly, before the frame folds; opening staggers
-   them (see the nth-child rules below), and only begins once the frame
-   has essentially finished unfolding above. */
+   Presentation refinement -- Unified Drawer Reveal: every field fades in
+   together, as one unified panel -- opacity only, no movement, no scale,
+   no per-field delay -- matching the Menu/About row's own presentation.
+   Closing fades all fields out together, quickly, before the frame folds;
+   opening fades them all in together too, simultaneously with the frame's
+   own slow expansion above rather than waiting for it to finish. */
 .index-drawer__field {
   display: flex;
   flex-direction: column;
@@ -395,22 +396,6 @@ body {
 .index-drawer.is-open .index-drawer__field {
   opacity: 1;
   transition: opacity 700ms var(--reveal-ease);
-}
-
-/* Generously staggered -- roughly 200ms apart -- and only starting once
-   the frame's own slow expansion (1400ms) is most of the way settled, so
-   the sequence genuinely reads as "expand, then unfold one at a time"
-   rather than everything arriving in a single burst. */
-.index-drawer.is-open .index-drawer__field:nth-child(1) {
-  transition-delay: 1050ms;
-}
-
-.index-drawer.is-open .index-drawer__field:nth-child(2) {
-  transition-delay: 1260ms;
-}
-
-.index-drawer.is-open .index-drawer__field:nth-child(3) {
-  transition-delay: 1470ms;
 }
 
 .index-drawer__field-row {

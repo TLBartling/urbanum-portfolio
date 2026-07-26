@@ -307,6 +307,15 @@ function buildImagePool(imageSrcs) {
 }
 const DEFAULT_IMAGE_POOL = { all: allImages, byOrientation: imagesByOrientation };
 
+// Archive State Reset: the one shape "no active Filter selection" means --
+// reused as both activeFilterQuery's own initial state and the value
+// resetArchiveState (see App()) resets straight back to, exactly the same
+// single-source-of-truth idiom Header.jsx's own EMPTY_FILTER_SELECTION
+// already establishes for the same reason (see Header.jsx). Kept as its
+// own constant so App's initial state and its reset can never drift into
+// two slightly different "empty" literals.
+const EMPTY_FILTER_QUERY = { theme: [], tag: [], project: [], year: [] };
+
 // Project Filter Alignment: Filter's Project category displays/selects
 // each Project's human-readable title -- the same way Theme/Year already
 // display real, directly matchable values -- via PROJECT_TITLES (passed
@@ -1156,6 +1165,23 @@ function App() {
   // begins (see handleLogoClick), cleared after the freshly regenerated
   // gallery has settled (GALLERY_REGENERATION_SETTLE_MS).
   const isRegeneratingFromLogoRef = useRef(false);
+  // Archive State Reset: Header owns several pieces of state that are
+  // purely its own presentational echo of the archive's browsing state --
+  // the Filter drawer's open/closed section and selected values, the
+  // Search input's own committed-search echo (which decides whether the
+  // input line or the collapsed chip renders) -- and none of it has an
+  // existing external reset hook, since Header only ever reports changes
+  // outward (onFilterChange/onSearchSubmit), it never accepts them from
+  // outside. Header.jsx's own comment already documents that it "remounts
+  // fresh on every route change" -- i.e. a full remount is already this
+  // codebase's established way to guarantee Header starts from a clean
+  // slate (the same idea Router.jsx relies on via key={slug} for
+  // ProjectTemplate). A plain logo click causes no route change, so
+  // resetArchiveState (below) forces that same clean-slate remount
+  // in-place by changing Header's key -- Header itself needs no new
+  // conditional logic to support this; unmounting/remounting it is
+  // sufficient on its own.
+  const [headerResetKey, setHeaderResetKey] = useState(0);
   const [galleryItems, setGalleryItems] = useState([]);
   const [renderWindow, setRenderWindow] = useState(() =>
     getGalleryRenderWindow(),
@@ -1173,12 +1199,9 @@ function App() {
   // onFilterChange (now handleFilterChange, below, which is what actually
   // combines this with committedSearch and runs the query -- see
   // applyMetadataQuery).
-  const [activeFilterQuery, setActiveFilterQuery] = useState({
-    theme: [],
-    tag: [],
-    project: [],
-    year: [],
-  });
+  const [activeFilterQuery, setActiveFilterQuery] = useState(
+    EMPTY_FILTER_QUERY,
+  );
   // Metadata Query Wiring: Gallery's own copy of the committed search
   // string. Header still owns the Search UI and its own internal
   // committedSearch (what actually renders the chip) -- this is purely so
@@ -1436,11 +1459,46 @@ function App() {
     focusTimelineRef.current = tl;
   }, [galleryItems, getImageWrapper]);
 
-  // Homepage-only logo behavior: regenerate the gallery via the same pure
-  // pipeline used on mount and resize, rather than navigating anywhere.
-  // Child pages don't use this at all -- Header keeps their logo on its
-  // existing navigate("/") behavior. Deliberately does not touch
-  // handleExitFocus's own signature (it's also wired directly as
+  // Archive State Reset (canonical): the one place the archive returns to
+  // its neutral browsing state. Search (handleSearchSubmit/Clear), Filter
+  // (handleFilterChange), and Metadata Click (handleMetadataFilterCommit,
+  // below) are all just different ways of producing the same {search,
+  // theme, tag, project, year} query state that flows into
+  // applyMetadataQuery -- this simply resets that same state back to its
+  // defaults, through the same setters/refs those paths already use.
+  // There is no metadata-specific (or Search-specific, or Filter-specific)
+  // branch here, and none should ever be added -- every future entry
+  // point should be able to call this same function.
+  //
+  // activeImagePoolRef is reset directly to DEFAULT_IMAGE_POOL rather than
+  // routed through applyMetadataQuery/queryArchive with an empty query:
+  // queryArchive matches against ARCHIVE_ITEMS, a separate, smaller
+  // dataset than allImages (see the CMS-readiness audit's own finding on
+  // this), so an empty query wouldn't reliably reproduce the same pool
+  // DEFAULT_IMAGE_POOL already is. Assigning it directly guarantees a
+  // byte-identical return to the pre-Search/Filter/Metadata pool.
+  //
+  // setHeaderResetKey forces Header to unmount/remount (see that state's
+  // own comment above) -- the one piece of plumbing this task's "close
+  // the Filter drawer" requirement actually needs, since Header's Filter/
+  // Search UI state has no existing external reset hook. regenerateGallery
+  // itself already calls resetCameraToNeutral(), so the camera/zoom reset
+  // this task asks for needs no separate call here.
+  const resetArchiveState = useCallback(() => {
+    setCommittedSearch(null);
+    setActiveFilterQuery(EMPTY_FILTER_QUERY);
+    setHasNoSearchResults(false);
+    setRelatedArchiveNumbers([]);
+    activeImagePoolRef.current = DEFAULT_IMAGE_POOL;
+    setHeaderResetKey((key) => key + 1);
+    regenerateGallery();
+  }, [regenerateGallery]);
+
+  // Homepage-only logo behavior: reset the archive to its neutral browsing
+  // state via the same pure pipeline used on mount and resize, rather than
+  // navigating anywhere. Child pages don't use this at all -- Header keeps
+  // their logo on its existing navigate("/") behavior. Deliberately does
+  // not touch handleExitFocus's own signature (it's also wired directly as
   // onClick={handleExitFocus} elsewhere, so adding a parameter there would
   // wire the raw click event in as if it were a callback).
   const handleLogoClick = useCallback(() => {
@@ -1454,7 +1512,7 @@ function App() {
       // to the track instead of the whole viewport.
       setIsGalleryTransitioning(true);
       window.setTimeout(() => {
-        regenerateGallery();
+        resetArchiveState();
         setIsGalleryTransitioning(false);
         window.setTimeout(() => {
           isRegeneratingFromLogoRef.current = false;
@@ -1468,7 +1526,7 @@ function App() {
     } else {
       beginRegeneration();
     }
-  }, [handleExitFocus, regenerateGallery]);
+  }, [handleExitFocus, resetArchiveState]);
 
   // Metadata Query Wiring (final commit): the one place a {search, theme,
   // tag, project, year} query object actually gets built and handed to
@@ -2147,7 +2205,20 @@ function App() {
 
   return (
     <div className="app-shell">
+      {/* Archive State Reset: key={headerResetKey} forces a full
+          unmount/remount whenever the logo triggers resetArchiveState --
+          the same "guarantee a clean slate" mechanism Router.jsx already
+          uses (key={slug} on ProjectTemplate) for an equivalent problem.
+          Header owns several pieces of state that are purely its own echo
+          of the archive's browsing state (Filter drawer open/selected
+          values, the Search input's committed-search echo) with no
+          existing external reset hook; remounting resets all of it at
+          once, with no new conditional logic inside Header.jsx itself.
+          headerResetKey only ever changes inside resetArchiveState, so
+          Header never remounts on an ordinary Search submit, Filter
+          change, or Metadata click -- only on this canonical reset. */}
       <Header
+        key={headerResetKey}
         projects={PROJECT_TITLES}
         onFilterOpenChange={setIsIndexDrawerOpen}
         onFilterChange={handleFilterChange}

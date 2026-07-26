@@ -1559,6 +1559,33 @@ function App() {
     [committedSearch, applyMetadataQuery],
   );
 
+  // Metadata Click Commit (Hover/Click separation): the clicked Theme or
+  // Tag inside HoverOverlay becomes the *entire* Filter selection --
+  // exactly the shape Header's own handleOptionToggle would produce if
+  // every other category were already empty and this were the one value
+  // just switched on. This deliberately calls handleFilterChange itself,
+  // not applyMetadataQuery/queryArchive directly, so a metadata click goes
+  // through the exact same combine-with-Search + Project-slug-resolve +
+  // regenerate path Header's Filter drawer already uses -- this is a
+  // second UI entry point into that one existing pipeline, not a second
+  // pipeline. Per prototype scope, this intentionally does NOT sync
+  // Header's own Filter drawer selection state (Header.jsx's local
+  // `selection` is uncontrolled from outside) -- the drawer's displayed
+  // chips may not visually reflect a Theme/Tag committed this way yet;
+  // only the actual query/regeneration behavior is wired here.
+  const handleMetadataFilterCommit = useCallback(
+    (field, value) => {
+      handleFilterChange({
+        theme: [],
+        tag: [],
+        project: [],
+        year: [],
+        [field]: [value],
+      });
+    },
+    [handleFilterChange],
+  );
+
   const handleImageClick = useCallback(
     (imageId) => {
       if (focusedIdRef.current !== null) return;
@@ -2364,7 +2391,18 @@ function App() {
                       hoveredGalleryItemId's declaration above and the
                       isDimmed comment below for why. Plain image hover
                       here only ever reveals this card; it has no bearing
-                      on dimming either way. */}
+                      on dimming either way.
+                      onMetadataCommit (Hover/Click separation): a Theme or
+                      Tag click inside HoverOverlay calls this straight
+                      through to handleMetadataFilterCommit above, which
+                      itself is a thin wrapper around the existing
+                      handleFilterChange -- the exact same Metadata Query
+                      pipeline Search and Filter already share. This
+                      wrapper button's own onClick (navigate/focus, above)
+                      never fires for these clicks: HoverOverlay calls
+                      event.stopPropagation() before invoking this, since
+                      the theme/tag elements are DOM descendants of this
+                      button. */}
                   <HoverOverlay
                     archiveNumber={item.archiveNumber}
                     themes={
@@ -2378,6 +2416,7 @@ function App() {
                     itemId={item.id}
                     generation={galleryGenerationRef.current}
                     onRelatedArchiveNumbersChange={setRelatedArchiveNumbers}
+                    onMetadataCommit={handleMetadataFilterCommit}
                   />
                 </button>
               );

@@ -901,6 +901,11 @@ body {
      (display: none) items -- they still never receive events either way,
      same as before this change. No opacity/transition/typography touched. */
   pointer-events: auto;
+  /* Hover/Click separation: these are now also clickable (commits the
+     Metadata Query pipeline to this Theme -- see HoverOverlay.jsx), so a
+     pointer cursor is the one small affordance addition that goes with
+     that; nothing else about presentation changes. */
+  cursor: pointer;
 }
 
 /* Tier 2 (medium): Archive Number + Themes, never Tags. This is the entire
@@ -979,6 +984,8 @@ body {
      one property, with .hover-overlay's own pointer-events: none
      otherwise unchanged. */
   pointer-events: auto;
+  /* Same click affordance as .hover-overlay__themes li above. */
+  cursor: pointer;
 }
 
 .hover-overlay__tag:not(:first-child)::before {

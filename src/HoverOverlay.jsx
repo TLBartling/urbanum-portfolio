@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useMemo } from "react";
 import { findRelatedArchiveItems } from "./relationshipEngine";
 import { ARCHIVE_ITEMS } from "./mockArchiveItems";
 
@@ -11,15 +11,38 @@ import { ARCHIVE_ITEMS } from "./mockArchiveItems";
 // (`.gallery-image-wrapper:hover .hover-overlay`, see styles.css) -- that
 // compositor-only opacity fade is untouched, still fully decoupled from the
 // animation-frame loop that drives the archive itself, and never re-runs
-// just because this component re-renders. As of the Relationship Highlight
-// Pipeline (Commit 3), this component does now also receive an `isHovered`
-// prop and report to a parent callback (see below) -- that is a parallel
-// JS-level data signal for the Relationship Engine pipeline only, kept
-// deliberately separate from the CSS opacity fade so the fade itself still
-// can't be affected by, or blocked on, any React state. The only
-// requirement of the parent is that it already be a positioned element
-// this component can fill via inset: 0, which .gallery-image-wrapper
-// already is.
+// just because this component re-renders. The only requirement of the
+// parent is that it already be a positioned element this component can
+// fill via inset: 0, which .gallery-image-wrapper already is.
+//
+// Relationship trigger, metadata-driven (moved off image hover in this
+// commit): earlier, simply hovering the image fired a Relationship Engine
+// query automatically. Now the image hover only ever reveals this card
+// (still pure CSS, untouched) -- querying the engine is the job of the
+// individual theme/tag elements rendered below, each with its own
+// onMouseEnter/onMouseLeave. .hover-overlay itself keeps pointer-events:
+// none (unchanged), so the card as a whole still doesn't intercept clicks
+// meant for the image/button beneath it; only the individual
+// `.hover-overlay__themes li` / `.hover-overlay__tag` elements opt back in
+// with their own pointer-events: auto (see styles.css) so they alone can
+// receive real hover events. Because those elements are still DOM
+// descendants of .gallery-image-wrapper, moving the pointer from the plain
+// image onto one of them never interrupts that button's own :hover state
+// (CSS :hover applies to an element whenever the pointer is over it or any
+// descendant) -- so this card stays open and stable the whole time, with
+// no JS needed to hold it open.
+//
+// Hover/Click separation (this commit): hover and click on the same
+// theme/tag element now have different, deliberately non-overlapping
+// jobs. Hover (above) is a temporary Relationship Engine preview only --
+// it never touches gallery state. Click commits: it hands the same
+// {field, value} straight up to onMetadataCommit, which App.jsx wires to
+// the exact same Metadata Query pipeline (queryArchive/applyMetadataQuery
+// /regenerateGallery) Search and Filter already share, via
+// handleFilterChange -- see App.jsx's own comment at the call site. This
+// component still performs no matching, holds no query or gallery state,
+// and does not navigate; it only reports what was clicked, exactly as it
+// already only reports what was hovered.
 //
 // Responsive scaling (large images get more breathing room, small images
 // shrink proportionally) is handled entirely in CSS via container query
@@ -75,8 +98,8 @@ function HoverOverlay({
   dimensions,
   itemId,
   generation = 0,
-  isHovered = false,
   onRelatedArchiveNumbersChange,
+  onMetadataCommit,
 }) {
   const shuffledThemes = useMemo(
     () => seededShuffle(themes, hashSeed(`${itemId}:themes:${generation}`)),
@@ -87,42 +110,55 @@ function HoverOverlay({
     [tags, itemId, generation],
   );
 
-  // Relationship Engine wiring (Commit 2): HoverOverlay is the first
-  // consumer of the Relationship Engine, but it does not perform matching
-  // itself -- per the Relationship Engine's own contract, it only supplies
-  // a relationship type + value and stores whatever Archive Numbers come
-  // back. There is no theme interaction yet (a later commit); for now this
-  // simply asks about the item's own first-shown theme, the same theme
-  // priority already used for rendering.
-  const relatedArchiveNumbersRef = useRef([]);
-  relatedArchiveNumbersRef.current = useMemo(
-    () =>
-      shuffledThemes.length > 0
-        ? findRelatedArchiveItems("theme", shuffledThemes[0], ARCHIVE_ITEMS)
-        : [],
-    [shuffledThemes],
-  );
-
-  // Relationship Highlight Pipeline (Commit 3): lift the already-computed
-  // related Archive Numbers up to Gallery (App.jsx), which owns the
-  // shared relatedArchiveNumbers state -- HoverOverlay does not hold that
-  // shared state itself, it only reports into the callback the parent
-  // supplies. `isHovered` is likewise owned and set by the parent, via
-  // onMouseEnter/onMouseLeave on the actual hoverable element
-  // (.gallery-image-wrapper), which alone receives real pointer events --
-  // .hover-overlay itself has pointer-events: none (see styles.css,
-  // unchanged) and can't detect hover on its own DOM node. Reporting only
-  // happens on isHovered transitions: the parent's state fills in while
-  // hovering and resets to [] the instant hover ends. This is a parallel
-  // JS-level signal alongside the existing CSS-only opacity fade -- it
-  // does not touch that fade, its timing, or any CSS at all, and nothing
-  // downstream consumes the reported value yet.
-  useEffect(() => {
-    if (!onRelatedArchiveNumbersChange) return;
-    onRelatedArchiveNumbersChange(
-      isHovered ? relatedArchiveNumbersRef.current : [],
+  // Relationship Engine wiring, now metadata-driven: each call below
+  // supplies a relationship type + value and reports whatever Archive
+  // Numbers come back straight to Gallery (App.jsx), via the same
+  // onRelatedArchiveNumbersChange callback wired in an earlier commit --
+  // HoverOverlay still does not perform matching itself and still does not
+  // hold the shared relatedArchiveNumbers state itself, per the
+  // Relationship Engine's own contract. What changed is only the trigger:
+  // these fire on an individual theme/tag's own hover (below), not on the
+  // image's hover, and not automatically for "the first theme" the way an
+  // earlier commit did. Leaving a theme/tag reports [] immediately, same
+  // as leaving the image used to.
+  const handleThemeHoverStart = (theme) => {
+    onRelatedArchiveNumbersChange?.(
+      findRelatedArchiveItems("theme", theme, ARCHIVE_ITEMS),
     );
-  }, [isHovered, onRelatedArchiveNumbersChange]);
+  };
+  const handleTagHoverStart = (tag) => {
+    onRelatedArchiveNumbersChange?.(
+      findRelatedArchiveItems("tag", tag, ARCHIVE_ITEMS),
+    );
+  };
+  const handleMetadataHoverEnd = () => {
+    onRelatedArchiveNumbersChange?.([]);
+  };
+
+  // Hover/Click separation: hover (above) only ever previews via the
+  // Relationship Engine and never touches gallery state. A click commits
+  // -- it hands the same {field, value} shape straight up to App.jsx's
+  // onMetadataCommit (handleMetadataFilterCommit), which is a thin
+  // wrapper around the existing handleFilterChange/Metadata Query
+  // pipeline Search and Filter already share. HoverOverlay itself still
+  // performs no matching and holds no query/gallery state -- it only ever
+  // reports which field+value was clicked, exactly as it already only
+  // ever reports which field+value was hovered.
+  //
+  // event.stopPropagation() is required, not optional: these elements are
+  // DOM descendants of the gallery tile's own <button> (see App.jsx),
+  // which has its own onClick (navigate to the item's Project, or
+  // open focus/zoom). Without stopping propagation here, a Theme/Tag
+  // click would also fire that navigation/focus -- exactly what the
+  // "Do NOT navigate" requirement for this interaction rules out.
+  const handleThemeClick = (event, theme) => {
+    event.stopPropagation();
+    onMetadataCommit?.("theme", theme);
+  };
+  const handleTagClick = (event, tag) => {
+    event.stopPropagation();
+    onMetadataCommit?.("tag", tag);
+  };
 
   return (
     <div className="hover-overlay" aria-hidden="true">
@@ -132,14 +168,27 @@ function HoverOverlay({
       {shuffledThemes.length > 0 && (
         <ul className="hover-overlay__themes">
           {shuffledThemes.map((theme) => (
-            <li key={theme}>{theme}</li>
+            <li
+              key={theme}
+              onMouseEnter={() => handleThemeHoverStart(theme)}
+              onMouseLeave={handleMetadataHoverEnd}
+              onClick={(event) => handleThemeClick(event, theme)}
+            >
+              {theme}
+            </li>
           ))}
         </ul>
       )}
       {shuffledTags.length > 0 && (
         <p className="hover-overlay__tags">
           {shuffledTags.map((tag) => (
-            <span className="hover-overlay__tag" key={tag}>
+            <span
+              className="hover-overlay__tag"
+              key={tag}
+              onMouseEnter={() => handleTagHoverStart(tag)}
+              onMouseLeave={handleMetadataHoverEnd}
+              onClick={(event) => handleTagClick(event, tag)}
+            >
               {tag}
             </span>
           ))}

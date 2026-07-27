@@ -75,6 +75,30 @@ const imageTags = {
 const imageFocusEnabled = false;
 const galleryBatchWidth = 1760;
 const galleryEdgeBleed = 190;
+// Hover intent (interaction-layer only -- see handleGalleryImageIntentEnter/
+// Leave below): how long the cursor must stay on a tile before metadata
+// reveal and the Relationship Engine are allowed to turn on at all. Exists
+// purely to filter out the mouseenter/mouseleave pairs a scrolling page
+// fires on tiles nobody meant to pause on -- nothing about metadata
+// rendering, the Relationship Engine, or their timing once active changes
+// because of this. The only constant to touch to retune the delay.
+const HOVER_INTENT_DELAY_MS = 150;
+const HOVER_INTENT_ACTIVE_CLASS = "gallery-image-wrapper--hover-intent-active";
+
+// Browsing/Exploration mode (interaction-layer only -- see isScrolling's own
+// comment and the animateGallery loop that sets it): how long the gallery
+// must sit idle (real velocity at or under the epsilon below, not just a
+// pause between wheel/touch events) before hover metadata and the
+// Relationship Engine are allowed to activate again. The one constant to
+// touch to retune the delay. SCROLL_IDLE_VELOCITY_EPSILON is the second,
+// smaller dial this feature needs: movement.velocity decays by the existing
+// friction (0.92) every frame and, left alone, would take many seconds to
+// reach exactly zero -- this is the "close enough to stopped, no visible
+// motion left" cutoff (px/frame; at 60fps, 0.5 is ~30px/s) that lets the
+// idle timer above start counting at a moment that actually looks settled,
+// rather than waiting on a value that never quite arrives.
+const SCROLL_IDLE_DELAY_MS = 200;
+const SCROLL_IDLE_VELOCITY_EPSILON = 0.5;
 
 // Real hand-built column compositions (extracted from the studio's own
 // reference layout). Each pattern is a fixed column of tiles sharing the
@@ -1086,6 +1110,22 @@ function App() {
   // stale relative to the DOM: registration and deregistration are React
   // mount/unmount events, not a periodic snapshot.
   const wrapperRegistryRef = useRef(new Map());
+  // Hover-intent gate (interaction-layer only, see HOVER_INTENT_DELAY_MS
+  // and the two handlers below): Map(item id -> pending setTimeout id).
+  // Same "why a ref, not state" reasoning as the other refs on this page --
+  // this is pure timer bookkeeping, never read during render, so it must
+  // not trigger one either.
+  const hoverIntentTimersRef = useRef(new Map());
+  // Mirrors the isScrolling state (declared further down, with its own
+  // comment) for the animateGallery loop's own use: that loop runs every
+  // frame and is not recreated when isScrolling changes (its effect only
+  // depends on galleryItems -- see that effect's own dependency array), so
+  // it needs a ref, not the state itself, to know without a stale closure
+  // whether it has already flipped isScrolling this "movement episode" and
+  // avoid calling setIsScrolling every single frame. isScrolling remains
+  // the actual source of truth read by render/CSS; this ref only prevents
+  // redundant setState calls.
+  const isScrollingRef = useRef(false);
   // Camera owns this and this alone: the current zoom scale. No vertical
   // state, no interaction logic. Default is 1 -- the untouched, pre-camera
   // baseline. A ref, not state, since it's read every animation frame by
@@ -1251,6 +1291,16 @@ function App() {
   // pure CSS (:hover in styles.css) and was never driven by this state.
   const [hoveredGalleryItemId, setHoveredGalleryItemId] = useState(null);
   const [relatedArchiveNumbers, setRelatedArchiveNumbers] = useState([]);
+  // Browsing/Exploration mode (interaction-layer only -- see
+  // SCROLL_IDLE_DELAY_MS near the top of this file and where this is set,
+  // inside the existing animateGallery loop below). True while the gallery
+  // is actively moving (real velocity, not just a raw wheel/touch event --
+  // this stays true through an inertial glide, not only while the input is
+  // physically occurring), false once it's been idle for that delay. Drives
+  // one class on .gallery-track (see the render below) that styles.css uses
+  // to suspend hover metadata and the Relationship Engine while true --
+  // nothing about gallery motion itself reads or is affected by this.
+  const [isScrolling, setIsScrolling] = useState(false);
   // Search Query Wiring: true only while a committed search matches zero
   // Archive Items. Doesn't hold the query string itself or the matched
   // items -- Header owns the query string (for the chip's own label) and
@@ -1273,6 +1323,45 @@ function App() {
   }, []);
   const handleGalleryImageHoverEnd = useCallback(() => {
     setHoveredGalleryItemId(null);
+  }, []);
+
+  // Hover intent (see HOVER_INTENT_DELAY_MS/HOVER_INTENT_ACTIVE_CLASS near
+  // the top of this file): the two handlers below are the only place that
+  // constant is consumed. The class they toggle is what CSS keys the
+  // existing opacity reveal and theme/tag pointer-events off of -- nothing
+  // about metadata rendering, the Relationship Engine, or their timing once
+  // active changes here or in styles.css.
+
+  // Entry is delayed; handleGalleryImageHoverStart above is untouched and
+  // still fires immediately (it isn't a metadata/relationship input today
+  // -- see its own comment). A plain DOM class toggle, not React state:
+  // same reasoning as every ref on this page -- a hover intent firing must
+  // never force this whole gallery to re-render.
+  const handleGalleryImageIntentEnter = useCallback((event, itemId) => {
+    const node = event.currentTarget;
+    const timers = hoverIntentTimersRef.current;
+    const pending = timers.get(itemId);
+    if (pending) clearTimeout(pending);
+    const timeoutId = setTimeout(() => {
+      node.classList.add(HOVER_INTENT_ACTIVE_CLASS);
+      timers.delete(itemId);
+    }, HOVER_INTENT_DELAY_MS);
+    timers.set(itemId, timeoutId);
+  }, []);
+
+  // Leave always deactivates immediately -- no delay on the way out, only
+  // on the way in. If the timer above hasn't fired yet, this cancels it
+  // outright, so a pass-through hover never activates anything at all.
+  // Removing the class is a harmless no-op if intent was never reached.
+  const handleGalleryImageIntentLeave = useCallback((event, itemId) => {
+    const node = event.currentTarget;
+    const timers = hoverIntentTimersRef.current;
+    const pending = timers.get(itemId);
+    if (pending) {
+      clearTimeout(pending);
+      timers.delete(itemId);
+    }
+    node.classList.remove(HOVER_INTENT_ACTIVE_CLASS);
   }, []);
 
   // Shared regeneration sequence -- used on mount, on window resize, and
@@ -1925,6 +2014,13 @@ function App() {
     const renderWindowUpdateThreshold = Math.max(window.innerWidth * 0.35, 240);
     let animationFrame = null;
     let touchPoint = null;
+    // Browsing/Exploration mode: pending "settle" timer, same lifetime
+    // scope as animationFrame/touchPoint above (this whole effect body is
+    // recreated only when galleryItems changes -- see this effect's own
+    // dependency array). Set once motion drops under
+    // SCROLL_IDLE_VELOCITY_EPSILON, cleared immediately if real motion
+    // resumes before it fires -- see animateGallery below.
+    let scrollIdleTimeout = null;
 
     scrollContainer.style.height = "100vh";
 
@@ -2088,6 +2184,39 @@ function App() {
         "is-browsing",
         movement.hasBrowsed,
       );
+
+      // Browsing/Exploration mode: same per-frame placement as is-browsing
+      // above, reading movement.velocity right after this frame's friction
+      // decay has already been applied. Real motion (above the epsilon)
+      // both flips isScrolling on (once) and cancels any pending settle
+      // timer, so an inertial glide keeps Browsing Mode active the whole
+      // way through, not just while a wheel/touch event is literally
+      // firing. Dropping under the epsilon starts a single
+      // SCROLL_IDLE_DELAY_MS timer; if real motion doesn't resume before it
+      // fires, that's Exploration Mode. Also clears any active
+      // Relationship Engine highlight the moment browsing resumes, rather
+      // than counting on a hover/pointer-events transition to imply it --
+      // see relatedArchiveNumbers's own comment for why Gallery owns that
+      // state.
+      const isMovingNow =
+        Math.abs(movement.velocity) > SCROLL_IDLE_VELOCITY_EPSILON;
+      if (isMovingNow) {
+        if (scrollIdleTimeout !== null) {
+          clearTimeout(scrollIdleTimeout);
+          scrollIdleTimeout = null;
+        }
+        if (!isScrollingRef.current) {
+          isScrollingRef.current = true;
+          setIsScrolling(true);
+          setRelatedArchiveNumbers([]);
+        }
+      } else if (isScrollingRef.current && scrollIdleTimeout === null) {
+        scrollIdleTimeout = setTimeout(() => {
+          isScrollingRef.current = false;
+          setIsScrolling(false);
+          scrollIdleTimeout = null;
+        }, SCROLL_IDLE_DELAY_MS);
+      }
     };
 
     const animateGallery = () => {
@@ -2177,6 +2306,7 @@ function App() {
     return () => {
       focusTimelineRef.current?.kill();
       cancelAnimationFrame(animationFrame);
+      if (scrollIdleTimeout !== null) clearTimeout(scrollIdleTimeout);
       window.removeEventListener("wheel", handleWheel);
       window.removeEventListener("touchstart", handleTouchStart);
       window.removeEventListener("touchmove", handleTouchMove);
@@ -2281,7 +2411,7 @@ function App() {
             <div
               className={`gallery-track${
                 isGalleryTransitioning ? " is-regenerating" : ""
-              }`}
+              }${isScrolling ? " is-scrolling" : ""}`}
               ref={trackRef}
               style={{ width: `${getGalleryTrackWidth(galleryItems)}px` }}
             >
@@ -2384,8 +2514,14 @@ function App() {
                         ? () => handleImageClick(item.id)
                         : undefined
                   }
-                  onMouseEnter={() => handleGalleryImageHoverStart(item.id)}
-                  onMouseLeave={handleGalleryImageHoverEnd}
+                  onMouseEnter={(event) => {
+                    handleGalleryImageHoverStart(item.id);
+                    handleGalleryImageIntentEnter(event, item.id);
+                  }}
+                  onMouseLeave={(event) => {
+                    handleGalleryImageHoverEnd();
+                    handleGalleryImageIntentLeave(event, item.id);
+                  }}
                   aria-label={
                     isProjectLinked
                       ? `View project: ${item.alt}`

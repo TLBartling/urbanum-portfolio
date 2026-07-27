@@ -842,7 +842,25 @@ body {
   will-change: opacity;
 }
 
-.gallery-image-wrapper:hover .hover-overlay {
+/* Hover intent (interaction-layer only -- see App.jsx's
+   HOVER_INTENT_DELAY_MS and its two handlers): reveal is keyed off this
+   class instead of :hover directly, so a confirmed ~150ms dwell -- not a
+   raw mouseenter a scrolling page can fire by itself -- is what turns the
+   card on. Everything else about the reveal (this same opacity property,
+   the unchanged 180ms ease-out transition above) is identical to before.
+
+   Browsing/Exploration mode (interaction-layer only -- see App.jsx's
+   isScrolling and SCROLL_IDLE_DELAY_MS): the :not(.is-scrolling) ancestor
+   condition is the only other thing this rule adds. While the gallery
+   track carries .is-scrolling, this selector simply stops matching, so
+   .hover-overlay falls back to its own base opacity: 0 and fades out over
+   the same existing 180ms transition -- "closes naturally," not a forced
+   cut. A hover-intent timer already confirmed for a tile is untouched by
+   this (it isn't reset), so the card reappears the instant scrolling
+   settles again, with no re-dwell required. */
+.gallery-track:not(.is-scrolling)
+  .gallery-image-wrapper.gallery-image-wrapper--hover-intent-active
+  .hover-overlay {
   opacity: 1;
 }
 
@@ -967,11 +985,16 @@ body {
      hoverable to drive the Relationship Engine (see HoverOverlay.jsx).
      .hover-overlay itself keeps pointer-events: none (unchanged) so the
      card as a whole still never intercepts clicks meant for the image
-     beneath it; this single child property opts each theme item back in
-     to real pointer events without changing that. No effect on hidden
-     (display: none) items -- they still never receive events either way,
-     same as before this change. No opacity/transition/typography touched. */
-  pointer-events: auto;
+     beneath it. Opting each theme item back in to real pointer events is
+     now conditional on the same hover-intent-active class the opacity
+     reveal above uses (see that rule's comment) rather than unconditional
+     -- see that scoped rule further down. Without it, this element simply
+     inherits pointer-events: none from .hover-overlay, exactly like any
+     other non-interactive child: a stray mouseenter during the pre-intent
+     window (or while a tile is merely scrolling past the cursor) cannot
+     reach this element at all, so it cannot fire the Relationship Engine.
+     No effect on hidden (display: none) items either way. No
+     opacity/transition/typography touched. */
   /* Hover/Click separation: these are now also clickable (commits the
      Metadata Query pipeline to this Theme -- see HoverOverlay.jsx), so a
      pointer cursor is the one small affordance addition that goes with
@@ -1070,12 +1093,48 @@ body {
 .hover-overlay__tag {
   display: none;
   /* Same interaction change as .hover-overlay__themes li above: tags are
-     now individually hoverable to drive the Relationship Engine, via this
-     one property, with .hover-overlay's own pointer-events: none
+     individually hoverable to drive the Relationship Engine, gated behind
+     the same hover-intent-active class (see the scoped rule below) rather
+     than unconditional, with .hover-overlay's own pointer-events: none
      otherwise unchanged. */
-  pointer-events: auto;
   /* Same click affordance as .hover-overlay__themes li above. */
   cursor: pointer;
+}
+
+/* Hover intent, continued: the actual pointer-events opt-in for both
+   themes and tags, scoped to the same class the opacity reveal above uses.
+   Until a hover is confirmed (~150ms dwell -- see App.jsx), these elements
+   are inert like any other non-interactive child of .hover-overlay; once
+   confirmed, they behave exactly as they always have. Splitting this out
+   from the two rules above (rather than writing pointer-events: auto
+   directly on .hover-overlay__themes li / .hover-overlay__tag) is what
+   makes the gate a single, obvious toggle instead of two.
+
+   Same :not(.is-scrolling) condition as the opacity reveal above, for the
+   same reason -- this is what actually suspends the Relationship Engine
+   while browsing: with pointer-events back to none the moment .is-scrolling
+   appears, these elements can no longer receive the mouseenter that would
+   fire it, immediately, not just once the card has faded out. */
+.gallery-track:not(.is-scrolling) .gallery-image-wrapper--hover-intent-active .hover-overlay__themes li,
+.gallery-track:not(.is-scrolling) .gallery-image-wrapper--hover-intent-active .hover-overlay__tag {
+  pointer-events: auto;
+}
+
+/* Metadata hover polish: a small, purely visual signal that a theme/tag is
+   itself interactive, once the gallery has settled enough for it to
+   receive pointer events at all -- :hover cannot apply to an element that
+   isn't currently receiving pointer events, so this is already correctly
+   inert during Browsing Mode with no extra condition needed here. Opacity
+   only, nothing else: no movement, no scale, no color change. Archive
+   Number is not part of either selector below and is untouched. */
+.hover-overlay__themes li,
+.hover-overlay__tag {
+  transition: opacity 120ms ease-out;
+}
+
+.hover-overlay__themes li:hover,
+.hover-overlay__tag:hover {
+  opacity: 0.75;
 }
 
 .hover-overlay__tag:not(:first-child)::before {

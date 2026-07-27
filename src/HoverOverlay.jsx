@@ -100,6 +100,12 @@ function HoverOverlay({
   generation = 0,
   onRelatedArchiveNumbersChange,
   onMetadataCommit,
+  // Discovery is the first eligibility gate: an editorial boolean (see
+  // COLUMN_PATTERNS) deciding whether this tile may show metadata at all.
+  // Defaults to false so an unspecified call site shows no metadata, never
+  // everything. Geometry/container queries still decide how much is shown
+  // once eligible -- see the `discovery &&` checks below.
+  discovery = false,
 }) {
   // Metadata-budget prototype: the first entry in `themes` is always the
   // Archive Item's designated primary theme (item.theme, the singular
@@ -178,7 +184,15 @@ function HoverOverlay({
       {archiveNumber != null && (
         <div className="hover-overlay__number">{archiveNumber}</div>
       )}
-      {shuffledThemes.length > 0 && (
+      {/* Discovery: the only editorial gate, checked before container
+          queries ever run. Non-discovery tiles never render this markup, so
+          styles.css has nothing to measure. Discovery tiles always attempt
+          to render -- responsive typography (see styles.css) decides how
+          large the text appears, shrinking smoothly down to a 9px floor;
+          only genuine physical impossibility at that floor (a container too
+          small to hold even the shortest single line) results in no visible
+          themes, never a separate editorial decision. */}
+      {discovery && shuffledThemes.length > 0 && (
         <ul className="hover-overlay__themes">
           {shuffledThemes.map((theme) => (
             <li
@@ -192,7 +206,7 @@ function HoverOverlay({
           ))}
         </ul>
       )}
-      {shuffledTags.length > 0 && (
+      {discovery && shuffledTags.length > 0 && (
         <p className="hover-overlay__tags">
           {shuffledTags.map((tag) => (
             <span

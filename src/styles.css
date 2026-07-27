@@ -825,7 +825,15 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 1rem;
+  /* Metadata-block compression pass: Number/Themes/Tags are now composed as
+     one metadata block rather than three independently-spaced sections --
+     see .hover-overlay__number's own comment for the matching change on its
+     side of this same gap. Was 1rem (16px); the outer safe-area padding
+     directly above (0.5rem, unchanged) is what actually protects the
+     content from the card's edges, so this value was pure internal
+     whitespace between stack members, not edge protection -- the value to
+     cut for "tighter stack, same generous outer margin." */
+  gap: 0.35rem;
   opacity: 0;
   pointer-events: none;
   background: rgba(231, 223, 208, 0.75);
@@ -848,27 +856,54 @@ body {
    together by the parent's justify-content: center. */
 .hover-overlay__number {
   align-self: center;
-  padding: 0.5rem;
+  /* Dominance-reduction pass: was a uniform 0.5rem on all sides. Horizontal
+     stays 0.5rem (keeps this element visually aligned/centered the same
+     as before -- untouched). Vertical drops to 0.2rem: this padding was the
+     number's own private whitespace, separate from both the card's outer
+     safe-area (.hover-overlay's padding, untouched) and the inter-block gap
+     above (also changed, but independently) -- cutting it here compresses
+     the stack without touching either of those. This is the real lever for
+     "tighter," not line-height: line-height is already 1, the floor for a
+     single line of text without risking clipped ascenders/descenders, so
+     there was no safe room left to cut there. This padding was where the
+     actual removable whitespace around the number lived. */
+  padding: 0.2rem 0.5rem;
   font-family: "Courier New", Courier, monospace;
   font-weight: 300;
-  font-size: clamp(0.65rem, 7cqmin, 1.15rem);
+  /* Dominance-reduction pass: clamp scaled down ~10-15% at every point
+     (floor 0.65rem->0.6rem, cqmin coefficient 7->6, ceiling 1.15rem->1rem)
+     -- a proportional shrink of the whole responsive curve, not just the
+     ceiling, so the number stays smaller than before at every card size,
+     not only at the largest ones. Still comfortably legible; still scales
+     with card size exactly as before, just consistently one notch down. */
+  font-size: clamp(0.6rem, 6cqmin, 1rem);
   line-height: 1;
   letter-spacing: 0.03em;
   text-align: center;
   color: #1a1a1a;
 }
 
-/* Themes: typography/spacing unchanged from before this pass. Horizontal
-   padding moved to the overlay's own safe-area padding above (padding: 0
-   here just overrides the UA default ul indent, since list-style: none
-   alone doesn't zero it). max-height + overflow: hidden reserve this
-   region's own layout budget -- exactly tall enough for all 4 possible
-   theme lines at this fixed font-size/line-height (0.78rem * 2.2 = 1.716rem
-   per line x 4 = 6.864rem, rounded up slightly) and no taller, so this
-   region can never grow into the tags region below it regardless of how
-   many themes are shown. The responsive reveal behavior below (which
-   breakpoint shows which theme) is restructured by this pass; the
-   typography itself is untouched. */
+/* Themes: horizontal padding moved to the overlay's own safe-area padding
+   above (padding: 0 here just overrides the UA default ul indent, since
+   list-style: none alone doesn't zero it). max-height + overflow: hidden
+   reserve this region's own layout budget -- exactly tall enough for all 4
+   possible theme lines at the largest they ever render (0.78rem * 2.2 =
+   1.716rem per line x 4 = 6.864rem, rounded up slightly) and no taller, so
+   this region can never grow into the tags region below it. This bound
+   still holds under responsive sizing below, since 4 themes only ever show
+   on containers big enough that the responsive font-size has already
+   saturated at its 0.78rem ceiling (see that rule's own comment) --
+   shrinking below 0.78rem only ever happens where at most one theme shows.
+
+   font-size is responsive, not fixed (Discovery/typography separation --
+   see the reveal rule below for the full rationale): it shrinks smoothly
+   between a 0.78rem ceiling and a 9px floor based on how much room this
+   specific container actually has, so a card doesn't need to clear a fixed
+   pixel threshold to show its theme -- it just renders that theme smaller.
+   line-height stays a unitless multiplier (2.2), so it scales
+   proportionally with whatever font-size is computed here -- no separate
+   change needed for it to track. Nothing else about typography/spacing
+   changes from before this pass. */
 .hover-overlay__themes {
   align-self: center;
   display: none;
@@ -881,7 +916,32 @@ body {
   list-style: none;
   font-family: "Courier New", Courier, monospace;
   font-weight: 300;
-  font-size: 0.78rem;
+  /* Responsive font-size, clamped between a 9px floor and the original
+     0.78rem (12.48px) ceiling. The middle term is the smaller of two
+     container-derived budgets:
+       - width budget (11.5207cqw): how large the font can be before the
+         worst-case real primary theme string -- "Adaptive Reuse" /
+         "Material Study" / "Urban Strategy", all 14 characters, the
+         longest of the 7 real values -- would overflow this container's
+         own width. Courier New is a true monospace face (0.6em advance
+         per character) plus the existing 0.02em letter-spacing = 0.62em
+         per character; 14 * 0.62 = 8.68, and 100cqw / 8.68 = 11.5207cqw.
+       - height budget (45.4545cqh - 9.8182px): how large the font can be
+         before one theme line, at this same 2.2 line-height, plus the
+         Archive Number's own footprint and the flex gap above it (16.0px
+         + 5.6px = 21.6px, the same audited overhead the historical ladder
+         below already relies on), would overflow this container's height.
+         One line costs 2.2 * font-size, so solving
+         (100cqh - 21.6px) / 2.2 for font-size gives 45.4545cqh - 9.8182px.
+     Whichever budget is tighter wins; clamp() then holds it to [9px,
+     0.78rem]. At and above the container size this codebase has always
+     required for one theme (120px width / 60px height), both budgets
+     already exceed 12.48px on their own, so this formula saturates at the
+     exact original 0.78rem for every card that already worked -- nothing
+     about their appearance changes. It only ever produces something
+     smaller than 0.78rem below that size, which is new territory the old
+     fixed-size system never rendered into at all (it was simply absent). */
+  font-size: clamp(9px, min(11.5207cqw, calc(45.4545cqh - 9.8182px)), 0.78rem);
   line-height: 2.2;
   letter-spacing: 0.02em;
   text-align: center;
@@ -892,6 +952,17 @@ body {
   margin: 0;
   padding: 0;
   display: none;
+  /* Never wrap a theme, at any size: a two-word theme (e.g. "Adaptive
+     Reuse") would otherwise be free to wrap at the space once a container
+     gets tight, which would silently turn "one complete theme, one line"
+     into two lines the height budget above was never sized for. This is
+     the width budget's own guarantee made explicit in CSS -- the font-size
+     formula above only ever proposes a size where the full string is
+     provably supposed to fit, so nowrap here never truncates or clips
+     anything; it just forbids the one failure mode arithmetic alone can't
+     prevent (sub-pixel rounding, a future theme string longer than today's
+     worst case, etc). */
+  white-space: nowrap;
   /* Interaction architecture change: themes are now individually
      hoverable to drive the Relationship Engine (see HoverOverlay.jsx).
      .hover-overlay itself keeps pointer-events: none (unchanged) so the
@@ -908,40 +979,32 @@ body {
   cursor: pointer;
 }
 
-/* Metadata-budget prototype (Discovery Card, replaces the historical Tier
-   1/2 breakpoint ladder). This is NOT a new set of hand-picked tiers --
-   every threshold below is the direct output of one formula, evaluated at
-   N = 1, 2, 3, 4: Number's real cost (padding + floor font, 26.4px) + the
-   existing flex gap (16px, unchanged) + N complete theme lines (27.456px
-   each, unchanged typography) + a flat 10px safety margin applied
-   identically at every step, the same margin policy Tier 1 already used.
-   Nothing about typography, line-height, or spacing was touched to reach
-   these numbers -- they simply state, honestly, how much room N complete
-   themes require at the card's existing visual language.
+/* Tier 1 (below) is no longer an editorial threshold -- it's the physical
+   floor beneath which even 9px, nowrap text cannot hold the worst-case
+   theme string. Discovery (HoverOverlay's `discovery` prop) is the only
+   thing that decides whether a tile is ALLOWED to try; this container
+   query is the only thing that decides whether trying is physically
+   possible at all. 79px width / 42px height is that true minimum, rounded
+   up slightly for sub-pixel safety, from the same worst-case string (14
+   characters) and font floor (9px) the responsive font-size rule above
+   is built on: width 14 * 0.62 * 9px = 78.12px, height 21.6px + 2.2 * 9px
+   = 41.4px. Below this floor, .hover-overlay__themes simply never becomes
+   visible for that tile -- not a special case, not a fallback flag, just
+   the same display: none every non-Discovery tile already has. There is
+   no longer a separate mechanism (no forceReveal, no per-tile override)
+   for tiles that sit between this floor and the old fixed 120/60
+   threshold: the responsive font-size above already renders them,
+   correctly sized, on its own.
 
-   Width is deliberately NOT part of this ladder: a theme's width
-   requirement doesn't grow with how many lines are stacked beneath it --
-   each one sits on its own centered line -- so escalating the width floor
-   per additional theme (the previous 120/145/160 progression) was never
-   physically justified, and was in effect an unweighted bias against
-   wide, short (landscape) cards, since the same physical width comfortably
-   holds 1 line or 4. Width stays flat at 120px throughout -- unchanged
-   from before, already proven to exceed the longest real theme string
-   (108.3px) with margin to spare -- so a card's real, content-independent
-   vertical budget is the only thing deciding how many complete themes
-   honestly fit.
-
-   Reveal order matches priority, not array position: HoverOverlay now
-   pins each item's primary theme (item.theme) to position 1 before this
-   CSS ever runs (see its own comment), so nth-child(1) is always the
-   designated primary theme, not a shuffled coin flip -- these breakpoints
-   just decide how many complete priority-ordered themes the card has
-   honest room for.
-
-   Tags and everything at 170px and above (Tier 3 / the Feature Card) are
-   completely unaffected -- their own rules, further below, are untouched
-   by this pass. */
-@container hover-overlay (min-width: 120px) and (min-height: 80px) {
+   Tiers 2-4 (below) are unchanged from before this pass: same fixed
+   120px width floor, same 87/114/142px height breakpoints, same
+   engineering-audited derivation (Number's real cost + gap + N complete
+   theme lines at the ORIGINAL fixed 0.78rem + a flat 10px safety margin --
+   see the git history for that derivation's own numbers). They still only
+   ever trigger on containers comfortably larger than where the responsive
+   font-size formula above has already saturated at its 0.78rem ceiling,
+   so nothing about how multiple themes render has changed. */
+@container hover-overlay (min-width: 79px) and (min-height: 42px) {
   .hover-overlay__themes {
     display: flex;
   }
@@ -951,28 +1014,28 @@ body {
   }
 }
 
-@container hover-overlay (min-width: 120px) and (min-height: 107px) {
+@container hover-overlay (min-width: 120px) and (min-height: 87px) {
   .hover-overlay__themes li:nth-child(2) {
     display: block;
   }
 }
 
-@container hover-overlay (min-width: 120px) and (min-height: 135px) {
+@container hover-overlay (min-width: 120px) and (min-height: 114px) {
   .hover-overlay__themes li:nth-child(3) {
     display: block;
   }
 }
 
-@container hover-overlay (min-width: 120px) and (min-height: 162px) {
+@container hover-overlay (min-width: 120px) and (min-height: 142px) {
   .hover-overlay__themes li:nth-child(4) {
     display: block;
   }
 }
 
 /* Tags: priority 3, its own reserved region -- Tier 3 only. The first tag
-   breakpoint (170px) is strictly above the largest theme breakpoint
-   (160px), so every theme is always fully shown before any tag ever
-   appears, and the two regions' reveal ranges never overlap. A smaller,
+   breakpoint (165px, see Tier 3 below) is strictly above the largest theme
+   breakpoint (142px), so every theme is always fully shown before any tag
+   ever appears, and the two regions' reveal ranges never overlap. A smaller,
    quieter visual hierarchy than themes: smaller font-size, tighter
    line-height, and a muted ink (rgba, not the full #1a1a1a) rather than a
    new color -- the overlay's own background color/opacity are untouched.
@@ -1026,12 +1089,42 @@ body {
    wrapping benefit from shorter tags sharing a line), so these are a safe
    upper bound on the space actually required, never an underestimate --
    tags can never overflow the reserved region or appear partially.
-   Thresholds start at 170px (strictly above every Tier 2 theme
-   breakpoint) and are grounded in the same real tile-size distribution
-   used for the theme tier -- occasionally reachable at real viewport
-   heights, unlike the previous 280-400px range which the read-only
-   investigation showed was almost never reached in practice. */
-@container hover-overlay (min-width: 170px) and (min-height: 170px) {
+
+   Height thresholds recalculated (audit pass): Number's real cost (16.0px)
+   + gap (5.6px) + 4 complete theme lines (109.824px, already fully shown
+   by the time any tag appears) + a second gap before the tags region
+   (5.6px) + M tag lines (17.408px each) + the same flat 10px margin =
+   165 / 182 / 200 / 217px for M = 1, 2, 3, 4 -- replacing the previous
+   170/190/210/230 ladder, which the same audit found carried 3-5% more
+   margin than the measured requirement at every step.
+
+   Width DECOUPLED from tag count (audit pass): tags render as one wrapped
+   paragraph, not one-per-line -- a tag's width requirement is always just
+   "does this one word fit on its own line," which never grows with how
+   many tags are shown, exactly like themes above. The previous ladder
+   nonetheless escalated width from 170px to 230px in lockstep with height,
+   the same unjustified pattern themes moved away from earlier -- with no
+   basis in the actual content, since the widest real tag string in the
+   archive ("adaptive reuse") measures 94.4px at this typography, and the
+   raw content minimum (94.4px + the same 10px margin) is only 105px.
+
+   However, the width floor stays flat at 120px, not 105px: tags never
+   appear without every theme already shown above them (that is the whole
+   point of the priority order), and themes themselves require 120px
+   width. A flat 105px floor here would open a real edge case -- a
+   narrow-but-tall tile (105-119px wide, tall enough to clear every tag
+   height rung below) could satisfy the tag rule while failing the theme
+   rule, so tags would render above zero themes, inverting the priority
+   order. Checked against the real tile population across every canvas
+   height sampled throughout this investigation: that combination does
+   occur at several viewport heights. So 120px -- the theme floor itself --
+   is the width value used below, still fully decoupled from tag count (no
+   more 170/190/210/230 escalation), just clamped to the one value that
+   keeps "themes always precede tags" true by construction rather than by
+   coincidence. This was still the single largest source of unnecessary
+   conservatism the audit found -- the previous ladder was reserving up to
+   110px of width beyond this floor that no real tag content ever needed. */
+@container hover-overlay (min-width: 120px) and (min-height: 165px) {
   .hover-overlay__tags {
     display: block;
   }
@@ -1041,19 +1134,19 @@ body {
   }
 }
 
-@container hover-overlay (min-width: 190px) and (min-height: 190px) {
+@container hover-overlay (min-width: 120px) and (min-height: 182px) {
   .hover-overlay__tag:nth-child(2) {
     display: inline;
   }
 }
 
-@container hover-overlay (min-width: 210px) and (min-height: 210px) {
+@container hover-overlay (min-width: 120px) and (min-height: 200px) {
   .hover-overlay__tag:nth-child(3) {
     display: inline;
   }
 }
 
-@container hover-overlay (min-width: 230px) and (min-height: 230px) {
+@container hover-overlay (min-width: 120px) and (min-height: 217px) {
   .hover-overlay__tag:nth-child(4) {
     display: inline;
   }

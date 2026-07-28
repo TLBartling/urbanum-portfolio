@@ -97,14 +97,12 @@ export default function ProjectTemplate({ slug, imageId }) {
         <ProjectHeader project={project} />
 
         {currentImage ? (
-          <>
-            <ImageViewer
-              image={currentImage}
-              images={project.images}
-              onSelectImage={handleSelectImage}
-            />
-            <ImageMetadata image={currentImage} />
-          </>
+          <ImageViewer
+            image={currentImage}
+            images={project.images}
+            onSelectImage={handleSelectImage}
+            caption={<ImageMetadata image={currentImage} />}
+          />
         ) : (
           <p className="project-not-found">
             This project has no visible images yet.

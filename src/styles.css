@@ -842,25 +842,22 @@ body {
   will-change: opacity;
 }
 
-/* Hover intent (interaction-layer only -- see App.jsx's
-   HOVER_INTENT_DELAY_MS and its two handlers): reveal is keyed off this
-   class instead of :hover directly, so a confirmed ~150ms dwell -- not a
-   raw mouseenter a scrolling page can fire by itself -- is what turns the
-   card on. Everything else about the reveal (this same opacity property,
-   the unchanged 180ms ease-out transition above) is identical to before.
+/* Reveal is a plain :hover again -- the hover-intent dwell timer (a
+   ~150ms delay before a hover was allowed to count) has been removed now
+   that Browsing/Exploration mode (below) already filters out the
+   scroll-driven mouseenter/mouseleave pairs that timer existed to catch.
+   Everything else about the reveal (this same opacity property, the
+   unchanged 180ms ease-out transition above) is identical to before.
 
    Browsing/Exploration mode (interaction-layer only -- see App.jsx's
    isScrolling and SCROLL_IDLE_DELAY_MS): the :not(.is-scrolling) ancestor
-   condition is the only other thing this rule adds. While the gallery
-   track carries .is-scrolling, this selector simply stops matching, so
-   .hover-overlay falls back to its own base opacity: 0 and fades out over
-   the same existing 180ms transition -- "closes naturally," not a forced
-   cut. A hover-intent timer already confirmed for a tile is untouched by
-   this (it isn't reset), so the card reappears the instant scrolling
-   settles again, with no re-dwell required. */
-.gallery-track:not(.is-scrolling)
-  .gallery-image-wrapper.gallery-image-wrapper--hover-intent-active
-  .hover-overlay {
+   condition is the only thing this rule adds over a plain :hover. While
+   the gallery track carries .is-scrolling, this selector simply stops
+   matching, so .hover-overlay falls back to its own base opacity: 0 and
+   fades out over the same existing 180ms transition -- "closes
+   naturally," not a forced cut. The instant scrolling settles again,
+   :hover alone is enough to reactivate it -- no re-dwell, no delay. */
+.gallery-track:not(.is-scrolling) .gallery-image-wrapper:hover .hover-overlay {
   opacity: 1;
 }
 
@@ -986,15 +983,14 @@ body {
      .hover-overlay itself keeps pointer-events: none (unchanged) so the
      card as a whole still never intercepts clicks meant for the image
      beneath it. Opting each theme item back in to real pointer events is
-     now conditional on the same hover-intent-active class the opacity
-     reveal above uses (see that rule's comment) rather than unconditional
-     -- see that scoped rule further down. Without it, this element simply
-     inherits pointer-events: none from .hover-overlay, exactly like any
-     other non-interactive child: a stray mouseenter during the pre-intent
-     window (or while a tile is merely scrolling past the cursor) cannot
-     reach this element at all, so it cannot fire the Relationship Engine.
-     No effect on hidden (display: none) items either way. No
-     opacity/transition/typography touched. */
+     conditional only on the gallery not being mid-scroll (see the scoped
+     rule further down, gated on :not(.is-scrolling)) -- while scrolling,
+     this element simply inherits pointer-events: none from
+     .hover-overlay, exactly like any other non-interactive child, so a
+     stray mouseenter from a tile sweeping past the cursor cannot reach it
+     and cannot fire the Relationship Engine. No effect on hidden
+     (display: none) items either way. No opacity/transition/typography
+     touched. */
   /* Hover/Click separation: these are now also clickable (commits the
      Metadata Query pipeline to this Theme -- see HoverOverlay.jsx), so a
      pointer cursor is the one small affordance addition that goes with
@@ -1093,30 +1089,24 @@ body {
 .hover-overlay__tag {
   display: none;
   /* Same interaction change as .hover-overlay__themes li above: tags are
-     individually hoverable to drive the Relationship Engine, gated behind
-     the same hover-intent-active class (see the scoped rule below) rather
-     than unconditional, with .hover-overlay's own pointer-events: none
-     otherwise unchanged. */
+     individually hoverable to drive the Relationship Engine, gated only
+     on :not(.is-scrolling) (see the scoped rule below), with
+     .hover-overlay's own pointer-events: none otherwise unchanged. */
   /* Same click affordance as .hover-overlay__themes li above. */
   cursor: pointer;
 }
 
-/* Hover intent, continued: the actual pointer-events opt-in for both
-   themes and tags, scoped to the same class the opacity reveal above uses.
-   Until a hover is confirmed (~150ms dwell -- see App.jsx), these elements
-   are inert like any other non-interactive child of .hover-overlay; once
-   confirmed, they behave exactly as they always have. Splitting this out
-   from the two rules above (rather than writing pointer-events: auto
-   directly on .hover-overlay__themes li / .hover-overlay__tag) is what
-   makes the gate a single, obvious toggle instead of two.
-
-   Same :not(.is-scrolling) condition as the opacity reveal above, for the
-   same reason -- this is what actually suspends the Relationship Engine
-   while browsing: with pointer-events back to none the moment .is-scrolling
-   appears, these elements can no longer receive the mouseenter that would
-   fire it, immediately, not just once the card has faded out. */
-.gallery-track:not(.is-scrolling) .gallery-image-wrapper--hover-intent-active .hover-overlay__themes li,
-.gallery-track:not(.is-scrolling) .gallery-image-wrapper--hover-intent-active .hover-overlay__tag {
+/* The pointer-events opt-in for both themes and tags -- restored to
+   immediate/unconditional (no hover-intent dwell gate anymore) now that
+   Browsing/Exploration mode is what filters accidental activations. The
+   only condition left is :not(.is-scrolling): this is what actually
+   suspends the Relationship Engine while browsing -- with pointer-events
+   back to none the moment .is-scrolling appears, these elements can no
+   longer receive the mouseenter that would fire it, immediately, not just
+   once the card has faded out. The instant scrolling settles, these are
+   auto again and a hover fires the Relationship Engine right away. */
+.gallery-track:not(.is-scrolling) .hover-overlay__themes li,
+.gallery-track:not(.is-scrolling) .hover-overlay__tag {
   pointer-events: auto;
 }
 
@@ -1840,10 +1830,15 @@ html.is-browsing .zoom-controls {
    type scale), and adds only the layout this page needs: a two-region
    split between a quiet intro column and an authored image composition. */
 .studio-content {
-  /* Slightly deeper top clearance than the archive pages -- this page has
-     no hero row of its own above the two-column layout, so the extra
-     breathing room keeps the heading from crowding the header. */
-  padding-top: clamp(130px, 13vw, 170px);
+  /* Refinement pass: previously clamp(130px, 13vw, 170px), deliberately
+     deeper than the archive pages -- that read as floating too far below
+     the header rather than sitting close to it. Now reuses the exact
+     same restrained clearance as the Project page's own
+     .project-content (clamp(92px, calc(7vw + 12px), 114px), itself
+     pegged 12px below .site-header__row1's real rendered height at any
+     viewport width), so the page hugs the header the same way the
+     Project page does. */
+  padding-top: clamp(92px, calc(7vw + 12px), 114px);
 }
 
 .studio-layout {
@@ -1874,23 +1869,6 @@ html.is-browsing .zoom-controls {
   font-size: clamp(0.9rem, 1.05vw, 1rem);
   line-height: 1.7;
   color: #333;
-}
-
-.studio-intro__link {
-  display: inline-block;
-  width: fit-content;
-  margin-top: clamp(18px, 2.2vw, 28px);
-  font-size: 0.85rem;
-  letter-spacing: 0.02em;
-  color: #1a1a1a;
-  text-decoration: none;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.25);
-  padding-bottom: 2px;
-  transition: opacity 200ms ease, border-color 200ms ease;
-}
-
-.studio-intro__link:hover {
-  opacity: 0.6;
 }
 
 .studio-composition {
@@ -2028,10 +2006,15 @@ html.is-browsing .zoom-controls {
 }
 
 .studio-footer__contact {
-  /* Slightly more flex-grow than the four text columns (still equal to
-     one another) so the contact block reads a touch wider -- roughly 5px
-     at typical widths -- without changing the footer row's total width. */
-  flex: 1.02;
+  /* Refinement pass: with "Our Collaboration" removed, three equal-width
+     text columns (flex: 1 each, unchanged) remain instead of four --
+     this alone gives Contact more room automatically. It's widened
+     further and given an explicit floor (was flex: 1.02, no basis) so
+     the email value has reliable, generous room at any typical desktop
+     width rather than wrapping mid-address; the flex-basis is a
+     minimum, not a fixed width, so this column still grows/shrinks with
+     the rest of the row and stays aligned to the same footer grid. */
+  flex: 1.6 1 240px;
   min-width: 0;
 }
 
@@ -2230,19 +2213,33 @@ html.is-browsing .zoom-controls {
    .about-hero__title/__location directly, since those base classes are
    shared verbatim by About/Projects' own hero text (see ProjectHeader.jsx's
    own comment). */
+.project-content .about-hero {
+  /* Refinement pass: dropped the extra margin-bottom entirely (was
+     clamp(14px, 1.6vw, 20px), before that clamp(36px, 4.2vw, 56px)).
+     .project-content's own flex `gap` (clamp(20px, 2.4vw, 32px), still
+     untouched) is now the sole source of spacing here -- the same gap
+     already used between every other section on this page -- so the
+     image sits directly under the title/location block instead of that
+     gap plus an extra margin stacking on top of it. */
+  margin-bottom: 0;
+}
+
 .project-content .about-hero__title {
-  /* ~10% smaller plus one full step lighter (700 -> 600): together this
-     reads as roughly a 15-20% reduction in visual weight, so the title
-     stays visually subordinate and the image reads as the page's
-     dominant focal point. */
-  font-size: clamp(1.62rem, 2.34vw, 2.16rem);
+  /* Museum-print pass: roughly another 25% off the already-reduced size
+     from the previous pass (clamp(1.62rem, 2.34vw, 2.16rem)), so the
+     title reads as a small editorial caption rather than a page-level
+     heading -- weight stays at 600 (unchanged from the previous pass),
+     only size drops further, and the image is left as the page's clear
+     focal point. */
+  font-size: clamp(1.2rem, 1.7vw, 1.6rem);
   font-weight: 600;
 }
 
 .project-content .about-hero__location {
-  /* Tightens the title/location pairing into one intentional unit (was
-     0.4rem, inherited from the shared .about-hero__location rule). */
-  margin-top: 0.2rem;
+  /* Comfortable, not tight: was 0.2rem (deliberately cramped against the
+     title in the previous pass). A little more room here reads as
+     "subtitle beneath a caption" rather than two lines glued together. */
+  margin-top: 0.35rem;
 }
 
 .project-image-viewer {
@@ -2251,21 +2248,72 @@ html.is-browsing .zoom-controls {
 
 .project-image-frame {
   width: 100%;
+  /* Museum-print pass: the frame now centers its image rather than
+     stretching it edge-to-edge -- necessary now that the image itself
+     (see .project-image-frame__img below) is capped by height as well as
+     width, so a portrait or otherwise tall image renders narrower than
+     this column and needs to sit centered within it, not pinned left. */
+  display: flex;
+  justify-content: center;
   /* No fixed aspect-ratio and no object-fit: cover -- either would crop
-     any source image that isn't exactly 16:9. The frame's height now
-     derives naturally from the image's own intrinsic ratio (see
+     any source image that isn't exactly 16:9. The frame's height still
+     derives naturally from the image's own rendered size (see
      .project-image-frame__img below), so every image displays at its
-     full, uncropped, unstretched proportions, just resized to fit the
-     new (narrower) content width. */
+     full, uncropped, unstretched proportions -- now bounded by viewport
+     height as well as column width, rather than always filling the
+     column width regardless of how tall that made it. */
   overflow: hidden;
   background: #eeece6;
 }
 
 .project-image-frame__img {
   display: block;
-  width: 100%;
+  /* Museum-print pass: previously width: 100%/height: auto, which sized
+     the image purely off the content column's width -- fine for a
+     landscape image, but a portrait or square source could render far
+     taller than the viewport and run well below the fold on first load.
+     max-width/max-height (with width/height left auto) let the browser
+     shrink the image to whichever bound is tighter while always
+     preserving its intrinsic aspect ratio and never cropping -- so it
+     still maximizes its own size, just within both a width ceiling (the
+     content column) and a height ceiling (see the calc below) instead of
+     width alone.
+
+     The height ceiling: .project-content's own padding-top (header
+     clearance) plus the title/location block above and the image-nav
+     row + bottom padding below reserve roughly 350-360px of vertical
+     space around the image at typical desktop sizes -- max() puts a
+     320px floor under that so a very short viewport still gets a
+     reasonably sized image rather than one so small it looks broken,
+     accepting that such viewports are the case where "below the fold"
+     genuinely can't be fully avoided. */
+  max-width: 100%;
+  max-height: max(320px, calc(100vh - 360px));
+  width: auto;
   height: auto;
   transition: transform 320ms ease-out;
+}
+
+/* Refinement pass: the caption used to be a separate .project-content
+   child, rendered well below the image+slider block by the same uniform
+   flex gap as everything else on the page. It's now rendered by
+   ImageViewer.jsx as a sibling of .project-image-nav inside this row
+   wrapper, so the caption sits directly under the image, in the same row
+   as (not stacked above/below) the slider controls -- each in its own
+   container (.project-image-metadata / .project-image-nav), kept apart
+   by justify-content + gap rather than sharing any horizontal space, so
+   a long caption can never crowd or overlap the slider controls at any
+   viewport width. flex-wrap is a safety net for narrow viewports where
+   both would otherwise be tight: the nav simply wraps to its own line
+   below the caption rather than compressing against it. */
+.project-image-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  column-gap: clamp(20px, 3vw, 40px);
+  row-gap: 10px;
+  margin-top: clamp(14px, 1.6vw, 20px);
 }
 
 .project-image-nav {
@@ -2273,7 +2321,9 @@ html.is-browsing .zoom-controls {
   align-items: center;
   justify-content: center;
   gap: clamp(14px, 1.6vw, 22px);
-  margin-top: clamp(14px, 1.6vw, 20px);
+  /* No margin-top here anymore -- this now sits inside
+     .project-image-footer alongside the caption, and that wrapper (see
+     above) owns the single top margin for the whole row. */
 }
 
 .project-image-nav__control {
@@ -2302,6 +2352,12 @@ html.is-browsing .zoom-controls {
   flex-direction: column;
   gap: 0.3rem;
   max-width: 620px;
+  /* Refinement pass: the dividing rule from the previous pass is
+     removed, and with it the padding-top/negative-margin pair that
+     existed only to make room for that rule -- this now relies entirely
+     on .project-image-footer (see above) for its position and top
+     spacing, with no styling of its own beyond its internal type
+     layout. */
 }
 
 .project-image-metadata__number {

@@ -1,17 +1,15 @@
 import { useState } from "react";
 import Header from "./Header";
 import { allImages } from "./App";
-import { navigate } from "./navigation";
 
 // The studio's About page -- an extension of the homepage's own reading
 // language rather than a conventional "about us" page. A narrow intro
-// column (name/location/established, a generous gap, a short editorial
-// statement, and a plain text link to /projects) sits beside a two-row
-// image grid that carries the page -- images are the dominant feature,
-// each labelled with only a stylized archive number, no titles, clients,
-// categories, or tags. A full-width footer below closes the page with
-// five short editorial text blocks and, past a vertical rule, the
-// studio's contact details.
+// column (name/location/established, a generous gap, and a short editorial
+// statement) sits beside a two-row image grid that carries the page --
+// images are the dominant feature, each labelled with only a stylized
+// archive number, no titles, clients, categories, or tags. A full-width
+// footer below closes the page with three short editorial text blocks
+// and, past a vertical rule, the studio's contact details.
 //
 // The `images` prop is the CMS seam: six placeholder entries below fill
 // the grid's six fixed slots (three per row) until the studio's own
@@ -40,10 +38,6 @@ const FOOTER_COLUMNS = [
   {
     label: "Our Process",
     text: "Clarity comes through collaboration, curiosity, and a deep respect for context.",
-  },
-  {
-    label: "Our Collaboration",
-    text: "We work closely with clients and communities to create places that last.",
   },
 ];
 
@@ -78,11 +72,6 @@ export default function AboutPage({ images = PLACEHOLDER_IMAGES }) {
   const [indexDrawerHeight, setIndexDrawerHeight] = useState(0);
 
   const [row1a, row1b, row1c, row2a, row2b, row2c] = images;
-
-  const handleProjectsLinkClick = (event) => {
-    event.preventDefault();
-    navigate("/projects");
-  };
 
   return (
     <div className="about-page">
@@ -138,14 +127,6 @@ export default function AboutPage({ images = PLACEHOLDER_IMAGES }) {
                 both materially and in memory.
               </p>
             </div>
-
-            <a
-              href="/projects"
-              className="studio-intro__link"
-              onClick={handleProjectsLinkClick}
-            >
-              View Featured Projects &rarr;
-            </a>
           </div>
 
           <div className="studio-composition">

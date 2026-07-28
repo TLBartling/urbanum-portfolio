@@ -75,15 +75,6 @@ const imageTags = {
 const imageFocusEnabled = false;
 const galleryBatchWidth = 1760;
 const galleryEdgeBleed = 190;
-// Hover intent (interaction-layer only -- see handleGalleryImageIntentEnter/
-// Leave below): how long the cursor must stay on a tile before metadata
-// reveal and the Relationship Engine are allowed to turn on at all. Exists
-// purely to filter out the mouseenter/mouseleave pairs a scrolling page
-// fires on tiles nobody meant to pause on -- nothing about metadata
-// rendering, the Relationship Engine, or their timing once active changes
-// because of this. The only constant to touch to retune the delay.
-const HOVER_INTENT_DELAY_MS = 150;
-const HOVER_INTENT_ACTIVE_CLASS = "gallery-image-wrapper--hover-intent-active";
 
 // Browsing/Exploration mode (interaction-layer only -- see isScrolling's own
 // comment and the animateGallery loop that sets it): how long the gallery
@@ -1110,12 +1101,6 @@ function App() {
   // stale relative to the DOM: registration and deregistration are React
   // mount/unmount events, not a periodic snapshot.
   const wrapperRegistryRef = useRef(new Map());
-  // Hover-intent gate (interaction-layer only, see HOVER_INTENT_DELAY_MS
-  // and the two handlers below): Map(item id -> pending setTimeout id).
-  // Same "why a ref, not state" reasoning as the other refs on this page --
-  // this is pure timer bookkeeping, never read during render, so it must
-  // not trigger one either.
-  const hoverIntentTimersRef = useRef(new Map());
   // Mirrors the isScrolling state (declared further down, with its own
   // comment) for the animateGallery loop's own use: that loop runs every
   // frame and is not recreated when isScrolling changes (its effect only
@@ -1323,45 +1308,6 @@ function App() {
   }, []);
   const handleGalleryImageHoverEnd = useCallback(() => {
     setHoveredGalleryItemId(null);
-  }, []);
-
-  // Hover intent (see HOVER_INTENT_DELAY_MS/HOVER_INTENT_ACTIVE_CLASS near
-  // the top of this file): the two handlers below are the only place that
-  // constant is consumed. The class they toggle is what CSS keys the
-  // existing opacity reveal and theme/tag pointer-events off of -- nothing
-  // about metadata rendering, the Relationship Engine, or their timing once
-  // active changes here or in styles.css.
-
-  // Entry is delayed; handleGalleryImageHoverStart above is untouched and
-  // still fires immediately (it isn't a metadata/relationship input today
-  // -- see its own comment). A plain DOM class toggle, not React state:
-  // same reasoning as every ref on this page -- a hover intent firing must
-  // never force this whole gallery to re-render.
-  const handleGalleryImageIntentEnter = useCallback((event, itemId) => {
-    const node = event.currentTarget;
-    const timers = hoverIntentTimersRef.current;
-    const pending = timers.get(itemId);
-    if (pending) clearTimeout(pending);
-    const timeoutId = setTimeout(() => {
-      node.classList.add(HOVER_INTENT_ACTIVE_CLASS);
-      timers.delete(itemId);
-    }, HOVER_INTENT_DELAY_MS);
-    timers.set(itemId, timeoutId);
-  }, []);
-
-  // Leave always deactivates immediately -- no delay on the way out, only
-  // on the way in. If the timer above hasn't fired yet, this cancels it
-  // outright, so a pass-through hover never activates anything at all.
-  // Removing the class is a harmless no-op if intent was never reached.
-  const handleGalleryImageIntentLeave = useCallback((event, itemId) => {
-    const node = event.currentTarget;
-    const timers = hoverIntentTimersRef.current;
-    const pending = timers.get(itemId);
-    if (pending) {
-      clearTimeout(pending);
-      timers.delete(itemId);
-    }
-    node.classList.remove(HOVER_INTENT_ACTIVE_CLASS);
   }, []);
 
   // Shared regeneration sequence -- used on mount, on window resize, and
@@ -2514,14 +2460,8 @@ function App() {
                         ? () => handleImageClick(item.id)
                         : undefined
                   }
-                  onMouseEnter={(event) => {
-                    handleGalleryImageHoverStart(item.id);
-                    handleGalleryImageIntentEnter(event, item.id);
-                  }}
-                  onMouseLeave={(event) => {
-                    handleGalleryImageHoverEnd();
-                    handleGalleryImageIntentLeave(event, item.id);
-                  }}
+                  onMouseEnter={() => handleGalleryImageHoverStart(item.id)}
+                  onMouseLeave={handleGalleryImageHoverEnd}
                   aria-label={
                     isProjectLinked
                       ? `View project: ${item.alt}`

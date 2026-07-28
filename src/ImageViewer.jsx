@@ -16,8 +16,16 @@
 // architecture specified a visual treatment for "continue exploring the
 // remaining images" (a filmstrip, thumbnails, etc.). Worth a design pass
 // before this is considered final.
+//
+// Layout refinement: `caption` is an accepted-as-is ReactNode (ProjectTemplate
+// passes its own <ImageMetadata/> straight through, unchanged) -- this
+// component still doesn't know or care what's inside it, it only places it
+// in .project-image-footer alongside the nav controls so the caption reads
+// as directly attached to the image, in the same row as (not stacked below)
+// the image-navigation controls. No metadata logic lives here; this is
+// purely a slot.
 
-export default function ImageViewer({ image, images, onSelectImage }) {
+export default function ImageViewer({ image, images, onSelectImage, caption }) {
   const currentIndex = images.findIndex(
     (item) => item.archiveNumber === image.archiveNumber,
   );
@@ -40,31 +48,34 @@ export default function ImageViewer({ image, images, onSelectImage }) {
         />
       </div>
 
-      {images.length > 1 && (
-        <div className="project-image-nav" aria-label="Image navigation">
-          <button
-            type="button"
-            className="project-image-nav__control"
-            onClick={() => handleSelect(previousImage)}
-            disabled={!previousImage}
-            aria-label="Previous image"
-          >
-            ‹
-          </button>
-          <span className="project-image-nav__count">
-            {currentIndex + 1} / {images.length}
-          </span>
-          <button
-            type="button"
-            className="project-image-nav__control"
-            onClick={() => handleSelect(nextImage)}
-            disabled={!nextImage}
-            aria-label="Next image"
-          >
-            ›
-          </button>
-        </div>
-      )}
+      <div className="project-image-footer">
+        {caption}
+        {images.length > 1 && (
+          <div className="project-image-nav" aria-label="Image navigation">
+            <button
+              type="button"
+              className="project-image-nav__control"
+              onClick={() => handleSelect(previousImage)}
+              disabled={!previousImage}
+              aria-label="Previous image"
+            >
+              ‹
+            </button>
+            <span className="project-image-nav__count">
+              {currentIndex + 1} / {images.length}
+            </span>
+            <button
+              type="button"
+              className="project-image-nav__control"
+              onClick={() => handleSelect(nextImage)}
+              disabled={!nextImage}
+              aria-label="Next image"
+            >
+              ›
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

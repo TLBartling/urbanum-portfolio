@@ -230,33 +230,11 @@ function getImageName(src) {
   return src.split("/").pop()?.replace(/\.[^.]+$/, "") || "";
 }
 
-// Handshake pass (default homepage pool): the optimized-image pipeline
-// (scripts/optimize-images.mjs, run at build time) only ever generated
-// width-variant/webp files for the known local stock photos under
-// /img/ -- a live Archive Item's `image` is a full cdn.sanity.io URL with
-// no corresponding pre-optimized file. This guard is not a redesign of
-// that pipeline (COLUMN_PATTERNS, the optimization script, and every
-// local-path call site are untouched) -- it's the minimum needed so a
-// live URL still renders instead of producing a broken /img/optimized/...
-// path. Actually optimizing/transforming live images (Sanity's own image
-// URL builder is the natural tool for that) is deliberately deferred to a
-// later, dedicated polish pass.
-function isLocalImageAsset(src) {
-  return typeof src === "string" && src.startsWith("/img/");
-}
-
 function getOptimizedImageSrc(src, width = 800, extension = "jpg") {
-  if (!isLocalImageAsset(src)) return src;
   return `/img/optimized/${width}/${getImageName(src)}.${extension}`;
 }
 
 function getOptimizedImageSrcSet(src, extension) {
-  // Same guard: there are no width-variant files to build a srcSet from
-  // for a live URL, so this omits the attribute (undefined -- React drops
-  // it from the rendered <source>) rather than emit a set of identical
-  // entries at different width descriptors. The <img src> above (already
-  // pass-through for the same src) is what actually renders it.
-  if (!isLocalImageAsset(src)) return undefined;
   return optimizedImageWidths
     .map((width) => `${getOptimizedImageSrc(src, width, extension)} ${width}w`)
     .join(", ");
@@ -1130,42 +1108,6 @@ function App() {
   // callers of getThemes() to begin with.
   const THEME_NAMES = getThemes();
 
-  // Handshake pass (default homepage pool): Search and Filter
-  // (applyMetadataQuery below) already prove that Archive Items can
-  // become the gallery's pool -- buildImagePool(matched.map((item) =>
-  // item.image)) is exactly this, already working. The only gap was that
-  // the *default*, unfiltered pool (activeImagePoolRef's initial value,
-  // and what resetArchiveState below returns to) still came from the
-  // static allImages/DEFAULT_IMAGE_POOL. This reuses the same
-  // buildImagePool() call, fed by getArchiveItems() instead of a search
-  // match, so the default homepage view goes through the identical,
-  // already-proven path. Nothing about COLUMN_PATTERNS,
-  // createGalleryBatch, pickImage, or orientation/optimization handling
-  // changes -- see getOptimizedImageSrc's own comment for the one
-  // adjacent guard that was necessary, and getImageOrientation, which is
-  // untouched: a live image has no entry in the static
-  // image-metadata.json, so it buckets as "square" and pickImage's
-  // existing byOrientation-empty-bucket fallback (imagePool.all) already
-  // handles that gracefully -- deferred to the orientation/optimization
-  // polish pass, not fixed here.
-  //
-  // Falls back to the static DEFAULT_IMAGE_POOL only when the live cache
-  // is empty (load failed, timed out, or genuinely has no documents yet)
-  // -- so a bad load degrades the homepage back to its pre-handshake
-  // state instead of breaking every tile's image (see pickImage: an
-  // empty pool's bag-refill has nothing to draw from).
-  //
-  // findArchiveItemBySrc's join (content/archiveItems.js) now succeeds by
-  // construction: every src this pool can ever hand pickImage is one of
-  // getArchiveItems()'s own .image values, so looking that exact item
-  // back up always finds it -- no change needed there.
-  const LIVE_ARCHIVE_IMAGES = getArchiveItems()
-    .map((item) => item.image)
-    .filter(Boolean);
-  const DEFAULT_LIVE_IMAGE_POOL = LIVE_ARCHIVE_IMAGES.length
-    ? buildImagePool(LIVE_ARCHIVE_IMAGES)
-    : DEFAULT_IMAGE_POOL;
-
   const scrollContainerRef = useRef(null);
   const trackRef = useRef(null);
   const overlayRef = useRef(null);
@@ -1280,13 +1222,7 @@ function App() {
   // already are, so neither needs this value threaded through as a
   // dependency -- this is also what keeps infinite scroll drawing from
   // whatever pool is currently active, combined query or not.
-  // Handshake pass: starts from the live pool computed above (falls back
-  // to DEFAULT_IMAGE_POOL internally if the live cache is empty) instead
-  // of the static pool directly -- see DEFAULT_LIVE_IMAGE_POOL's own
-  // comment. useRef's initial value is only consulted on mount, which is
-  // fine here: by the time App() first renders, main.jsx's readiness gate
-  // has already resolved, so getArchiveItems() is already warm.
-  const activeImagePoolRef = useRef(DEFAULT_LIVE_IMAGE_POOL);
+  const activeImagePoolRef = useRef(DEFAULT_IMAGE_POOL);
   // Hover Overlay metadata feature: a plain counter, bumped once per
   // regenerateGallery call below, and nowhere else. Not Archive generation
   // itself (buildGalleryItems/createGalleryBatch/createColumnState are
@@ -1618,15 +1554,13 @@ function App() {
   // branch here, and none should ever be added -- every future entry
   // point should be able to call this same function.
   //
-  // activeImagePoolRef is reset directly to DEFAULT_LIVE_IMAGE_POOL rather
-  // than routed through applyMetadataQuery/queryArchive with an empty
-  // query -- assigning it directly guarantees a byte-identical return to
-  // the same pool the homepage started from, no matter what Search/Filter
-  // did in between. (Handshake pass: this used to be the static
-  // DEFAULT_IMAGE_POOL; see DEFAULT_LIVE_IMAGE_POOL's own comment above
-  // for why it's now the live pool that falls back to the static one only
-  // when the live cache is empty -- the reasoning for resetting directly,
-  // rather than through applyMetadataQuery, is unchanged.)
+  // activeImagePoolRef is reset directly to DEFAULT_IMAGE_POOL rather than
+  // routed through applyMetadataQuery/queryArchive with an empty query:
+  // queryArchive matches against ARCHIVE_ITEMS, a separate, smaller
+  // dataset than allImages (see the CMS-readiness audit's own finding on
+  // this), so an empty query wouldn't reliably reproduce the same pool
+  // DEFAULT_IMAGE_POOL already is. Assigning it directly guarantees a
+  // byte-identical return to the pre-Search/Filter/Metadata pool.
   //
   // setHeaderResetKey forces Header to unmount/remount (see that state's
   // own comment above) -- the one piece of plumbing this task's "close
@@ -1639,7 +1573,7 @@ function App() {
     setActiveFilterQuery(EMPTY_FILTER_QUERY);
     setHasNoSearchResults(false);
     setRelatedArchiveNumbers([]);
-    activeImagePoolRef.current = DEFAULT_LIVE_IMAGE_POOL;
+    activeImagePoolRef.current = DEFAULT_IMAGE_POOL;
     setHeaderResetKey((key) => key + 1);
     regenerateGallery();
   }, [regenerateGallery]);

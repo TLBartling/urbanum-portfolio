@@ -4,14 +4,18 @@ import imageMetadata from "./image-metadata.json";
 import Header from "./Header";
 import HoverOverlay from "./HoverOverlay";
 import { navigate } from "./navigation";
-import { findArchiveItemBySrc, ARCHIVE_ITEMS } from "./mockArchiveItems";
+// Content layer seam (Frontend <-> CMS handshake, Phase 1): App.jsx no
+// longer imports mock data files directly -- it goes through
+// src/content/, the single source of content for the application. Today
+// these functions are a pure passthrough to the same mock data; nothing
+// about the values they return has changed.
+import { findArchiveItemBySrc, getArchiveItems, getProjects } from "./content";
 // Project Filter Alignment: the real Project catalog (title + slug),
 // already used elsewhere for Project-page navigation/getProjectBySlug
 // (see projectContent.js, untouched by this commit) -- now also the
 // source of truth for Filter's Project category (see PROJECT_TITLES/
 // PROJECT_SLUG_BY_TITLE and the projects prop on <Header> below), instead
 // of Header's own unrelated placeholder MOCK_PROJECTS default.
-import { PROJECTS } from "./mockProjects";
 // Metadata Query Engine wiring (Search + Filter): the one place Gallery
 // reaches into queryArchive. Gallery itself performs no matching of its
 // own -- see applyMetadataQuery in App() below, the only call site.
@@ -348,9 +352,9 @@ const EMPTY_FILTER_QUERY = { theme: [], tag: [], project: [], year: [] };
 // see handleFilterChange below, its only call site. Built once from the
 // same mockProjects.js data Project-page navigation already reads, so it
 // can never drift out of sync with it.
-const PROJECT_TITLES = PROJECTS.map((project) => project.title);
+const PROJECT_TITLES = getProjects().map((project) => project.title);
 const PROJECT_SLUG_BY_TITLE = new Map(
-  PROJECTS.map((project) => [project.title, project.slug]),
+  getProjects().map((project) => [project.title, project.slug]),
 );
 
 // A self-refilling, per-orientation shuffled "bag" of real photos so
@@ -1589,7 +1593,7 @@ function App() {
   // only one, when ARCHIVE_ITEMS is later replaced by a real Sanity query.
   const applyMetadataQuery = useCallback(
     (query) => {
-      const matched = queryArchive(query, ARCHIVE_ITEMS);
+      const matched = queryArchive(query, getArchiveItems());
 
       if (matched.length === 0) {
         // No results: there is no procedural batch a genuinely empty image

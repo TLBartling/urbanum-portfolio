@@ -1,6 +1,10 @@
 import { useMemo } from "react";
 import { findRelatedArchiveItems } from "./relationshipEngine";
-import { ARCHIVE_ITEMS } from "./mockArchiveItems";
+// Content layer seam (Frontend <-> CMS handshake, Phase 1): no longer a
+// direct import of the mock data file -- see src/content/. Today
+// getArchiveItems() is a pure passthrough to the same mock array, so
+// behavior here is unchanged.
+import { getArchiveItems } from "./content";
 
 // HoverOverlay -- presentation, plus stable per-generation randomization of
 // theme/tag order.
@@ -142,12 +146,12 @@ function HoverOverlay({
   // as leaving the image used to.
   const handleThemeHoverStart = (theme) => {
     onRelatedArchiveNumbersChange?.(
-      findRelatedArchiveItems("theme", theme, ARCHIVE_ITEMS),
+      findRelatedArchiveItems("theme", theme, getArchiveItems()),
     );
   };
   const handleTagHoverStart = (tag) => {
     onRelatedArchiveNumbersChange?.(
-      findRelatedArchiveItems("tag", tag, ARCHIVE_ITEMS),
+      findRelatedArchiveItems("tag", tag, getArchiveItems()),
     );
   };
   const handleMetadataHoverEnd = () => {

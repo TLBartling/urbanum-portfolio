@@ -1,0 +1,102 @@
+import { client } from "./client.js";
+import { urlFor } from "./imageUrl.js";
+
+// The one GROQ query this milestone needs. Project and Theme references
+// are resolved here (to a plain slug string and a plain array of title
+// strings) so normalizeArchiveItem never has to deal with raw Sanity
+// reference objects. Deliberately unfiltered by displayRole -- exactly
+// like ARCHIVE_ITEMS in mockArchiveItems.js, which includes its one
+// Hidden record too. Filtering by displayRole is the frontend's job (see
+// projectContent.js), not the CMS's -- the CMS's only responsibility is
+// to store and supply structured content.
+//
+// `!(_id in path("drafts.**"))` excludes unpublished drafts. Without this,
+// a document Josh has started editing but never published -- including
+// any never-finished legacy test document -- would already be showing up
+// in what's supposed to be the site's live data. This isn't a
+// verification-script-only concern: a public site should never surface an
+// unpublished draft, so the filter belongs in the one shared query every
+// consumer (fetchArchiveItems() today, the eventual live repository
+// later) goes through.
+//
+// `image` is projected as the raw image field (asset reference intact,
+// not pre-resolved to a URL) so the image-url builder can still do
+// hotspot-aware cropping later; normalizeArchiveItem receives the
+// already-built URL string separately (see below for why).
+//
+// `description` is aliased to `caption` here -- the one field-naming
+// mismatch between the locked CMS schema and the existing frontend
+// contract (see the earlier compatibility audit). Aliasing it in the
+// query is a normalization-layer decision; nothing downstream needs to
+// know the CMS calls this field something else.
+export const ARCHIVE_ITEMS_QUERY = `
+  *[_type == "archiveItem" && !(_id in path("drafts.**"))] | order(sortOrder asc) {
+    archiveNumber,
+    image,
+    "project": project->slug.current,
+    "themes": themes[]->title,
+    tags,
+    displayRole,
+    sortOrder,
+    year,
+    fullDate,
+    title,
+    location,
+    "caption": description
+  }
+`;
+
+// Reshapes one raw Sanity query result into exactly the shape a record
+// in mockArchiveItems.js already has. Deliberately a pure function with
+// no dependency on the Sanity client or the image-url builder -- the
+// resolved image URL is passed in as `imageUrl` rather than built inside
+// this function. That's not just tidiness: it means this function (the
+// part that actually encodes the field-by-field mapping) can be tested
+// with a plain synthetic object and no network access or installed
+// Sanity packages at all, which is exactly how this milestone's field
+// parity was verified (see this milestone's report).
+//
+// `theme` (singular): the mock contract carries this alongside `themes`
+// -- every existing record's `theme` is simply its `themes[0]` (see
+// HoverOverlay.jsx's own comment confirming this same relationship).
+// Reproduced the same way here rather than as a separate CMS field --
+// the locked schema deliberately has no singular `theme` field.
+//
+// `date`: the mock contract has one field, a bare year string. The
+// locked schema splits this into `year` and `fullDate`. No existing mock
+// record has ever combined the two, so there's no precedent to match
+// exactly -- this prefers `fullDate` (if an editor entered one) and
+// falls back to `String(year)`, which reproduces every existing mock
+// record's shape exactly when only a year is known.
+export function normalizeArchiveItem(raw, imageUrl) {
+  const themes = raw.themes ?? [];
+
+  return {
+    archiveNumber: raw.archiveNumber,
+    image: imageUrl,
+    theme: themes[0] ?? null,
+    themes,
+    tags: raw.tags ?? [],
+    project: raw.project ?? null,
+    title: raw.title,
+    caption: raw.caption,
+    location: raw.location,
+    date: raw.fullDate ?? (raw.year ? String(raw.year) : undefined),
+    displayRole: raw.displayRole ?? "Default",
+    sortOrder: raw.sortOrder ?? 0,
+  };
+}
+
+// The one exported entry point this milestone needs: fetch every Archive
+// Item from Sanity, already reshaped into the existing frontend content
+// contract. Nothing downstream needs to know this data came from Sanity
+// rather than mockArchiveItems.js -- that's the whole point of this
+// milestone. Not wired into src/content/ or any component yet -- that's
+// a separate, later architectural step, per this milestone's scope.
+export async function fetchArchiveItems() {
+  const rawItems = await client.fetch(ARCHIVE_ITEMS_QUERY);
+
+  return rawItems.map((raw) =>
+    normalizeArchiveItem(raw, raw.image ? urlFor(raw.image).url() : null),
+  );
+}

@@ -1,5 +1,8 @@
-import { PROJECTS } from "./mockProjects";
-import { ARCHIVE_ITEMS } from "./mockArchiveItems";
+// Content layer seam (Frontend <-> CMS handshake, Phase 1): no longer a
+// direct import of the mock data files -- see src/content/. Today
+// getProjects()/getArchiveItems() are a pure passthrough to the same
+// mock arrays, so behavior in this file is unchanged.
+import { getProjects, getArchiveItems } from "./content";
 
 // The CMS-agnostic boundary described in the Content Contract: everything
 // above this file -- ProjectTemplate and its children -- only ever sees
@@ -18,16 +21,16 @@ function getVisibleItemsForProject(slug) {
   // the client for the frontend to hide. Everything downstream (Image
   // Navigation, the ?image= deep-link resolution below) only ever sees the
   // already-public list.
-  return ARCHIVE_ITEMS.filter(
-    (item) => item.project === slug && item.displayRole !== "Hidden",
-  ).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  return getArchiveItems()
+    .filter((item) => item.project === slug && item.displayRole !== "Hidden")
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
 }
 
 function getProjectsInOrder() {
   // Previous/Next Project follows the CMS-defined Project.sortOrder, not
-  // alphabetical order and not the order PROJECTS happens to be written in
-  // -- see the comment in mockProjects.js.
-  return [...PROJECTS].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  // alphabetical order and not the order getProjects() happens to return
+  // them in -- see the comment in mockProjects.js.
+  return [...getProjects()].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
 }
 
 // The Project Template's one data-loading call. Returns null for an
@@ -35,7 +38,7 @@ function getProjectsInOrder() {
 // rather than throwing, since an invalid/stale slug in a URL is an
 // expected condition, not an exceptional one.
 export function getProjectBySlug(slug) {
-  const project = PROJECTS.find((p) => p.slug === slug);
+  const project = getProjects().find((p) => p.slug === slug);
   if (!project) return null;
 
   const ordered = getProjectsInOrder();

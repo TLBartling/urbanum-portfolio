@@ -29,11 +29,23 @@ import { urlFor } from "./imageUrl.js";
 // contract (see the earlier compatibility audit). Aliasing it in the
 // query is a normalization-layer decision; nothing downstream needs to
 // know the CMS calls this field something else.
+//
+// Year Filter Inheritance: `"projectYear": project->year` projects the
+// parent Project's own Year field alongside the already-resolved
+// `project` slug above -- a second, independent field, not a replacement
+// for it. `project` still resolves to nothing but the slug (Theme/Project/
+// Search/the relationship engine all depend on that exact shape and are
+// untouched here); `projectYear` exists purely so normalizeArchiveItem
+// below can carry the parent Project's year through as its own field,
+// which is what lets the Metadata Query Engine's Year predicate check it
+// (see metadataQueryEngine.js's own comment on STRUCTURED_FIELD_MATCHERS.
+// year for why that's the one and only place this new field is read).
 export const ARCHIVE_ITEMS_QUERY = `
   *[_type == "archiveItem" && !(_id in path("drafts.**"))] | order(sortOrder asc) {
     archiveNumber,
     image,
     "project": project->slug.current,
+    "projectYear": project->year,
     "themes": themes[]->title,
     tags,
     displayRole,
@@ -82,6 +94,16 @@ export function normalizeArchiveItem(raw, imageUrl) {
     caption: raw.caption,
     location: raw.location,
     date: raw.fullDate ?? (raw.year ? String(raw.year) : undefined),
+    // Year Filter Inheritance: the parent Project's own Year, carried
+    // through as its own field rather than folded into `date` above --
+    // `date` stays exactly what it already was (this item's own year/date,
+    // however it currently gets there), and this is purely additive.
+    // String(...), matching `date`'s own existing string-of-a-year
+    // convention, since that's what the Year matcher in
+    // metadataQueryEngine.js compares against. undefined (not null) when
+    // the parent Project has no Year set, same "absent means absent"
+    // convention `date` above already uses.
+    projectYear: raw.projectYear != null ? String(raw.projectYear) : undefined,
     displayRole: raw.displayRole ?? "Default",
     sortOrder: raw.sortOrder ?? 0,
   };

@@ -4,6 +4,16 @@ import imageMetadata from "./image-metadata.json";
 import Header from "./Header";
 import HoverOverlay from "./HoverOverlay";
 import { navigate } from "./navigation";
+// Responsive Sanity Image Delivery: the one existing place a Sanity image
+// URL is ever built (see that file's own comment -- it already returns
+// the @sanity/image-url builder specifically so a caller can chain
+// .width()/.quality()/.auto('format') etc.). This is a rendering-layer
+// concern (which sized/format variant of an already-known image to
+// request), not a content-layer one (what data exists) -- the content
+// layer seam above (getArchiveItems/getProjects/getThemes) is untouched
+// and still the only source of *what* images exist; this import only
+// changes *how* one is requested once render already has its URL.
+import { urlFor } from "./cms/imageUrl.js";
 // Content layer seam (Frontend <-> CMS handshake, Phase 1): App.jsx no
 // longer imports mock data files directly -- it goes through
 // src/content/, the single source of content for the application. Today
@@ -19,7 +29,14 @@ import { findArchiveItemBySrc, getArchiveItems, getProjects, getThemes } from ".
 // Metadata Query Engine wiring (Search + Filter): the one place Gallery
 // reaches into queryArchive. Gallery itself performs no matching of its
 // own -- see applyMetadataQuery in App() below, the only call site.
-import { queryArchive } from "./metadataQueryEngine";
+//
+// Year Filter -- Live Data: extractYearNumber is the same leading-4-digit-
+// year parser the Year matcher's own "Earlier" comparison already uses
+// internally (see metadataQueryEngine.js) -- imported here so deriving the
+// Year category's own live option list (see ARCHIVE_YEARS in App(), below)
+// reuses that one parsing rule instead of a second copy of it that could
+// drift out of sync with what the matcher itself actually accepts.
+import { queryArchive, extractYearNumber } from "./metadataQueryEngine";
 // Relationship Mode Visibility Gate: separate from the Relationship
 // Engine (relationshipEngine.js, reached only through HoverOverlay,
 // untouched here) -- this decides whether the candidate archive numbers
@@ -215,16 +232,26 @@ const FILTER_DRAWER_ZOOM_EASE = 0.14;
 // from CAMERA_ZOOM_MIN/MAX. Those describe how far a VISITOR may
 // deliberately zoom out by choice; this describes how far an AUTOMATIC
 // accommodation is allowed to go before it would stop reading as "subtly
-// making room" and start reading as a jarring, unrequested shrink. For a
-// small drawer state (closed, opening, or the default single row) the
-// derived formula in updateGalleryMotion asks for far less than this floor
-// -- it only engages for a heavily expanded state (a category open with a
-// long "View All" list). Past this floor, the composition stops shrinking
-// further and simply relies on the pre-existing .scroll-container--
-// drawer-open dim (see styles.css) for whatever clearance the bounded
-// scale alone can't provide -- the same "dim rather than distort" fallback
-// this codebase already uses, not a new one invented for this case.
-const FILTER_DRAWER_ZOOM_FLOOR = 0.85;
+// making room" and start reading as a jarring, unrequested shrink.
+//
+// Value history: originally 0.85, on the assumption that only a heavily
+// expanded "View All" list would ever need more than a 15% reduction --
+// Row 2 alone (Filter closed/opening/default single row) genuinely never
+// approaches it. Tracing an actual Row 3 clearance gap (Theme/Project/
+// Year's own value panel dropping over the archive instead of the gallery
+// making room for it) found that assumption didn't hold: the derived
+// formula in updateGalleryMotion regularly asks for more than a 15%
+// reduction the moment ANY category's Row 3 opens, even in its ordinary,
+// non-"View All" state -- not only the extreme long-list case this floor
+// was originally calibrated against. Lowered to 0.7 so Row 3's ordinary
+// state gets the full reduction it actually needs, while a bound still
+// remains in place for a genuinely long expanded "View All" list -- past
+// this floor, the composition stops shrinking further and simply relies
+// on the pre-existing .scroll-container--drawer-open dim (see styles.css)
+// for whatever clearance the bounded scale alone can't provide, exactly
+// as before -- the same "dim rather than distort" fallback this codebase
+// already uses, not a new one invented for this case.
+const FILTER_DRAWER_ZOOM_FLOOR = 0.7;
 
 function getImageName(src) {
   return src.split("/").pop()?.replace(/\.[^.]+$/, "") || "";
@@ -245,18 +272,70 @@ function isLocalImageAsset(src) {
   return typeof src === "string" && src.startsWith("/img/");
 }
 
+// Responsive Sanity Image Delivery: the live counterpart to
+// isLocalImageAsset immediately above -- every real Archive Item image is
+// a cdn.sanity.io URL (see cms/queries.js's normalizeArchiveItem, which
+// this milestone leaves completely untouched: item.image/item.src stays
+// exactly the same canonical, unsized URL it always was, so
+// findArchiveItemBySrc and anything else that compares/keys off item.src
+// is unaffected -- only how a *variant* of that URL gets requested at
+// render time changes here).
+function isSanityImageAsset(src) {
+  return typeof src === "string" && /^https?:\/\/cdn\.sanity\.io\//.test(src);
+}
+
+// Compression quality passed to Sanity's own image pipeline. 75 is
+// Sanity's own long-standing default for this parameter; made explicit
+// here (rather than left implicit) so the tradeoff is a visible, tunable
+// constant instead of an assumption baked into a function body.
+const SANITY_IMAGE_QUALITY = 75;
+
+// The live equivalent of "the optimized-image pipeline generated this
+// width-variant file at build time" -- except nothing needs generating
+// ahead of time, since Sanity's CDN performs the resize on request.
+// Built through the exact same urlFor(...) builder cms/imageUrl.js
+// already exports for this purpose (see its own comment). urlFor accepts
+// the already-resolved URL string directly -- verified against the real
+// installed @sanity/image-url package (not the cloud mirror's stub
+// node_modules): its parseSource() explicitly recognizes "an existing
+// image url" and recovers the asset id/dimensions/format by parsing the
+// URL's own filename, so no raw asset reference needs to be threaded
+// through from cms/queries.js for this to work.
+//
+// .auto("format") rather than a hardcoded .format(extension): Sanity's
+// CDN performs its own Accept-header content negotiation (serving
+// WebP/AVIF/original, whichever the requesting browser actually
+// supports) when auto("format") is set -- this is the live equivalent of
+// what the two hardcoded <source type="image/webp">/<source
+// type="image/jpeg"> branches below accomplish for pre-generated local
+// files, which, being static files with no server-side negotiation,
+// instead rely on two physical files and the browser's own <source type>
+// selection. A Sanity asset has exactly one URL-building path regardless
+// of which <source> slot it ends up filling; the browser's <source type>
+// matching still selects a slot normally, and whichever slot is chosen
+// receives whatever format Sanity's own negotiation decided was best for
+// that request. This is why this helper does not branch on extension the
+// way the local-asset path does.
+function buildSanityImageUrl(src, width) {
+  return urlFor(src).width(width).quality(SANITY_IMAGE_QUALITY).auto("format").url();
+}
+
 function getOptimizedImageSrc(src, width = 800, extension = "jpg") {
+  if (isSanityImageAsset(src)) return buildSanityImageUrl(src, width);
   if (!isLocalImageAsset(src)) return src;
   return `/img/optimized/${width}/${getImageName(src)}.${extension}`;
 }
 
 function getOptimizedImageSrcSet(src, extension) {
-  // Same guard: there are no width-variant files to build a srcSet from
-  // for a live URL, so this omits the attribute (undefined -- React drops
-  // it from the rendered <source>) rather than emit a set of identical
-  // entries at different width descriptors. The <img src> above (already
-  // pass-through for the same src) is what actually renders it.
-  if (!isLocalImageAsset(src)) return undefined;
+  // Same guard shape as getOptimizedImageSrc above, extended to cover
+  // both known-optimizable source kinds: for a live Sanity URL there IS
+  // now a real width-variant srcSet to build (via getOptimizedImageSrc's
+  // own Sanity branch below, called once per breakpoint exactly like the
+  // local-asset case already does); for anything else (a src this
+  // pipeline doesn't recognize) this still omits the attribute
+  // (undefined -- React drops it from the rendered <source>) rather than
+  // emit a set of identical entries at different width descriptors.
+  if (!isLocalImageAsset(src) && !isSanityImageAsset(src)) return undefined;
   return optimizedImageWidths
     .map((width) => `${getOptimizedImageSrc(src, width, extension)} ${width}w`)
     .join(", ");
@@ -272,6 +351,20 @@ function getImageDimensions(src) {
   return imageMetadata[src] || { width: 1200, height: 800 };
 }
 
+// Responsive Sanity Image Delivery -- eager-loading threshold reviewed,
+// left unchanged: this constant's own risk was never "12 images" as a
+// number, it was 12 *full-resolution originals* firing simultaneously
+// (see the performance-audit-ranked.md bottleneck #3). Now that
+// getOptimizedImageSrc/getOptimizedImageSrcSet request a properly sized,
+// auto-format Sanity variant for every live image -- the same 800px
+// default width every non-eager tile already requests -- a batch of 12
+// eager loads is a batch of 12 appropriately-sized images, not 12
+// multi-megabyte ones; the byte cost this threshold was previously
+// amplifying is gone. Left at 12 rather than tuned down speculatively,
+// since lowering it has its own cost (a visibly sparser first paint) that
+// isn't justified without something to actually measure against. Revisit
+// only if a live measurement after this change still shows first-batch
+// load as a bottleneck.
 function shouldEagerLoadImage(item) {
   const itemIndex = Number(item.id.split("-")[1] || 0);
   return item.batchIndex === 0 && itemIndex < 12;
@@ -1130,6 +1223,58 @@ function App() {
   // callers of getThemes() to begin with.
   const THEME_NAMES = getThemes();
 
+  // Year Filter -- Live Data: same reasoning and placement as
+  // PROJECT_TITLES/THEME_NAMES immediately above -- computed here, at
+  // render time, from getArchiveItems() (the same archive metadata
+  // applyMetadataQuery/queryArchive already read below), rather than
+  // Header's own hardcoded MOCK_YEARS default. This is the one behavior
+  // change this pass makes: Header's Filter Year category no longer falls
+  // back to its local MOCK_YEARS default, since a prop is now always
+  // passed -- mirroring exactly how the Theme/Project passes above already
+  // stopped Header from ever falling back to MOCK_THEMES/MOCK_PROJECTS.
+  //
+  // Collects both an item's own year (date) and its parent Project's year
+  // (projectYear) via extractYearNumber (imported above) -- the same
+  // either-one-counts pair the Year Filter Inheritance fix already made
+  // queryArchive itself match against (see metadataQueryEngine.js) -- so
+  // every year an item could actually match on also has a real button to
+  // select it from. Set dedupes, then a numeric descending sort (newest
+  // first, matching MOCK_YEARS' own former ordering) runs on numbers, not
+  // strings, so "2026" correctly sorts before "2024" rather than by
+  // lexical character order (which happens to agree for these particular
+  // 4-digit values, but numeric sort is the actually-correct rule, not a
+  // coincidence being relied on).
+  const ARCHIVE_YEARS_NUMERIC = Array.from(
+    new Set(
+      getArchiveItems().flatMap((item) => [
+        extractYearNumber(item.date),
+        extractYearNumber(item.projectYear),
+      ]),
+    ),
+  )
+    .filter((year) => Number.isFinite(year))
+    .sort((a, b) => b - a);
+
+  // Year Filter -- "Earlier" Bucket: the cutoff is now the oldest year
+  // actually found above (ARCHIVE_YEARS_NUMERIC is sorted descending, so
+  // that's its last entry) instead of a hardcoded array's own last explicit
+  // entry -- fully derived from live data, per this pass's brief. null
+  // (rather than a number) when there are no years in the data at all yet,
+  // so handleFilterChange below has an explicit "there is no meaningful
+  // cutoff" signal instead of a misleading number like 0 or Infinity.
+  const EARLIER_CUTOFF_YEAR =
+    ARCHIVE_YEARS_NUMERIC.length > 0
+      ? ARCHIVE_YEARS_NUMERIC[ARCHIVE_YEARS_NUMERIC.length - 1]
+      : null;
+
+  // "Earlier" stays the trailing catch-all after every explicit year --
+  // the same UI shape MOCK_YEARS always had, just generated instead of
+  // hardcoded now. Passed straight through to Header's existing `years`
+  // prop below (mirroring themes/projects immediately above); Header
+  // itself needs no changes to accept this -- it already just renders
+  // whatever array it's given, in order.
+  const YEAR_OPTIONS = [...ARCHIVE_YEARS_NUMERIC.map(String), "Earlier"];
+
   // Handshake pass (default homepage pool): Search and Filter
   // (applyMetadataQuery below) already prove that Archive Items can
   // become the gallery's pool -- buildImagePool(matched.map((item) =>
@@ -1772,12 +1917,32 @@ function App() {
   // field passes through untouched. queryArchive itself never sees a
   // title, exactly as before this commit; it just keeps comparing
   // item.project against a slug, unaware anything changed upstream of it.
+  //
+  // Year Filter -- "Earlier" Bucket: nextFilterQuery.year can carry the
+  // literal label "Earlier" (Header's Year category reports whichever of
+  // its own displayed values were clicked, same as every other category --
+  // see MOCK_YEARS in Header.jsx), which queryArchive has no notion of.
+  // Resolved here, the same way Project titles are resolved to slugs just
+  // above and for the same reason: this is the one seam between Header's
+  // display-facing values and queryArchive's match-facing ones. "Earlier"
+  // becomes { before: EARLIER_CUTOFF_YEAR } (see that constant's own
+  // comment for where the cutoff comes from); every other year value
+  // (an explicit "2026", "2024", etc.) passes through untouched, exactly
+  // as before this change. Running this map again on an already-resolved
+  // value (e.g. when handleMetadataFilterCommit below re-merges
+  // activeFilterQuery through this same function) is a harmless no-op --
+  // a { before } object is never === "Earlier", so it passes straight
+  // through, the same idempotency PROJECT_SLUG_BY_TITLE's lookup above
+  // already relies on for an already-resolved slug.
   const handleFilterChange = useCallback(
     (nextFilterQuery) => {
       const resolvedFilterQuery = {
         ...nextFilterQuery,
         project: nextFilterQuery.project.map(
           (title) => PROJECT_SLUG_BY_TITLE.get(title) ?? title,
+        ),
+        year: nextFilterQuery.year.map((value) =>
+          value === "Earlier" ? { before: EARLIER_CUTOFF_YEAR } : value,
         ),
       };
       setActiveFilterQuery(resolvedFilterQuery);
@@ -2454,6 +2619,7 @@ function App() {
         key={headerResetKey}
         projects={PROJECT_TITLES}
         themes={THEME_NAMES}
+        years={YEAR_OPTIONS}
         onFilterOpenChange={setIsIndexDrawerOpen}
         onFilterChange={handleFilterChange}
         onDrawerHeightChange={handleDrawerHeightChange}

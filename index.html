@@ -4,6 +4,28 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Responsive Sanity Image Delivery: connection warm-up for the two
+         hosts every page load depends on once the CMS handshake resolves.
+         zxmuvik1.apicdn.sanity.io is the query API (useCdn: true's
+         edge-cached read host; see src/cms/client.js, whose own comment
+         already hardcodes this same project ID for the same "smallest
+         possible vertical slice" reason this does). cdn.sanity.io is the
+         image asset CDN every getOptimizedImageSrc/srcSet call requests
+         from (see src/cms/imageUrl.js's urlFor()). preconnect opens the
+         DNS, TCP, and TLS connection ahead of the first actual request
+         instead of paying that cost serially at the moment it's first
+         needed; dns-prefetch is the same idea as a fallback for browsers
+         that don't support preconnect. crossorigin is set only on the
+         query API host, matching how it's actually requested
+         (@sanity/client's fetch() is a CORS request); no img element in
+         this app sets crossOrigin, so cdn.sanity.io is preconnected
+         without it, to match the actual non-CORS-mode connection those
+         image requests use: a mismatched mode means the browser opens a
+         second, separate connection anyway, wasting the hint. -->
+    <link rel="preconnect" href="https://zxmuvik1.apicdn.sanity.io" crossorigin />
+    <link rel="dns-prefetch" href="https://zxmuvik1.apicdn.sanity.io" />
+    <link rel="preconnect" href="https://cdn.sanity.io" />
+    <link rel="dns-prefetch" href="https://cdn.sanity.io" />
     <title>urbanum</title>
   </head>
   <body>

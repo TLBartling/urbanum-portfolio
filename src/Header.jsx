@@ -96,6 +96,14 @@ export default function Header({
   // knows what those mean.
   onSearchSubmit,
   onSearchClear,
+  // Filter UX refinement (Metadata Filter Sync): a one-shot "please
+  // toggle this Theme value into your own selection" request from
+  // App.jsx, sent only when a Theme is clicked from HoverOverlay while
+  // Filter mode is already active there (see App.jsx's
+  // handleMetadataFilterCommit/isFilterModeActive). null the rest of the
+  // time. See the effect below, the one place this is consumed, for the
+  // full reasoning.
+  pendingThemeFilterCommit,
 }) {
   // Computed first (rather than down where it originally lived, alongside
   // isChildPageScrolled) because the initial state below now depends on it:
@@ -173,6 +181,13 @@ export default function Header({
   // hover-reveal language Search's own chip and Filter's per-value chips
   // already use -- and reveals the x that clears every active filter.
   const [isFilterClearArmed, setIsFilterClearArmed] = useState(false);
+  // Filter UX consistency pass -- Category Clear: which single Theme/
+  // Project/Year row (if any) currently has its own x armed. Same
+  // "one armed identifier at a time" shape as removeArmedValue below
+  // (the per-value chip equivalent), not a lookup of three separate
+  // booleans -- there are three rows here, but still only ever one
+  // hovered/focused at a time, so one piece of state covers all three.
+  const [categoryClearArmed, setCategoryClearArmed] = useState(null);
   // Layout Bug Fix -- Gallery Shift on Filter Open (Camera-based revision):
   // measures the drawer's own live rendered height so App.jsx's Camera
   // system can compute exactly how much viewport scale reduction it
@@ -488,6 +503,37 @@ export default function Header({
     });
   };
 
+  // Filter UX refinement (Metadata Filter Sync): the one place
+  // pendingThemeFilterCommit is consumed. App.jsx sends this only when a
+  // Theme is clicked from HoverOverlay while Filter mode is already
+  // active -- never for Tag (there is no Tag category here to sync
+  // into -- see INDEX_ENTRIES above) and never while Filter mode is
+  // inactive (that stays pure relationship exploration, untouched by
+  // this effect, per the brief this implements).
+  //
+  // Deliberately routed through handleOptionToggle above -- the exact
+  // same function a real click inside this drawer's own Theme list
+  // already calls -- rather than a second, parallel way of mutating
+  // `selection`. That's what makes this a genuine "as if the user
+  // selected it in the Filter UI" commit rather than a shortcut that
+  // could drift out of sync with drawer clicks: same toggle semantics
+  // (add if absent, remove if already selected), same onFilterChange
+  // report to App.jsx afterward -- selection stays the one place this
+  // Filter's state lives, and App.jsx's activeFilterQuery still only
+  // ever changes in response to that same report, exactly as it already
+  // does for an ordinary drawer click.
+  //
+  // pendingThemeFilterCommit is a fresh {value} object on every request
+  // (see its own comment in App.jsx), so the dependency array below only
+  // needs that one value -- handleOptionToggle/onFilterChange are
+  // recreated on every render and are not meant to retrigger this on
+  // their own, only a genuinely new incoming request should.
+  useEffect(() => {
+    if (!pendingThemeFilterCommit) return;
+    handleOptionToggle("theme", pendingThemeFilterCommit.value);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingThemeFilterCommit]);
+
   // Filter UX -- Clear All: resets every category to empty in one action.
   // Deliberately reuses the exact same setSelection/onFilterChange pair
   // handleOptionToggle above already calls per value -- this isn't a new
@@ -497,14 +543,58 @@ export default function Header({
   // (untouched by this commit) still does everything it already does with
   // any Filter change: resolve Project values, combine with whatever
   // Search is currently committed, run the one existing query, and
-  // regenerate the gallery once. This never touches drawerSection,
-  // activeEntry, or isExpanded, so the drawer's own open/closed state and
-  // whichever category panel is showing are completely unaffected --  it
-  // simply re-renders with every value deselected, exactly as "removing
-  // every chip one-by-one" would leave it.
+  // regenerate the gallery once.
+  //
+  // Filter UX refinement ("I am done filtering"): this used to stop
+  // there, leaving drawerSection/isFilterOpen completely untouched -- the
+  // global Filter [N] x is reachable whether the drawer is open or
+  // closed (it's the collapsed indicator, not part of the open drawer's
+  // own content), so clearing every filter from it left the drawer open
+  // with nothing left inside it to show. The two lines below are not a
+  // new closing mechanism -- they're the exact same pair the Escape-key
+  // handler above already uses to close this same drawer
+  // (notifyIfFilterCloses(null) so onFilterOpenChange still fires exactly
+  // when Filter itself actually transitions, then setDrawerSection(null)
+  // for the state change that drives the existing open/close animation),
+  // copied here rather than factored out only because there was already
+  // exactly one other call site, not two. Deliberately NOT
+  // handleFilterToggle(): that toggles off the *current* isFilterOpen,
+  // which would reopen the drawer if this were ever clicked while it was
+  // already closed (the collapsed Filter [N] x is visible in both
+  // states) -- notifyIfFilterCloses/setDrawerSection(null) is
+  // idempotent, so it's a no-op if the drawer wasn't open to begin with,
+  // exactly what "closes the drawer" should mean here. Neither
+  // activeEntry nor isExpanded is touched directly: the existing effect
+  // keyed on drawerSection (above) already resets activeEntry to null
+  // whenever drawerSection changes, and isExpanded is left exactly as
+  // whatever it already was -- the same as it's always been left after
+  // an Escape-key close or a plain Filter-toggle close, since both go
+  // through this identical drawerSection(null) transition already. This
+  // isn't a new inconsistency introduced here; it's the same close
+  // behavior every existing path already has.
   const handleFilterClearAll = () => {
     setSelection(EMPTY_FILTER_SELECTION);
     onFilterChange?.(EMPTY_FILTER_SELECTION);
+    notifyIfFilterCloses(null);
+    setDrawerSection(null);
+  };
+
+  // Filter UX consistency pass -- Category Clear: handleFilterClearAll's
+  // scoped sibling -- same "set a selection field, report it" shape, just
+  // one category instead of all four. Deliberately a separate function
+  // rather than generalizing handleFilterClearAll itself (e.g. an
+  // optional key parameter): that function's own call site and behavior
+  // (including the drawer-closing pass added since) stay completely
+  // untouched, and this one needs to do the opposite of that specific
+  // part -- "keep the drawer open" -- so it never touches drawerSection
+  // at all. Every other active category survives untouched, since only
+  // the one field named by `key` is replaced.
+  const handleCategoryClear = (key) => {
+    setSelection((current) => {
+      const next = { ...current, [key]: [] };
+      onFilterChange?.(next);
+      return next;
+    });
   };
 
   // Arms the "settled" state once the slow expansion has had time to
@@ -887,30 +977,124 @@ export default function Header({
                   ref={(el) => {
                     if (el) fieldRefs.current.set(key, el);
                   }}
+                  // Filter UX consistency pass -- Category Clear: arms
+                  // this row's own x on hover, exactly like
+                  // .filter-control (the main Filter row's own wrapper)
+                  // already does for isFilterClearArmed above -- same
+                  // mouseenter/mouseleave pair, just keyed by which
+                  // category this row is instead of one shared boolean.
+                  onMouseEnter={() => setCategoryClearArmed(key)}
+                  onMouseLeave={() =>
+                    setCategoryClearArmed((current) =>
+                      current === key ? null : current,
+                    )
+                  }
                 >
                   <div className="index-drawer__field-row">
-                    {/* The label itself is now an equally valid click
-                        target for opening/closing this category's value
-                        list -- same handler, same accordion behavior, as
-                        the "+" beside it. Selected values themselves are no
-                        longer shown here -- only a count of how many are
-                        selected. The values themselves now live solely in
-                        the Active Content Panel below, which is the one
-                        place they're displayed and managed. */}
-                    <button
-                      type="button"
-                      className="index-drawer__label-text"
-                      aria-expanded={isEntryOpen}
-                      onClick={() => handleAddClick(key)}
-                      tabIndex={isFilterOpen ? 0 : -1}
-                    >
-                      {label}
+                    {/* Visual consistency fix -- Tight bracket spacing:
+                        .index-drawer__field-row's own `gap: 10px` (its
+                        existing, intentional spacing between the label and
+                        the "+" button) was also landing BETWEEN the label
+                        and the new Clear button below, since flex `gap`
+                        applies between every adjacent child regardless of
+                        that child's own rendered width -- so the collapsed
+                        (max-width: 0) x still left a full 10px hole before
+                        the "]", reading as "Theme [1    ]". The main
+                        Filter control never had this problem because its
+                        own label/Clear pair already lives inside its own
+                        wrapper -- .filter-control (display: inline-flex,
+                        no gap) -- entirely separate from any outer gap.
+                        Reusing that exact class here, verbatim, around
+                        just the label+Clear pair closes that gap the same
+                        way, while the outer field-row's own 10px gap now
+                        applies only where it always meant to: between this
+                        wrapper and the "+" button. No new CSS, no changed
+                        interaction -- purely a layout fix. */}
+                    <div className="filter-control">
+                      {/* The label itself is now an equally valid click
+                          target for opening/closing this category's value
+                          list -- same handler, same accordion behavior, as
+                          the "+" beside it. Selected values themselves are no
+                          longer shown here -- only a count of how many are
+                          selected. The values themselves now live solely in
+                          the Active Content Panel below, which is the one
+                          place they're displayed and managed. */}
+                      <button
+                        type="button"
+                        className="index-drawer__label-text"
+                        aria-expanded={isEntryOpen}
+                        onClick={() => handleAddClick(key)}
+                        tabIndex={isFilterOpen ? 0 : -1}
+                      >
+                        {label}
+                        {/* Filter UX consistency pass -- Count formatting:
+                            was its own "(N)" span (.index-drawer__count) --
+                            now the exact same filter-count/
+                            index-drawer__option-bracket markup the main
+                            Filter's own count already uses (see
+                            .filter-control above), reused verbatim rather
+                            than a second bracket implementation. Only the
+                            opening "[" lives here, same as the main
+                            Filter's -- the closing "]" lives in the Clear
+                            button below, exactly mirroring how the main
+                            Filter's own "]" lives in its Clear All button
+                            rather than here. */}
+                        {values.length > 0 && (
+                          <span className="filter-count">
+                            <span
+                              className="index-drawer__option-bracket"
+                              aria-hidden="true"
+                            >
+                              [
+                            </span>
+                            {values.length}
+                          </span>
+                        )}
+                      </button>
+
+                      {/* Filter UX consistency pass -- Category Clear:
+                          this category's own hover-revealed x, reusing
+                          index-drawer__option/-remove/--remove-armed
+                          exactly as the main Filter's own Clear All button
+                          does (see its own comment above) -- same styling,
+                          same hover-reveal mechanics, just scoped to one
+                          category (handleCategoryClear(key)) instead of
+                          every category at once. Only rendered once there's
+                          something to clear, same as the count beside it
+                          and the main Filter's own Clear All button. */}
                       {values.length > 0 && (
-                        <span className="index-drawer__count">
-                          ({values.length})
-                        </span>
+                        <button
+                          type="button"
+                          className={`index-drawer__option${
+                            categoryClearArmed === key
+                              ? " index-drawer__option--remove-armed"
+                              : ""
+                          }`}
+                          onClick={() => handleCategoryClear(key)}
+                          onFocus={() => setCategoryClearArmed(key)}
+                          onBlur={() =>
+                            setCategoryClearArmed((current) =>
+                              current === key ? null : current,
+                            )
+                          }
+                          aria-label={`Clear ${label} filter`}
+                          tabIndex={isFilterOpen ? 0 : -1}
+                        >
+                          <span
+                            className="index-drawer__option-remove"
+                            aria-hidden="true"
+                          >
+                            ×
+                          </span>
+                          <span
+                            className="index-drawer__option-bracket"
+                            aria-hidden="true"
+                          >
+                            ]
+                          </span>
+                        </button>
                       )}
-                    </button>
+                    </div>
 
                     {/* Purely archival at rest -- no icon, no visible
                         affordance. The "+" only ever appears while this

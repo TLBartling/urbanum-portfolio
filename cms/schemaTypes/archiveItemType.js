@@ -1,5 +1,6 @@
 import {defineField, defineType} from 'sanity'
 import {ArchiveNumberInput} from './components/ArchiveNumberInput'
+import {TagsInput} from './components/TagsInput'
 
 // Archive Item is the atomic unit of the Urbanum archive: one photograph
 // plus the minimum structured metadata needed to place it -- which
@@ -68,10 +69,15 @@ export const archiveItemType = defineType({
     defineField({
       name: 'tags',
       title: 'Tags',
-      description: 'Free-form — type a word and press enter. Not a controlled list.',
+      description: 'Free-form — type a word and press enter. Not a controlled list. Automatically formatted (trimmed, single-spaced, Title Case) so near-duplicates like "light" and "Light" can\'t both end up as separate tags.',
       type: 'array',
       of: [{type: 'string'}],
       options: {layout: 'tags'},
+      // Tag formatting pass: see TagsInput.jsx's own comment for why this
+      // is an effect-driven wrapper around the default input rather than
+      // a schema-level transform (Sanity's schema layer has no such
+      // hook -- validation can reject a value but never rewrite one).
+      components: {input: TagsInput},
       validation: (Rule) => Rule.required().min(1),
     }),
     defineField({

@@ -1340,6 +1340,25 @@ function App() {
   const [activeFilterQuery, setActiveFilterQuery] = useState(
     EMPTY_FILTER_QUERY,
   );
+  // Filter UX refinement (Metadata Filter Sync): NOT a second copy of
+  // filter state -- Header's own `selection` remains the only place
+  // Theme/Project/Year selections are held for display, and
+  // activeFilterQuery above remains the only place the actual query
+  // criteria live. This is a one-shot, directional request: "please
+  // toggle this Theme value into your own selection," sent to Header
+  // every time a Theme is clicked from HoverOverlay (see
+  // handleMetadataFilterCommit below) -- an earlier pass only sent this
+  // once Filter mode was already active, which is exactly what produced
+  // an inconsistent first click vs. every click after it; every Theme
+  // click now takes this same path regardless of what was active
+  // beforehand. A fresh {value} object every time, never read back or
+  // compared by content here -- Header consumes it once, through the
+  // exact same handleOptionToggle path a real drawer click already
+  // uses, and reports the result back via the existing onFilterChange
+  // pipeline. See Header.jsx's own comment at the effect that consumes
+  // this for the full reasoning.
+  const [pendingThemeFilterCommit, setPendingThemeFilterCommit] =
+    useState(null);
   // Metadata Query Wiring: Gallery's own copy of the committed search
   // string. Header still owns the Search UI and its own internal
   // committedSearch (what actually renders the chip) -- this is purely so
@@ -1767,31 +1786,54 @@ function App() {
     [committedSearch, applyMetadataQuery],
   );
 
-  // Metadata Click Commit (Hover/Click separation): the clicked Theme or
-  // Tag inside HoverOverlay becomes the *entire* Filter selection --
-  // exactly the shape Header's own handleOptionToggle would produce if
-  // every other category were already empty and this were the one value
-  // just switched on. This deliberately calls handleFilterChange itself,
-  // not applyMetadataQuery/queryArchive directly, so a metadata click goes
-  // through the exact same combine-with-Search + Project-slug-resolve +
-  // regenerate path Header's Filter drawer already uses -- this is a
-  // second UI entry point into that one existing pipeline, not a second
-  // pipeline. Per prototype scope, this intentionally does NOT sync
-  // Header's own Filter drawer selection state (Header.jsx's local
-  // `selection` is uncontrolled from outside) -- the drawer's displayed
-  // chips may not visually reflect a Theme/Tag committed this way yet;
-  // only the actual query/regeneration behavior is wired here.
+  // Metadata Click Commit (Hover/Click separation, consistency pass):
+  // Theme now always takes the Header-sync path, regardless of whether
+  // Filter mode was already active -- the previous pass gated this on
+  // isFilterModeActive (a Project/Theme/Year check), which is exactly
+  // what produced the inconsistency this pass fixes: a Theme clicked
+  // from plain browsing regenerated the gallery correctly but never
+  // touched Header's own selection, so the Filter [N] indicator stayed
+  // silent on that first click and only started reflecting reality once
+  // a second Theme click found Filter mode already active. Per this
+  // pass's brief -- "every metadata click commits into the same filter
+  // state regardless of whether the user arrived there from normal
+  // browsing or while already inside Filter mode" -- there is no longer
+  // a first-click/second-click distinction for Theme; isFilterModeActive
+  // is gone rather than left unused.
+  //
+  // Tag is unchanged: it still merges directly into activeFilterQuery
+  // via handleFilterChange, invisible to Header's own Filter selection,
+  // exactly as established two passes ago -- there is still no Tag
+  // category in Header (see INDEX_ENTRIES in Header.jsx) for a Tag click
+  // to sync into, and nothing in this pass's brief asks for that to
+  // change.
+  //
+  // Theme does not call handleFilterChange itself at all -- it only ever
+  // sends Header a one-shot request to toggle the value into its own
+  // selection, through the exact same handleOptionToggle path a real
+  // drawer click already uses. Header is still the single source of
+  // truth for what's selected: its own onFilterChange call (unchanged,
+  // already wired below) is what actually reaches handleFilterChange
+  // from there, so there is still exactly one path from "a Theme value
+  // was selected" to "the query re-runs," not two, and Header's
+  // selection (and therefore Filter [N]) updates on every Theme click,
+  // the very first one included. See pendingThemeFilterCommit's own
+  // comment above for why this is a one-shot signal, not a second copy
+  // of filter state, and Header.jsx's own comment at the effect that
+  // consumes it for the rest of the reasoning.
   const handleMetadataFilterCommit = useCallback(
     (field, value) => {
+      if (field === "theme") {
+        setPendingThemeFilterCommit({ value });
+        return;
+      }
+
       handleFilterChange({
-        theme: [],
-        tag: [],
-        project: [],
-        year: [],
+        ...activeFilterQuery,
         [field]: [value],
       });
     },
-    [handleFilterChange],
+    [activeFilterQuery, handleFilterChange],
   );
 
   const handleImageClick = useCallback(
@@ -2418,6 +2460,7 @@ function App() {
         onLogoClick={handleLogoClick}
         onSearchSubmit={handleSearchSubmit}
         onSearchClear={handleSearchClear}
+        pendingThemeFilterCommit={pendingThemeFilterCommit}
       />
 
       {/* Layout Bug Fix -- Gallery Shift on Filter Open: this container

@@ -19,6 +19,7 @@ import {createImportDrafts} from '../createImportDrafts'
 import {patchImportDraft} from '../patchImportDraft'
 import {DEFAULT_ARCHIVE_TOOL_NAME} from '../archiveSections'
 import {AnnotationField} from './AnnotationField'
+import {normalizeTag} from '../normalizeTag'
 
 const API_VERSION = '2024-01-01'
 
@@ -2857,23 +2858,34 @@ export function ImportWorkspace() {
                           // check -- today's Tag field compared exact
                           // strings only, so "concrete" and "Concrete"
                           // could both end up attached as visually
-                          // near-identical chips. onAttach reuses the
-                          // existing suggestion's own casing rather
-                          // than whatever the user happened to type.
-                          onAttach={(item) =>
+                          // near-identical chips.
+                          //
+                          // Tag formatting pass: both paths now run
+                          // through normalizeTag.js (the same rule
+                          // TagsInput.jsx applies in the native Studio
+                          // editor) before the dedupe check and before
+                          // being stored, rather than reusing whatever
+                          // casing the user typed or an existing
+                          // suggestion happened to carry -- so a tag
+                          // attached here always matches the same
+                          // "Light"/"Modern Architecture" form it would
+                          // end up in either way.
+                          onAttach={(item) => {
+                            const normalized = normalizeTag(item.label)
                             setRequiredTags((prev) =>
-                              prev.some((tag) => tag.toLowerCase() === item.label.toLowerCase())
+                              prev.some((tag) => tag.toLowerCase() === normalized.toLowerCase())
                                 ? prev
-                                : [...prev, item.label],
+                                : [...prev, normalized],
                             )
-                          }
-                          onCreate={(text) =>
+                          }}
+                          onCreate={(text) => {
+                            const normalized = normalizeTag(text)
                             setRequiredTags((prev) =>
-                              prev.some((tag) => tag.toLowerCase() === text.toLowerCase())
+                              prev.some((tag) => tag.toLowerCase() === normalized.toLowerCase())
                                 ? prev
-                                : [...prev, text],
+                                : [...prev, normalized],
                             )
-                          }
+                          }}
                           onRemove={(item) =>
                             setRequiredTags((prev) => prev.filter((tag) => tag !== item.id))
                           }

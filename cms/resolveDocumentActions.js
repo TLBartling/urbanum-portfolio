@@ -1,6 +1,7 @@
 import {useClient} from 'sanity'
 import {useRouter} from 'sanity/router'
 import {PENDING_DRAFTS_QUERY} from './components/ImportWorkspace'
+import {RemoveThemeAction} from './components/RemoveThemeAction'
 
 const API_VERSION = '2024-01-01'
 
@@ -110,17 +111,40 @@ function wrapPublishAction(originalPublishAction) {
 // Kept: Publish (still wrapped above for Archive Item/Journal Entry's
 // auto-advance; unwrapped everywhere else) and Delete.
 //
-// Delete is kept completely as-is -- not reimplemented, not relabeled,
-// not given a custom dialog. Checked directly against the installed
-// action itself (useDeleteAction, id "delete"): it already deletes every
-// version of the document -- draft and published -- in one operation,
-// already shows a real confirmation dialog ("Delete document?" / "Are
-// you sure you want to delete all the versions of this document?"), and
-// already warns if other documents reference the one being deleted (e.g.
-// a Project other Archive Items still point to). That already satisfies
-// this project's delete requirements (confirmation, obvious wording,
-// safe, no draft/publish jargon in the visible copy) on its own --
+// Delete is kept completely as-is for Archive Item, Project, and Journal
+// Entry -- not reimplemented, not relabeled, not given a custom dialog.
+// Checked directly against the installed action itself (useDeleteAction,
+// id "delete"): it already deletes every version of the document --
+// draft and published -- in one operation, already shows a real
+// confirmation dialog ("Delete document?" / "Are you sure you want to
+// delete all the versions of this document?"), and already warns if
+// other documents reference the one being deleted (e.g. a Project other
+// Archive Items still point to). That already satisfies this project's
+// delete requirements (confirmation, obvious wording, safe, no draft/
+// publish jargon in the visible copy) on its own for those three types --
 // there's nothing to build.
+//
+// Theme cleanup pass ("Remove Theme"): Theme is the one exception. The
+// built-in Delete's "warns if other documents reference the one being
+// deleted" behavior isn't a warning for a Theme in practice -- it's a
+// hard failure, since every Archive Item a Theme is tagged on holds a
+// required reference to it (see archiveItemType.js's `themes` field,
+// `Rule.required().min(1)`), so Delete on any Theme actually in use
+// simply refuses to run, with an error worded around Sanity's own
+// reference-integrity model. Per the brief this pass implements:
+// "Editors should never need to understand Sanity reference integrity or
+// why a delete failed." RemoveThemeAction (components/RemoveThemeAction.jsx)
+// replaces Delete for Theme only -- swapped in below, by the resolved
+// action's own `.action === 'delete'` id, scoped to
+// `context.schemaType === 'theme'` so Archive Item/Project/Journal
+// Entry's Delete is completely untouched. It performs the obviously-
+// intended operation itself: removes the Theme reference from every
+// Archive Item that has it (preserving every other field and every other
+// Theme on that item), then deletes the Theme -- as one atomic
+// transaction, so a failure partway through leaves everything exactly as
+// it was rather than a half-cleaned-up state. See that file's own
+// comments for the full implementation and the reasoning behind each
+// choice.
 //
 // Dropped: Unpublish, Discard changes, and Restore -- not because
 // they're unsafe, but because each only makes sense once Josh
@@ -165,5 +189,16 @@ export function resolveDocumentActions(prevActions, context) {
 
   return prevActions
     .filter((action) => KEPT_ACTIONS.has(action.action))
-    .map((action) => (action.action === 'publish' ? wrapPublishAction(action) : action))
+    .map((action) => {
+      if (action.action === 'publish') return wrapPublishAction(action)
+      // Theme cleanup pass: see the big comment above KEPT_ACTIONS for
+      // why Theme's Delete is replaced and every other library type's
+      // isn't. This only ever swaps the *built-in* delete action found
+      // in `prevActions` -- Archive Item/Project/Journal Entry's `action`
+      // here is still Sanity's own, completely unmodified.
+      if (action.action === 'delete' && context.schemaType === 'theme') {
+        return RemoveThemeAction
+      }
+      return action
+    })
 }

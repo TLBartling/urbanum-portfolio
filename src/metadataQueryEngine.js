@@ -28,7 +28,10 @@
 // Supported query fields (foundation only -- see the module comment above
 // for why this list is deliberately short):
 //   search  -- free-text, matched case-insensitively as a substring against
-//              several fields (see matchesSearch below).
+//              several fields (see matchesSearch below). A year typed into
+//              Search is matched the same way the Year filter matches one
+//              -- see getYearFieldValues below, the one shared place both
+//              read an item's own year and its inherited Project year from.
 //   theme   -- structured field, string or array of strings.
 //   tag     -- structured field, string or array of strings.
 //   project -- structured field, string or array of strings.
@@ -78,9 +81,9 @@
 // string (fullDate-backed `date` values look like "2023-06-15") -- so the
 // `before` comparison below works the same regardless of which shape this
 // particular item's year happens to be in. Only used by the `before`
-// branch: the pre-existing exact-match branch (item.date === String(value))
-// is untouched and keeps its own existing behavior exactly as it was,
-// fullDate items included.
+// branch: the pre-existing exact-match branch (ownYear === String(value),
+// via getYearFieldValues below) is untouched and keeps its own existing
+// behavior exactly as it was, fullDate items included.
 //
 // Year Filter -- Live Data: exported so App.jsx can reuse this exact same
 // parsing rule when deriving the Year category's own live option list from
@@ -94,6 +97,27 @@ export function extractYearNumber(value) {
   return Number.parseInt(value.slice(0, 4), 10);
 }
 
+// Year Field Inheritance (shared): the two fields that together represent
+// an Archive Item's year -- its own `date` field, and its parent Project's
+// year, denormalized onto the item as `projectYear` (see cms/queries.js's
+// normalizeArchiveItem). Search Year Inheritance: this is the one place
+// that pair is read from. The year matcher below (both its exact-match and
+// `{ before }` branches) and matchesSearch further down each call this
+// instead of hardcoding item.date/item.projectYear separately -- so Search
+// and the Year filter read an item's year through the exact same function
+// and cannot drift out of sync with each other the way two independent
+// copies of "item.date, item.projectYear" could. Either value being absent
+// (undefined, for an item with no own date or no parent Project year) is
+// left as-is here; each caller already handles that the same way it always
+// did -- String(undefined) never equals a real query value in the exact-
+// match branch, extractYearNumber(undefined) is NaN and excluded by
+// Number.isFinite in the `before` branch, and matchesSearch's own
+// typeof-string filter already drops non-string values before building its
+// haystack.
+function getYearFieldValues(item) {
+  return [item.date, item.projectYear];
+}
+
 const STRUCTURED_FIELD_MATCHERS = {
   theme: (item, value) =>
     item.theme === value ||
@@ -101,6 +125,7 @@ const STRUCTURED_FIELD_MATCHERS = {
   tag: (item, value) => Array.isArray(item.tags) && item.tags.includes(value),
   project: (item, value) => item.project === String(value),
   year: (item, value) => {
+    const [ownYear, projectYear] = getYearFieldValues(item);
     // "Earlier" Bucket: a `{ before: N }` value (see this file's own
     // module-comment entry for `year` above) means "strictly earlier than
     // N," checked against both the item's own year and its parent
@@ -108,20 +133,20 @@ const STRUCTURED_FIELD_MATCHERS = {
     // branch below already uses for Year Filter Inheritance, just as a
     // comparison instead of an equality check.
     if (value && typeof value === "object" && "before" in value) {
-      const ownYear = extractYearNumber(item.date);
-      const projectYear = extractYearNumber(item.projectYear);
+      const ownYearNumber = extractYearNumber(ownYear);
+      const projectYearNumber = extractYearNumber(projectYear);
       return (
-        (Number.isFinite(ownYear) && ownYear < value.before) ||
-        (Number.isFinite(projectYear) && projectYear < value.before)
+        (Number.isFinite(ownYearNumber) && ownYearNumber < value.before) ||
+        (Number.isFinite(projectYearNumber) && projectYearNumber < value.before)
       );
     }
     // Year Filter Inheritance: an item matches either on its own year OR
     // its parent Project's year -- see this file's own module-comment
-    // entry for `year` above for the full reasoning. Byte-identical to
-    // before the "Earlier" bucket fix; every other structured field,
-    // Search, and the relationship engine (a separate module entirely)
-    // remain untouched.
-    return item.date === String(value) || item.projectYear === String(value);
+    // entry for `year` above for the full reasoning. Behaviorally
+    // unchanged from before this refactor; every other structured field,
+    // Search's non-year fields, and the relationship engine (a separate
+    // module entirely) remain untouched.
+    return ownYear === String(value) || projectYear === String(value);
   },
 };
 
@@ -139,12 +164,18 @@ function matchesStructuredField(item, field, rawValue) {
 
 // Search: case-insensitive substring match (MVP -- no fuzzy matching, no
 // tokenization) against archiveNumber, project, theme, themes, tags, and
-// year (the `date` field). Joined with a separator character that can't
-// appear inside any of these values, so a search term can never "leak"
-// across two adjacent fields and false-positive match (e.g. searching "23t"
-// should not match an item whose date is "2023" followed by a tag starting
-// with "t" -- without a separator, naive concatenation could do exactly
-// that).
+// year. Joined with a separator character that can't appear inside any of
+// these values, so a search term can never "leak" across two adjacent
+// fields and false-positive match (e.g. searching "23t" should not match
+// an item whose date is "2023" followed by a tag starting with "t" --
+// without a separator, naive concatenation could do exactly that).
+//
+// Search Year Inheritance: year is read via getYearFieldValues above, the
+// same function the Year filter's own matcher uses -- so a search for a
+// year matches an Archive Item on either its own year OR its parent
+// Project's year, exactly like the Year filter already does, through the
+// one shared definition of "an item's year" rather than a second copy of
+// that inheritance rule living here.
 function matchesSearch(item, rawSearchTerm) {
   if (typeof rawSearchTerm !== "string") {
     return true;
@@ -159,7 +190,7 @@ function matchesSearch(item, rawSearchTerm) {
     item.theme,
     ...(Array.isArray(item.themes) ? item.themes : []),
     ...(Array.isArray(item.tags) ? item.tags : []),
-    item.date,
+    ...getYearFieldValues(item),
   ].filter((value) => typeof value === "string");
   const haystack = searchableValues.join(" ").toLowerCase();
   return haystack.includes(term);

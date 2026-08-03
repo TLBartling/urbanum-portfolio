@@ -499,6 +499,16 @@ export default function Header({
         : [...existing, value];
       const next = { ...current, [key]: nextValues };
       onFilterChange?.(next);
+      // Filter UX refinement (Drawer Auto-Collapse): once the last
+      // selection in this category is removed, there is nothing left for
+      // this category's drawer to show -- collapse it automatically
+      // rather than leaving an empty panel open. Reuses the existing
+      // activeEntry state (the same state that already tracks which
+      // category's panel is open) rather than introducing a parallel
+      // "is this category empty" flag.
+      if (nextValues.length === 0) {
+        setActiveEntry((currentEntry) => (currentEntry === key ? null : currentEntry));
+      }
       return next;
     });
   };
@@ -595,6 +605,12 @@ export default function Header({
       onFilterChange?.(next);
       return next;
     });
+    // Drawer Auto-Collapse: Category Clear always empties this category
+    // (nextValues.length is always 0 here), so it should collapse the
+    // drawer the same way removing the last individual selection does --
+    // same activeEntry mechanism, applied unconditionally since Clear's
+    // result is always "zero selections."
+    setActiveEntry((currentEntry) => (currentEntry === key ? null : currentEntry));
   };
 
   // Arms the "settled" state once the slow expansion has had time to

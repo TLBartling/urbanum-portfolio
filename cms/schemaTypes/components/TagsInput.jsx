@@ -49,7 +49,7 @@ import {normalizeTag} from '../../normalizeTag'
 // migration option if every existing tag needs normalizing sooner than
 // that.
 export function TagsInput(props) {
-  const {value, onChange, renderDefault} = props
+  const {value, onChange, renderDefault, readOnly} = props
   const isFirstRender = useRef(true)
 
   useEffect(() => {
@@ -57,13 +57,29 @@ export function TagsInput(props) {
       isFirstRender.current = false
       return
     }
+    // Read-Only Guard (regression fix): Studio's document form can still be
+    // in its transient "not ready yet" read-only window -- e.g. the moment
+    // right after opening a document, before its live connection has
+    // settled -- when this effect first sees a `value` that needs
+    // normalizing. Every other field's onChange only ever fires in direct
+    // response to Josh's own keystroke, by which point the document is
+    // always long since ready; this effect is the only thing in this form
+    // that can call onChange purely because a prop changed, so it's the
+    // only place that needs this explicit check. Sanity's own onChange
+    // contract throws ("Attempted to patch a read-only document") if a
+    // patch is sent while readOnly is true. Skipping here just defers
+    // normalizing to the next real value change -- which happens the
+    // moment Josh actually edits the field himself, consistent with this
+    // component's existing "only ever normalizes in response to Josh's own
+    // edit" behavior described above.
+    if (readOnly) return
     if (!value || value.length === 0) return
 
     const normalized = value.map(normalizeTag)
     const needsNormalizing = normalized.some((tag, index) => tag !== value[index])
 
     if (needsNormalizing) onChange(set(normalized))
-  }, [value, onChange])
+  }, [value, onChange, readOnly])
 
   return renderDefault(props)
 }

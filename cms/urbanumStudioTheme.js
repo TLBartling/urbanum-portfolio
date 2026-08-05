@@ -93,8 +93,70 @@ import {buildLegacyTheme} from 'sanity'
 const INK = '#1a1a1a'
 const SHELL_BACKGROUND = '#faf9f5'
 
+// Final polish pass ("Archive editor validation styling"): Josh reported
+// the stock validation-red (a required reference field, e.g. Themes,
+// rendering with a red border and red placeholder the instant a new
+// empty item is added -- before he's typed or attempted anything) as
+// too aggressive and out of step with Urbanum's visual language.
+//
+// INVESTIGATED FIRST, same discipline as the rest of this file: is
+// "only show red after a genuine invalid publish/save attempt" (the
+// preferred behavior) reachable through public config? Read the
+// installed source's field-member types (FieldMember.changed: boolean,
+// index-Z0jxEn8U.d.ts) and confirmed the mechanism -- Studio only
+// gates validation display on whether a field has been "changed."
+// Clicking "Add item" on an array IS itself a change (an insert patch
+// applied to the array), so a brand-new, still-empty reference item is
+// already marked changed the instant it exists -- it renders through
+// the exact same "changed + invalid" path as a field Josh actually
+// typed into and then blanked, or a field left empty after a failed
+// Publish attempt (useReviewChanges, same file). There is no separate
+// "untouched" render path to keep neutral and no public flag that
+// distinguishes "just inserted" from "genuinely reviewed" -- confirmed
+// by reading the field-member/review-changes types directly, not
+// assumed. So the preferred behavior (neutral until submission) isn't
+// reachable without a custom Input component replacing Studio's own
+// reference/array inputs -- a far bigger, riskier change than a polish
+// pass, and explicitly the fallback this task's own brief anticipated.
+//
+// FALLBACK IMPLEMENTED: restyle the idle appearance to Studio's neutral
+// gray, per the brief. '--state-danger-color' is the one seed
+// buildLegacyTheme() exposes for this (LegacyThemeProps, confirmed
+// '@public'; feeds legacyPalette.state.danger.fg, which
+// buildLegacyTones() turns into the 'critical' tone every non-button
+// invalid-state surface renders through -- see buildLegacyPalette/
+// buildLegacyTones in the installed source). Set to gray[500].hex
+// (#727892) -- the exact same seed '--gray-base' already defaults to,
+// and thus the same value already driving every ORDINARY field's
+// border. Verified by actually building both themes and diffing the
+// output (not guessed): with this set, critical.base.border resolves
+// to #c3c5cd, byte-identical to default.base.border's own #c3c5cd --
+// an invalid reference field's idle border is now indistinguishable
+// from a normal field's, exactly "matches the Studio's neutral gray
+// palette." Nothing about Rule.required()/Rule.min()/publish-blocking
+// changed -- this is a color seed only, the same category of change as
+// --brand-primary/--component-bg above.
+//
+// SCOPE, deliberately narrow: only '--state-danger-color' is set, not
+// '--default-button-danger-color' -- confirmed those are two separate
+// seeds (buildLegacyPalette above) feeding two separate tone trees
+// (state vs. button). Genuinely destructive actions that use a
+// tone="critical" BUTTON (Remove Theme's own trigger, for one --
+// RemoveThemeAction.jsx) keep their real red; only the passive
+// state/card-level critical tone (field borders, placeholder text,
+// inline validation copy) is softened. One known, deliberate
+// consequence: ImportWorkspace.jsx's own errorTextStyle read this same
+// shared critical-fg token for genuine save/publish-failure messages
+// (a different concern entirely -- an operation actually failed, not a
+// field that's merely empty) -- decoupled there with its own comment
+// so that stays visibly red, unaffected by this change. Confirm-dialog
+// tones (e.g. Remove Theme's own confirmation) were not independently
+// verified beyond that -- no live Studio/browser access in this
+// environment to see the rendered result -- flagged for a follow-up
+// look if it reads as unexpectedly muted in practice.
 export const urbanumStudioTheme = buildLegacyTheme({
   '--brand-primary': INK,
   '--component-bg': SHELL_BACKGROUND,
   '--component-text-color': INK,
+  '--state-danger-color': '#727892',
 })

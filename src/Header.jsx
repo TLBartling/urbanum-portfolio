@@ -114,6 +114,18 @@ export default function Header({
   // reset later.
   const path = useCurrentPath();
   const isChildPage = path !== "/";
+  // Project Page detection ("/projects/:slug" specifically -- not the
+  // "/projects" index, and not any other child page like About/Journal):
+  // mirrors Router.jsx's own PROJECT_ROUTE pattern for the one route this
+  // check needs to recognize. Kept as its own local constant rather than
+  // importing Router's copy (which it doesn't currently export), since
+  // this is the only place outside Router itself that needs to know "is
+  // this specifically a Project page." Used below only to opt Project
+  // pages out of the child-page "Menu starts open" default -- isChildPage
+  // itself stays exactly as it was everywhere else in this file (Filter/
+  // Search behavior, scroll handling, etc. all remain unchanged for every
+  // child page, Project pages included).
+  const isProjectPage = /^\/projects\/[^/]+$/.test(path);
 
   // Consumed exactly once, on this mount: which control (if any) asked to
   // resume on the homepage after a Filter/Search return trip from a child
@@ -131,13 +143,19 @@ export default function Header({
   // Menu is navigation that temporarily replaces the working interface,
   // not another working tool alongside it.
   //
-  // Initial value covers three cases: a child page always starts with Menu
-  // open (the design intent -- it's the site's table of contents while
-  // reading); the homepage starts with Filter open only if this mount is the
-  // arrival half of a Filter return trip; otherwise closed, exactly as
-  // before.
+  // Initial value covers four cases: a child page other than a Project page
+  // always starts with Menu open (the design intent -- it's the site's
+  // table of contents while reading); a Project page starts closed, just
+  // like landing on any other page (Menu/Filter Initial State Fix -- a
+  // Project page's own navigation, filters, and reading flow don't need
+  // the table of contents pre-opened, and Josh found it opening
+  // automatically distracting); the homepage starts with Filter open only
+  // if this mount is the arrival half of a Filter return trip; otherwise
+  // closed, exactly as before. Only the initial value changes here -- once
+  // mounted, Menu/Filter on a Project page open and close exactly the same
+  // way (same toggles, same animation) as they always have.
   const [drawerSection, setDrawerSection] = useState(() => {
-    if (isChildPage) return "menu";
+    if (isChildPage && !isProjectPage) return "menu";
     if (pendingIntent?.type === "filter") return "filter";
     return null;
   });

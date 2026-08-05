@@ -1,20 +1,27 @@
 import { useState } from "react";
 import Header from "./Header";
-import { allImages } from "./App";
+import { getJournalEntries } from "./content";
 
 // The Journal is a plain, growing image archive -- three equal columns,
-// one fixed aspect ratio, no captions, numbers, or click behavior. It's
-// meant to read as a quiet visual notebook rather than a portfolio or
-// gallery, so the implementation is deliberately restrained: a CSS grid
-// and nothing else layered on top.
+// one fixed aspect ratio, no numbers or click behavior. It's meant to
+// read as a quiet visual notebook rather than a portfolio or gallery, so
+// the implementation stays deliberately restrained: a CSS grid, plus the
+// one small addition below (an optional per-entry hover caption -- see
+// .journal-tile__caption in styles.css), and nothing else layered on
+// top.
 //
-// The `images` prop is the CMS seam, following the same prop-default
-// pattern already used by AboutPage: today it defaults to the same
-// placeholder pool the gallery draws from, but is meant to be swapped
-// later for whatever set of entries the CMS resolves for
-// Category/Theme = "Journal" -- nothing about this page's structure
-// needs to change when that happens.
-export default function JournalPage({ images = allImages }) {
+// The `entries` prop is the CMS seam, following the same prop-default
+// pattern already used by AboutPage/the earlier Journal CMS handshake.
+// Journal CMS cleanup: this now carries each entry's full normalized
+// shape (`{ image, date, caption }` -- see src/cms/queries.js's
+// normalizeJournalEntry) rather than a bare image URL string, since the
+// render loop below now also needs `caption` to know whether a given
+// tile has one. Renamed from `images` to `entries` to match -- "images"
+// stopped being an accurate name the moment this started carrying more
+// than plain URLs. `<JournalPage />` (see Router.jsx) is this
+// component's only caller and never passes this prop, so the default is
+// always what actually renders today.
+export default function JournalPage({ entries = getJournalEntries() }) {
   // Same drawer-height/opacity wiring App.jsx, AboutPage.jsx, and
   // ProjectsPage.jsx already use for their own scroll-container, reused
   // as-is so the header's Filter/Search/Menu drawer pushes and dims this
@@ -52,15 +59,20 @@ export default function JournalPage({ images = allImages }) {
         }}
       >
         <div className="journal-grid">
-          {images.map((src) => (
-            <div className="journal-tile" key={src}>
+          {entries.map((entry) => (
+            <div className="journal-tile" key={entry.image}>
               <img
                 className="journal-tile__img"
-                src={src}
+                src={entry.image}
                 alt=""
                 loading="lazy"
                 decoding="async"
               />
+              {entry.caption && (
+                <span className="journal-tile__caption">
+                  {entry.caption}
+                </span>
+              )}
             </div>
           ))}
         </div>

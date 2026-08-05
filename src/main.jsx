@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 import Router from "./Router";
 import SplashScreen from "./SplashScreen";
-import { loadArchiveItems, loadProjects, loadThemes } from "./content";
+import { loadArchiveItems, loadProjects, loadThemes, loadJournalEntries } from "./content";
 import "./styles.css";
 
 // Repository milestone (startup-experience fix): Archive Items come from
@@ -43,7 +43,7 @@ function Root() {
   useEffect(() => {
     let cancelled = false;
 
-    Promise.all([loadArchiveItems(), loadProjects(), loadThemes()]).finally(() => {
+    Promise.all([loadArchiveItems(), loadProjects(), loadThemes(), loadJournalEntries()]).finally(() => {
       if (!cancelled) setIsRepositoryReady(true);
     });
 

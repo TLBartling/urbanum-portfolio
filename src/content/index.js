@@ -6,4 +6,4 @@
 export { getArchiveItems, findArchiveItemBySrc, loadArchiveItems } from "./archiveItems";
 export { getProjects, loadProjects } from "./projects";
 export { getThemes, loadThemes } from "./themes";
-export { getJournalEntries } from "./journalEntries";
+export { getJournalEntries, loadJournalEntries } from "./journalEntries";

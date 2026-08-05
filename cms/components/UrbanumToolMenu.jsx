@@ -3,7 +3,7 @@ import {Flex} from '@sanity/ui'
 import {ARCHIVE_TOOL_NAMES, DEFAULT_ARCHIVE_TOOL_NAME} from '../archiveSections'
 
 // Groups Studio's existing `tools` array under the IMPORT / ARCHIVE /
-// SETTINGS hierarchy from the Milestone 2 assessment, via
+// SYSTEM hierarchy from the Milestone 2 assessment, via
 // `studio.components.toolMenu` -- a documented override point
 // (sanity.io/docs describes it as stable; the installed 6.7.0 package's
 // own .d.ts marks the containing `ToolMenuProps`/`StudioComponents`
@@ -58,12 +58,21 @@ import {ARCHIVE_TOOL_NAMES, DEFAULT_ARCHIVE_TOOL_NAME} from '../archiveSections'
 // Josh is on Projects, Themes, or Photo Journal, which is exactly the
 // "which underlying Structure Tool am I in" awareness this pass is
 // meant to remove, not reintroduce.
-const GROUP_ORDER = ['Import', 'Archive', 'Settings']
+//
+// System rename pass: "Settings" renamed to "System". The underlying
+// `advanced` Tool is not, and never was, a settings/configuration
+// surface (no toggles or preferences live behind it) -- "System" reads
+// as identification/information (what this CMS is, what it holds,
+// where documentation will eventually live) instead of implying a
+// place to change how Studio behaves. Scope matches the earlier
+// Advanced -> Settings rename: only this display label changed, the
+// underlying Tool object/route did not.
+const GROUP_ORDER = ['Import', 'Archive', 'System']
 
 const GROUP_TOOL_NAME = {
   Import: 'urbanum-import',
   Archive: DEFAULT_ARCHIVE_TOOL_NAME,
-  Settings: 'advanced',
+  System: 'advanced',
 }
 
 // Matches ImportWorkspace.jsx's own palette (INK/MUTED_INK) so the nav
@@ -112,7 +121,7 @@ export function UrbanumToolMenu(props) {
       {groups.map(({group, tool}) => {
         // "Archive" is active for any of its four underlying Structure
         // Tools, not just the one it links to (see the comment above
-        // GROUP_ORDER) -- Import and Settings are still a plain 1:1
+        // GROUP_ORDER) -- Import and System are still a plain 1:1
         // match, since each of those is genuinely only ever one tool.
         const isActive =
           group === 'Archive'

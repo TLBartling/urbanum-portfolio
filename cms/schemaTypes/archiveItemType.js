@@ -61,7 +61,7 @@ export const archiveItemType = defineType({
     defineField({
       name: 'themes',
       title: 'Themes',
-      description: 'Controlled categories that connect this item to recurring ideas across the archive. Select all that apply.',
+      description: 'Select one or more recurring ideas that connect this image to the rest of the archive.',
       type: 'array',
       of: [{type: 'reference', to: [{type: 'theme'}]}],
       validation: (Rule) => Rule.required().min(1),
@@ -69,7 +69,7 @@ export const archiveItemType = defineType({
     defineField({
       name: 'tags',
       title: 'Tags',
-      description: 'Free-form — type a word and press enter. Not a controlled list. Automatically formatted (trimmed, single-spaced, Title Case) so near-duplicates like "light" and "Light" can\'t both end up as separate tags.',
+      description: 'Optional keywords to help organize and find this image later.',
       type: 'array',
       of: [{type: 'string'}],
       options: {layout: 'tags'},
@@ -88,8 +88,12 @@ export const archiveItemType = defineType({
       // technical shorthand, out of step with every other field
       // description in this schema, which is written as plain prose.
       // Meaning is unchanged, only the phrasing.
-      description:
-        'Default: the normal archive image. Featured: the preferred image for project presentation. Hidden: excluded from public navigation without deleting the record.',
+      //
+      // Editorial-copy pass: shortened further to plain, editorial
+      // language -- what each option means for the image, not a
+      // definitions list. The three option values themselves (Default/
+      // Featured/Hidden, in the options.list below) are unchanged.
+      description: 'Choose how this image should appear within the project.',
       type: 'string',
       options: {
         list: [
@@ -112,7 +116,7 @@ export const archiveItemType = defineType({
       // be skipped -- Sort Order didn't carry it despite being just as
       // optional, which is the inconsistency this labels.
       title: 'Sort Order (optional)',
-      description: 'Controls display order within this Project. Lower numbers appear first. The value is project-local, not global across the archive.',
+      description: 'Sets the order this image appears within its project. Lower numbers come first.',
       type: 'number',
       validation: (Rule) => Rule.integer(),
     }),
@@ -120,14 +124,14 @@ export const archiveItemType = defineType({
       name: 'year',
       // Same reasoning as Sort Order's own title comment, above.
       title: 'Year (optional)',
-      description: 'Use if only the year is known.',
+      description: 'Use if you only know the year this was taken.',
       type: 'number',
       validation: (Rule) => Rule.integer().min(1800).max(2100),
     }),
     defineField({
       name: 'fullDate',
       title: 'Exact Date (optional)',
-      description: 'Use only if the exact date is known.',
+      description: 'Use if you know the exact date this was taken.',
       type: 'date',
     }),
     defineField({
@@ -149,7 +153,7 @@ export const archiveItemType = defineType({
     defineField({
       name: 'privateNotes',
       title: 'Private Notes',
-      description: 'Internal use only — never displayed publicly on the site.',
+      description: 'Notes for internal reference only — never shown on the public site.',
       type: 'text',
       rows: 3,
     }),

@@ -50,19 +50,37 @@ export const ARCHIVE_SECTIONS = [
     schemaType: 'archiveItem',
     icon: ArchiveIcon,
     group: 'Archive',
-    // Newest import first -- the same "most recent first" mental model
-    // the Uploader's own Recent Projects/Themes pills already use
-    // (ImportWorkspace.jsx's recentThemeIds/recentTags). archiveNumber is
-    // a zero-padded string ("001", "002", ...), so a plain string `desc`
-    // sort is numerically correct for every normally-assigned value (see
-    // ArchiveNumberInput.jsx's own PAD_LENGTH). The one known exception is
-    // the legacy unpublished "AR-0001" test draft that file's own comment
-    // already documents -- its non-numeric prefix sorts ahead of every
-    // real value under `desc`, a pre-existing data quirk this ordering
-    // change surfaces rather than causes, and one that resolves itself the
-    // moment that draft is permanently deleted (already the documented
-    // path forward in ArchiveNumberInput.jsx).
-    defaultOrdering: [{field: 'archiveNumber', direction: 'desc'}],
+    // Archive list draft-visibility follow-up ("sort by Last Edited"):
+    // investigated as a simpler, fully supported alternative to exposing
+    // draft state directly in this type's own preview.prepare() (that
+    // approach was implemented, found not to work -- Structure Tool list
+    // rows are keyed to the published document, which preview.prepare()
+    // has no way around -- and reverted). This is a straightforward,
+    // fully native, documented configuration change: '_updatedAt' /
+    // 'desc' is not a new mechanism, it's the exact field and direction
+    // Structure Tool's own stock "Last edited" sort option already uses
+    // (confirmed against the installed source's own ORDER_BY_UPDATED_AT
+    // constant), applied through the same public `defaultOrdering()` call
+    // this section already used for Archive Number. It's also this
+    // list's original stock default, before the "Archive list usability"
+    // pass above moved it to Archive Number descending -- that pass is
+    // still the right call for ordinary browsing (a stable order that
+    // doesn't reshuffle every time a field is touched), but it traded
+    // away the one moment Last Edited is genuinely more useful: arriving
+    // here via "Continue Editing," the item just worked on -- almost
+    // always the one with an unpublished draft -- now surfaces at the
+    // top instead of sitting wherever its archive number happens to
+    // place it, and any other items with pending drafts cluster near it
+    // for the same reason. This only changes which order the list opens
+    // with. The Sort menu itself -- this type's own "Archive Number
+    // (Oldest First)" schema ordering, plus Structure Tool's stock Last
+    // Edited/Created options -- is assembled independently of this
+    // setting (confirmed against the installed source's
+    // getOrderingMenuItemsForSchemaType, which reads only the schema's
+    // own `orderings` plus its own fixed stock list, never this value),
+    // so Josh can still pick any other order from that menu exactly as
+    // before; this only changes where the list starts.
+    defaultOrdering: [{field: '_updatedAt', direction: 'desc'}],
   },
   {
     name: 'projects',

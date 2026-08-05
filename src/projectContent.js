@@ -43,8 +43,21 @@ export function getProjectBySlug(slug) {
 
   const ordered = getProjectsInOrder();
   const index = ordered.findIndex((p) => p.slug === slug);
-  const previous = index > 0 ? ordered[index - 1] : null;
-  const next = index < ordered.length - 1 ? ordered[index + 1] : null;
+  // Project Navigation Loop: Previous/Next wraps around the ordered list
+  // instead of dead-ending at the first/last Project -- the first
+  // Project's Previous goes to the last Project, and the last Project's
+  // Next goes back to the first. The modulo add-then-wrap (rather than a
+  // plain index - 1 / index + 1) is what makes index 0's "previous" wrap
+  // to ordered.length - 1 instead of going negative. Both are always
+  // non-null now (as long as this Project exists in `ordered`, which it
+  // does -- `project` was already found above), including for a
+  // single-Project catalog, where a Project simply loops to itself; see
+  // ProjectNavigation.jsx, which no longer needs its previousProject/
+  // nextProject null-checks to ever actually hide a control, but keeps
+  // them as-is since they're now simply always truthy rather than needing
+  // to be removed.
+  const previous = ordered[(index - 1 + ordered.length) % ordered.length];
+  const next = ordered[(index + 1) % ordered.length];
 
   return {
     title: project.title,

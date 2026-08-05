@@ -226,7 +226,21 @@ const sectionHeadingStyle = {
   fontSize: '0.72rem',
 }
 const mutedTextStyle = {color: MUTED_INK}
-const errorTextStyle = {color: 'var(--card-critical-fg-color)', textAlign: 'center'}
+// Final polish pass ("Archive editor validation styling"): this used to
+// read the shared '--card-critical-fg-color' theme token, which
+// urbanumStudioTheme.js's own '--state-danger-color' seed now
+// deliberately softens to a neutral gray (see that file's comment) so
+// idle/untouched required-field validation -- an empty Theme reference
+// the instant it's added, before Josh has done anything -- no longer
+// reads as aggressively red. This text is a different concern: real
+// save/publish-failure copy ("Could not save -- try Continue again.",
+// "Failed to delete cancelled draft(s).", etc.) after an operation has
+// actually failed, not a field that's merely empty. Hardcoded to the
+// exact hex the shared token resolved to before that change (computed
+// directly from the installed buildLegacyTheme() output, not guessed),
+// so this stays visibly red and unaffected by the field-validation
+// softening -- a real failure should still read as urgent.
+const errorTextStyle = {color: '#44221f', textAlign: 'center'}
 const primaryButtonStyle = {textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 500}
 const secondaryButtonStyle = {textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 400}
 // Visual-language pass: replacing every remaining `tone="primary"` (Sanity's
@@ -751,6 +765,13 @@ export function ImportWorkspace() {
   const [availableThemes, setAvailableThemes] = useState(null)
   const [availableTags, setAvailableTags] = useState(null)
   const [isSavingRequired, setIsSavingRequired] = useState(false)
+  // Cancel Import Cleanup: true only while handleCancelImport's own
+  // draft-delete transaction is in flight -- see that callback below.
+  // Gates both Cancel Import buttons (Required and Journal Entry's
+  // Optional step) and their paired primary action, the same
+  // disable-the-pair-while-in-flight pattern isSavingRequired/
+  // isSavingOptional already establish for their own steps.
+  const [isCancellingImport, setIsCancellingImport] = useState(false)
   const [requiredSaveError, setRequiredSaveError] = useState(null)
   // Phase 4 ("progressive disclosure"): Featured, Sort Order, and Internal
   // Notes are operational, not descriptive -- per the brief, they stay
@@ -807,6 +828,16 @@ export function ImportWorkspace() {
   const [optionalYear, setOptionalYear] = useState('')
   const [optionalFullDate, setOptionalFullDate] = useState('')
   const [optionalDescription, setOptionalDescription] = useState('')
+  // Journal Entry's one Optional field -- see journalEntryType.js's
+  // `caption` field ("Image Caption" in Studio). Kept separate from
+  // optionalDescription above rather than reused: that state/its
+  // styling (captionFieldStyle, no FieldLabel, larger unhurried type)
+  // is specifically Archive Item's own caption treatment per the frozen
+  // brief, and Journal Entry's field is a different schema field
+  // (`caption`, not `description`) rendered with its own plain,
+  // labeled quiet-field treatment below -- sharing state across the two
+  // would couple two document types' fields together for no benefit.
+  const [optionalCaption, setOptionalCaption] = useState('')
   const [optionalDisplayRole, setOptionalDisplayRole] = useState('Default')
   const [optionalSortOrder, setOptionalSortOrder] = useState('')
   const [optionalPrivateNotes, setOptionalPrivateNotes] = useState('')
@@ -1358,6 +1389,7 @@ export function ImportWorkspace() {
     setOptionalYear('')
     setOptionalFullDate('')
     setOptionalDescription('')
+    setOptionalCaption('')
     setOptionalDisplayRole('Default')
     setOptionalSortOrder('')
     setOptionalPrivateNotes('')
@@ -1480,15 +1512,30 @@ export function ImportWorkspace() {
   // to a `number` field. Full Date is only included when non-empty, for
   // the same reason. Current schema only, exactly as it exists today.
   //
-  // Journal Entry has no Optional fields specified in the locked field
-  // list, so its path here skips straight to handlePublish with nothing to
-  // save first.
+  // Journal Entry's only Optional field is Image Caption (`caption` on
+  // journalEntryType.js) -- always sent, even empty, same "a text field
+  // is sent through even blank, so clearing it is itself a real saved
+  // edit" reasoning Description's own comment below already establishes
+  // for Archive Item. No Location/Year/Sort Order/Display Role/Private
+  // Notes branch applies to this type (this uploader doesn't capture
+  // any of those for Journal Entry), so this is the entire save step
+  // for it -- a much smaller version of the archiveItem path below, not
+  // a shared one, since the two types' fields don't overlap.
   const handleSaveOptional = useCallback(async () => {
     if (!currentDraft) return
     setOptionalSaveError(null)
 
     if (currentDraft.type === 'journalEntry') {
-      handlePublish()
+      setIsSavingOptional(true)
+      try {
+        await patchImportDraft(client, currentDraft.id, {caption: optionalCaption})
+        handlePublish()
+      } catch (error) {
+        console.error('[ImportWorkspace] Failed to save Optional fields.', error)
+        setOptionalSaveError('Could not save -- try Continue again.')
+      } finally {
+        setIsSavingOptional(false)
+      }
       return
     }
 
@@ -1554,6 +1601,7 @@ export function ImportWorkspace() {
     currentDraft,
     optionalLocation,
     optionalDescription,
+    optionalCaption,
     optionalPrivateNotes,
     optionalDisplayRole,
     optionalYear,
@@ -1618,6 +1666,57 @@ export function ImportWorkspace() {
     refreshPendingDrafts()
     setStep('upload')
   }, [resetDraftFields, refreshPendingDrafts])
+
+  // WORKFLOW BUG FIX (Cancel Import leaves an orphaned draft): a draft
+  // already exists by the time either Cancel Import button is reachable
+  // -- handleChooseType creates one real `drafts.` document per uploaded
+  // photo up front, before Required or Optional ever render (see
+  // createImportDrafts.js's own comment on why: this screen patches that
+  // same draft incrementally as Josh fills in fields, and the Continue
+  // Previous/Resume Editing feature depends on unfinished drafts actually
+  // existing in Sanity between sessions). Deferring draft creation until
+  // Publish was considered and rejected -- it would mean buffering every
+  // Required/Optional edit in local state only and would break Continue
+  // Previous entirely, a real, already-shipped feature, for something
+  // well past "the smallest possible fix." So the draft has to exist
+  // during the workflow, which means Cancel Import's job is to clean it
+  // up, not avoid creating it -- this is that cleanup.
+  //
+  // draftQueue.slice(draftQueueIndex): the currently active draft plus
+  // every later one still queued behind it in this batch. Anything
+  // BEFORE draftQueueIndex already went through a successful publish --
+  // goToNextDraftOrComplete only ever advances past an index after that
+  // photo's own 'publish' operation event succeeds (see the
+  // operationEvent effect above) -- so those are real published
+  // documents now, not drafts, and this deliberately never touches them.
+  //
+  // A single transaction (mirroring createImportDrafts.js's own
+  // tx.create() reduce, just tx.delete() instead) rather than separate
+  // client.delete() calls per id, for the same atomicity createImportDrafts
+  // already gets from its own transaction.
+  //
+  // If the delete fails, this still falls through to handleStartOver --
+  // Cancel Import should never trap Josh on a broken screen because
+  // cleanup failed; a leftover draft from a failed delete is a smaller,
+  // still-recoverable problem (Continue Previous will surface it again
+  // next visit, or Josh can delete it directly in Studio) than a stuck
+  // Cancel button.
+  const handleCancelImport = useCallback(async () => {
+    const idsToDelete = draftQueue.slice(draftQueueIndex).map((item) => `drafts.${item.id}`)
+
+    if (idsToDelete.length > 0) {
+      setIsCancellingImport(true)
+      try {
+        await idsToDelete.reduce((tx, id) => tx.delete(id), client.transaction()).commit()
+      } catch (error) {
+        console.error('[ImportWorkspace] Failed to delete cancelled draft(s).', error)
+      } finally {
+        setIsCancellingImport(false)
+      }
+    }
+
+    handleStartOver()
+  }, [client, draftQueue, draftQueueIndex, handleStartOver])
 
   // Navigates to the Archive's default section (Archive Items) via
   // `router.navigateUrl({path})` rather than <StateLink>/useStateLink,
@@ -2467,7 +2566,9 @@ export function ImportWorkspace() {
                         ? 'Required Information'
                         : isPublishing
                           ? 'Review & Publish'
-                          : 'Optional Information'}
+                          : currentDraft?.type === 'journalEntry'
+                            ? 'Image Caption'
+                            : 'Optional Information'}
                   </Heading>
                   {step === 'archiveOrJournal' && (
                     <Text size={1} style={{...mutedTextStyle, lineHeight: 1.5}}>
@@ -3093,11 +3194,32 @@ export function ImportWorkspace() {
                     </Stack>
                   ) : (
                     <Stack space={4}>
+                      {optionalSaveError && <Text size={1} style={errorTextStyle}>{optionalSaveError}</Text>}
                       {publishError && <Text size={1} style={errorTextStyle}>{publishError}</Text>}
-                      {/* Journal Entry has no Optional fields in the
-                          locked field model -- nothing renders here
-                          beyond a possible publish error; Publish
-                          itself lives at the bottom of this column. */}
+                      {/* Journal Entry's one Optional field: Image
+                          Caption (see journalEntryType.js -- the
+                          schema's only public, editorially-relevant
+                          Optional field on this document type today).
+                          Same unboxed quiet-field chrome
+                          (quietFieldStyle) already used for Location
+                          above, with its own FieldLabel since, unlike
+                          Archive Item's own caption field, this one
+                          isn't the single obvious thing on the step --
+                          it needs a label to be legible on its own.
+                          rows={2} matches the schema field's own
+                          `rows: 2`. */}
+                      <Stack space={2}>
+                        <FieldLabel quiet>Optional</FieldLabel>
+                        <TextArea
+                          {...noBrowserAutofillProps}
+                          value={optionalCaption}
+                          rows={2}
+                          placeholder="Add a caption…"
+                          className="urbanum-field urbanum-field-recede"
+                          style={quietFieldStyle}
+                          onChange={(event) => setOptionalCaption(event.currentTarget.value)}
+                        />
+                      </Stack>
                     </Stack>
                   )}
                 </Stack>
@@ -3149,17 +3271,17 @@ export function ImportWorkspace() {
                       text={isSavingRequired ? 'Saving…' : 'Continue →'}
                       mode="default"
                       tone="default"
-                      disabled={!requiredComplete || isSavingRequired}
+                      disabled={!requiredComplete || isSavingRequired || isCancellingImport}
                       style={{...primaryButtonStyle, ...solidActionStyle, width: '100%'}}
                       onClick={handleSaveRequired}
                     />
                     <Button
-                      text="Cancel Import"
+                      text={isCancellingImport ? 'Cancelling…' : 'Cancel Import'}
                       mode="bleed"
                       tone="default"
-                      disabled={isSavingRequired}
+                      disabled={isSavingRequired || isCancellingImport}
                       style={{...secondaryButtonStyle, width: '100%'}}
-                      onClick={handleStartOver}
+                      onClick={handleCancelImport}
                     />
                   </Stack>
                 )}
@@ -3209,11 +3331,13 @@ export function ImportWorkspace() {
                 {step === 'optional' && currentDraft && currentDraft.type !== 'archiveItem' && (
                   <Stack space={3}>
                     <Button
-                      text={isPublishing ? 'Publishing…' : 'Publish →'}
+                      text={isSavingOptional ? 'Saving…' : isPublishing ? 'Publishing…' : 'Publish →'}
                       mode="default"
                       tone="default"
                       disabled={
+                        isSavingOptional ||
                         isPublishing ||
+                        isCancellingImport ||
                         !documentOperations.publish ||
                         Boolean(documentOperations.publish.disabled)
                       }
@@ -3221,12 +3345,12 @@ export function ImportWorkspace() {
                       onClick={handleSaveOptional}
                     />
                     <Button
-                      text="Cancel Import"
+                      text={isCancellingImport ? 'Cancelling…' : 'Cancel Import'}
                       mode="bleed"
                       tone="default"
-                      disabled={isPublishing}
+                      disabled={isSavingOptional || isPublishing || isCancellingImport}
                       style={{...secondaryButtonStyle, width: '100%'}}
-                      onClick={handleStartOver}
+                      onClick={handleCancelImport}
                     />
                   </Stack>
                 )}

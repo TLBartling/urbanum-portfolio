@@ -2099,9 +2099,13 @@ html.is-browsing .zoom-controls {
 /* --- Journal page -------------------------------------------------------
    A plain three-column image archive -- reuses .about-page/.about-content
    for the page shell and outer margins (same as About/Projects), and adds
-   only a fixed-ratio grid. No masonry, no variable sizing, no captions or
-   hover states: the page is meant to feel like a quiet visual notebook,
-   not a gallery. */
+   only a fixed-ratio grid. No masonry, no variable sizing: the page is
+   meant to feel like a quiet visual notebook, not a gallery. Minimal
+   Hover Caption (Journal CMS cleanup): the one exception to "no hover
+   states" -- an entry with an Image Caption (see cms/schemaTypes/
+   journalEntryType.js) shows it as small, quiet text on hover; an entry
+   with none has zero hover behavior at all, since JournalPage.jsx only
+   ever renders .journal-tile__caption when a caption actually exists. */
 .journal-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -2109,6 +2113,10 @@ html.is-browsing .zoom-controls {
 }
 
 .journal-tile {
+  /* Anchors .journal-tile__caption below -- absolutely positioned
+     within this tile so an entry having a caption never affects this
+     tile's own size or its row's height in the grid. */
+  position: relative;
   overflow: hidden;
   background: #e7e4dc;
   /* Slightly squarer than a standard photo crop, per the approved
@@ -2121,6 +2129,40 @@ html.is-browsing .zoom-controls {
   height: 100%;
   display: block;
   object-fit: cover;
+}
+
+/* Minimal Hover Caption (presentation refinement -- Urbanum voice pass):
+   discovered, not announced -- a quiet gallery-label/field-note feel
+   rather than a photo caption. Deliberately no panel/card/background/
+   scrim behind it, and no text-shadow either now: legibility comes from
+   placement and the soft gray color alone, not a glow. Bottom-left with
+   generous padding (never spans the full tile width, and never hugs the
+   corner) -- max-width keeps it compact enough to read as one quiet
+   line; if a caption is ever too long for that, it wraps naturally
+   rather than being truncated or forced into a wide block. Hidden until
+   hover/focus, easing in slowly enough to feel noticed rather than
+   triggered, and settling at less than full opacity so it reads as part
+   of the photograph rather than something laid on top of it.
+   Absolutely positioned (see .journal-tile above), so it never shifts
+   this tile's own layout or its neighbors'. */
+.journal-tile__caption {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  max-width: 60%;
+  margin: 0;
+  padding: 0 0 1.1rem 1.1rem;
+  font-size: 0.7rem;
+  font-weight: 400;
+  color: #d0d0d0;
+  opacity: 0;
+  transition: opacity 220ms ease-out;
+  pointer-events: none;
+}
+
+.journal-tile:hover .journal-tile__caption,
+.journal-tile:focus-within .journal-tile__caption {
+  opacity: 0.85;
 }
 
 @media (max-width: 700px) {
@@ -2374,10 +2416,44 @@ html.is-browsing .zoom-controls {
   color: #1a1a1a;
 }
 
-.project-image-metadata__caption,
+/* Metadata hierarchy refinement (subordinate to the Project Title,
+   which stays the page's only true heading -- see ProjectHeader.jsx):
+   Themes are the primary metadata line, but the emphasis comes from
+   color (near-black), not weight or size -- normal 400 weight, and only
+   ~5% larger than Tags (below), so this reads as the strongest line of
+   metadata without competing with the actual heading above it. */
+.project-image-metadata__themes {
+  margin: 0;
+  font-size: 0.86rem;
+  font-weight: 400;
+  color: #262626;
+}
+
+/* Tags read one step down from Themes: smaller and lighter, as
+   supporting keywords rather than a second headline. */
 .project-image-metadata__detail {
   margin: 0;
+  font-size: 0.82rem;
+  font-weight: 400;
+  color: #6e6e6e;
+}
+
+/* Location/Year: the smallest, most muted supporting line -- same
+   quiet tier as .project-image-metadata__number (Archive Number) above,
+   but deliberately not uppercase/letter-spaced like that one, since
+   this line reads as plain text ("Miami, FL · 2026"), not a label. */
+.project-image-metadata__location {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: #9d9d9d;
+}
+
+.project-image-metadata__caption {
+  margin: 0;
+  margin-top: 0.15rem;
   font-size: 0.85rem;
+  font-weight: 400;
   color: #5a5a5a;
 }
 

@@ -245,7 +245,7 @@ export function UrbanumNavbar() {
     // unset, which meant this rendered on Sanity's own default card
     // background (white), stark against the Uploader's warm off-white
     // and visually disconnected from it. This applies globally, since
-    // this Navbar is shared chrome across Import/Archive/Settings --
+    // this Navbar is shared chrome across Import/Archive/System --
     // the point is for all three to read as one application, not for
     // Import to get special treatment. Layout, nav links, and the
     // account menu are all unchanged; text stays the same INK/muted-gray

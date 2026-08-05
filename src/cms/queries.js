@@ -224,3 +224,61 @@ export async function fetchThemes() {
   const rawThemes = await client.fetch(THEMES_QUERY);
   return rawThemes.map(normalizeTheme);
 }
+
+// -----------------------------------------------------------------------
+// Journal Entries (Journal CMS handshake). Same conventions as every
+// query above: drafts excluded via the same
+// `!(_id in path("drafts.**"))` guard. The locked Photo Journal Entry
+// schema (journalEntryType.js) has no sortOrder field the way Archive
+// Item and Project do, so this orders by `date desc` -- newest entry
+// first, the natural reading order for "a photo journal, one moment" --
+// rather than inventing an ordering field the schema doesn't have. An
+// entry with no date set (the field is optional) sorts last under GROQ's
+// own missing-value-sorts-last behavior, which is an acceptable default
+// here and not specially handled.
+//
+// There is no `title` field on this document type at all (Journal Title
+// Workflow removed -- see journalEntryType.js's own comment), and
+// `privateNotes` stays unprojected, same as always: it's explicitly
+// internal-only per its own schema description, the same treatment
+// Archive Item's own privateNotes field already gets in
+// ARCHIVE_ITEMS_QUERY above. `caption` IS now projected -- it backs the
+// Journal page's minimal per-entry hover caption (JournalPage.jsx), so
+// unlike privateNotes it's genuinely needed by the frontend now, not
+// speculative future-proofing.
+export const JOURNAL_ENTRIES_QUERY = `
+  *[_type == "journalEntry" && !(_id in path("drafts.**"))] | order(date desc) {
+    image,
+    date,
+    caption
+  }
+`;
+
+// Reshapes one raw Sanity query result into the shape this milestone
+// needs. Mirrors normalizeArchiveItem/normalizeProject's own pattern: a
+// pure function, no client/image-url-builder dependency, the resolved
+// image URL passed in separately as `imageUrl` (see fetchJournalEntries
+// below) so this stays testable with a plain synthetic object. `date`
+// and `caption` are both optional in the schema, so either may be
+// undefined here -- JournalPage.jsx's hover caption already only renders
+// when `caption` is present, and simply never displays `date`.
+export function normalizeJournalEntry(raw, imageUrl) {
+  return {
+    image: imageUrl,
+    date: raw.date,
+    caption: raw.caption,
+  };
+}
+
+// The one exported entry point this milestone needs: fetch every Photo
+// Journal Entry from Sanity, already reshaped. Mirrors
+// fetchThemes()/fetchProjects()/fetchArchiveItems() exactly -- see
+// src/content/journalEntries.js for where this gets called from and how
+// the async boundary around it is contained.
+export async function fetchJournalEntries() {
+  const rawEntries = await client.fetch(JOURNAL_ENTRIES_QUERY);
+
+  return rawEntries.map((raw) =>
+    normalizeJournalEntry(raw, raw.image ? urlFor(raw.image).url() : null),
+  );
+}

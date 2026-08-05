@@ -57,7 +57,7 @@ body {
   left: 0;
   right: 0;
   z-index: 1200;
-  background: transparent;
+  background: #faf9f5;
   pointer-events: none;
   transition:
     opacity 1.6s cubic-bezier(0.65, 0, 0.35, 1),
@@ -1334,7 +1334,7 @@ body {
    once the visitor moves away from the start of the archive */
 
 html.is-browsing .site-header {
-  opacity: 0.86;
+  opacity: 1;
 }
 
 html.is-browsing .site-header__row1 {

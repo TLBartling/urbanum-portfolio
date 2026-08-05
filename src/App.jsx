@@ -184,7 +184,7 @@ const maxRenderOverscan = 3600;
 // verified against (0.75, 1, 1.5, 2) all land exactly on a step boundary
 // starting from the default of 1.
 const CAMERA_ZOOM_STEP = 0.25;
-const CAMERA_ZOOM_MIN = 0.65;
+const CAMERA_ZOOM_MIN = 0.8;
 const CAMERA_ZOOM_MAX = 2.5;
 
 // Camera Phase 2: converts a single wheel event's deltaY into a scale

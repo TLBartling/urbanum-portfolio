@@ -1988,6 +1988,26 @@ function App() {
   // consumes it for the rest of the reasoning.
   const handleMetadataFilterCommit = useCallback(
     (field, value) => {
+      // Relationship Mode -- Commit Boundary: committing a metadata
+      // value (a Theme/Tag click) always exits Relationship Mode.
+      // relatedArchiveNumbers exists purely to preview relationships
+      // against whatever gallery is currently on screen; the moment
+      // this function runs, that gallery is being replaced, so a
+      // relationship set computed against the old one has nothing left
+      // to describe. This is the one function every Theme and Tag
+      // commit already shares -- the single place a metadata
+      // interaction stops being an ephemeral hover preview and becomes
+      // a durable, applied change -- so clearing here, unconditionally,
+      // before either branch below, covers both fields and runs before
+      // every downstream path to regenerateGallery(). Hover-driven
+      // preview and Relationship Mode itself while hovering are
+      // untouched -- this only ever fires on an actual commit.
+      // (This was originally found via a case where hover-end never
+      // runs at all -- clicking a chip while the pointer is still
+      // resting on it never dispatches mouseleave -- but the clear
+      // belongs here regardless of that specific trigger: a commit
+      // should always supersede a preview, whatever left it active.)
+      setRelatedArchiveNumbers([]);
       if (field === "theme") {
         setPendingThemeFilterCommit({ value });
         return;

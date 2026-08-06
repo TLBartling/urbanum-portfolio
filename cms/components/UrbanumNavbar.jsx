@@ -108,15 +108,25 @@ const SHELL_BACKGROUND = '#faf9f5'
 // the same aspect ratio (viewBox 1024:219) so the mark isn't stretched,
 // just larger; paddingY={3} on the Flex below is unchanged, so the
 // header band itself doesn't grow, only the logo within it.
+// Urbanum -> Website navigation pass: the logo is now clickable,
+// opening the live frontend in a new tab. window.open with
+// noopener,noreferrer -- never replaces this Studio tab, matching the
+// same "leave the Studio open" intent the auth/branding passes before
+// this one were careful about. Everything else about this element --
+// viewBox, fill, size, aria-label, role, the path data itself -- is
+// unchanged; this is one addition, not a rebuild of the mark.
+const FRONTEND_URL = 'https://urbanum-prototype.vercel.app'
+
 function UrbanumLogo() {
   return (
     <svg
       viewBox="0 0 1024 219"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      style={{height: 26, width: 'auto', display: 'block'}}
+      style={{height: 26, width: 'auto', display: 'block', cursor: 'pointer'}}
       aria-label="urbānum"
       role="img"
+      onClick={() => window.open(FRONTEND_URL, '_blank', 'noopener,noreferrer')}
     >
       <g clipPath="url(#urbanum-navbar-logo-clip)">
         <path d="M117.54 112.9C117.547 115.96 117.547 129.74 117.54 154.24C117.54 154.396 117.602 154.547 117.713 154.657C117.823 154.768 117.974 154.83 118.13 154.83L133.63 154.82C133.917 154.82 134.193 154.932 134.397 155.133C134.601 155.333 134.717 155.605 134.72 155.89V156.82C134.72 157.088 134.613 157.345 134.421 157.534C134.23 157.724 133.971 157.83 133.7 157.83L114.64 157.85C114.509 157.85 114.383 157.799 114.29 157.707C114.196 157.615 114.143 157.491 114.14 157.36C114.093 155.96 114.057 141.143 114.03 112.91C114.003 84.67 114.01 69.85 114.05 68.45C114.051 68.3843 114.066 68.3196 114.092 68.2594C114.118 68.1992 114.156 68.1448 114.203 68.0993C114.251 68.0538 114.307 68.0181 114.368 67.9942C114.429 67.9703 114.494 67.9587 114.56 67.96L133.61 67.94C133.744 67.94 133.877 67.9661 134 68.0169C134.124 68.0676 134.237 68.142 134.331 68.2358C134.426 68.3296 134.501 68.4409 134.552 68.5635C134.604 68.686 134.63 68.8174 134.63 68.95L134.64 69.88C134.64 70.1664 134.525 70.4411 134.321 70.6437C134.116 70.8462 133.839 70.96 133.55 70.96L118.05 70.98C117.973 70.98 117.896 70.9953 117.824 71.0249C117.753 71.0546 117.688 71.098 117.633 71.1528C117.578 71.2076 117.535 71.2726 117.505 71.3442C117.475 71.4158 117.46 71.4925 117.46 71.57C117.513 96.07 117.54 109.847 117.54 112.9Z" fill="#343434" />

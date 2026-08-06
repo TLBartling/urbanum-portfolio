@@ -6,6 +6,7 @@ import {
   consumePendingHomeIntent,
   useCurrentPath,
 } from "./navigation";
+import { resolveHiddenSearchCommand } from "./hiddenSearchCommands";
 
 // Mock catalog values for the index drawer. These are the seam a developer
 // swaps for real CMS data later: point `themes` / `projects` / `years` at
@@ -446,6 +447,16 @@ export default function Header({
   // gallery results. An empty field is a no-op either way, same as before.
   const handleSearchKeyDown = (event) => {
     if (event.key !== "Enter") return;
+
+    // Hidden Search Commands: checked first, before either branch below
+    // -- a match runs its own side effect (see hiddenSearchCommands.js)
+    // and stops here; every other typed query, on any page, falls
+    // through to the exact same behavior it already had.
+    const runHiddenCommand = resolveHiddenSearchCommand(searchValue);
+    if (runHiddenCommand) {
+      runHiddenCommand();
+      return;
+    }
 
     if (isChildPage) {
       beginGentleReturnHome({ type: "search", query: searchValue });

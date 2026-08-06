@@ -41,6 +41,19 @@ export default defineConfig({
   projectId: 'zxmuvik1',
   dataset: 'production',
 
+  // Intentionally disables Sanity Studio's built-in announcements
+  // ("What's New") feature -- its floating card is portal-rendered
+  // outside our custom layout tree (navbar/toolMenu/activeToolLayout
+  // above), so no studio.components override can suppress it, and it
+  // was breaking the studio's custom layout. `announcements.enabled`
+  // defaults to true and is read by resolveSource() at the top level of
+  // this config object (verified against installed sanity@6.9.0
+  // source); re-verify this still applies after any major Sanity
+  // Studio upgrade, since the field is `@hidden @internal`, not public.
+  announcements: {
+    enabled: false,
+  },
+
   // Authentication pass ("Option A" -- see authentication-investigation.md
   // for the full investigation this implements). `auth` (the `AuthConfig`
   // shape) is fully `@public` in the installed 6.7.0 source

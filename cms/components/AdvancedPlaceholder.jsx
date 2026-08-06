@@ -1,6 +1,6 @@
 import {useEffect, useState} from 'react'
 import {useClient} from 'sanity'
-import {Box, Button, Card, Container, Flex, Heading, Stack, Text} from '@sanity/ui'
+import {Box, Button, Card, Container, Flex, Stack, Text} from '@sanity/ui'
 
 // System redesign pass: this was Milestone 2A's deliberately empty
 // "Advanced" (later "Settings" -- see UrbanumToolMenu.jsx's own rename
@@ -32,6 +32,17 @@ import {Box, Button, Card, Container, Flex, Heading, Stack, Text} from '@sanity/
 // elsewhere, not an invented color. The System header block and the
 // footer stay outside it, unchanged, per the brief's own section
 // boundaries.
+//
+// Cleanup pass ("SYSTEM page cleanup"): removes the intro block above
+// the Card entirely -- the "System" label, "Urbanum Archive" heading,
+// and introductory paragraph were dropped per the brief, and the Card
+// moves up into that vacated space by simple removal (the enclosing
+// Stack space={6} already supplied the gap between the intro block
+// and the Card, so with the intro block gone that same gap now sits
+// between the Box's existing paddingTop and the Card -- no new
+// spacing value introduced). labelStyle is untouched: SectionLabel
+// below still depends on it for Portfolio Overview/Version/
+// Documentation/Support.
 //
 // Layout pass ("SYSTEM page layout"): the whole column -- System label,
 // heading, paragraph, Card, and footer alike -- now shares one width
@@ -132,19 +143,6 @@ export function AdvancedPlaceholder() {
       <Flex justify="center">
         <Box paddingTop={5} style={{width: '100%', maxWidth: CONTENT_WIDTH}}>
           <Stack space={6}>
-            <Stack space={3}>
-              <Text size={1} muted style={labelStyle}>
-                System
-              </Text>
-              <Heading size={2}>Urbanum Archive</Heading>
-              <Text size={1} muted>
-                Urbanum Archive is the private publishing environment behind
-                the Urbanum website. It provides a streamlined workflow for
-                importing, organizing, and maintaining projects, archive
-                images, and journal entries.
-              </Text>
-            </Stack>
-
             <Card border radius={2} padding={5}>
               <Stack space={6}>
                 <Stack space={3}>

@@ -97,6 +97,7 @@ const imageFocusEnabled = false;
 const galleryBatchWidth = 1760;
 const galleryEdgeBleed = 690;
 
+
 // Browsing/Exploration mode (interaction-layer only -- see isScrolling's own
 // comment and the animateGallery loop that sets it): how long the gallery
 // must sit idle (real velocity at or under the epsilon below, not just a
@@ -253,6 +254,56 @@ const FILTER_DRAWER_ZOOM_EASE = 0.14;
 // already uses, not a new one invented for this case.
 const FILTER_DRAWER_ZOOM_FLOOR = 0.7;
 
+// Engine Contract: guaranteedWorldReach -----------------------------------
+//
+// The single spatial promise procedural generation and the render window
+// both consume -- the ONLY concept either system is allowed to know about
+// the other through. It answers one question: how far beyond the
+// composition's neutral edges must the world be treated as real? It is
+// computed once from the full envelope of presentation states this
+// engine supports (CAMERA_ZOOM_MIN, FILTER_DRAWER_ZOOM_FLOOR -- the
+// fixed BOUNDS those systems are already clamped to), never from
+// viewportScaleRef.current or viewportDrawerScaleRef.current, which
+// change continuously at runtime. A value derived from live state would
+// have to be re-chased every frame and could lag behind an in-progress
+// zoom or drawer animation; a value derived from the supported RANGE is
+// already correct for every state the camera could ever reach, with
+// nothing to catch up to.
+//
+// Neither consumer needs to know why this number is what it is.
+// createLeftwardGalleryBatch (DGPC) will receive it as a plain
+// generation boundary, the same way it already receives
+// worldCanvasHeight without knowing Application Layout derived that
+// from header/footer clearance. getGalleryRenderWindow will receive it
+// as a plain mounting boundary, the same way it already receives
+// viewportWidth. Neither file needs to reference CAMERA_ZOOM_MIN or
+// FILTER_DRAWER_ZOOM_FLOOR directly -- only this function does, which
+// is what keeps zoom/drawer/camera knowledge out of generation, and
+// procedural-generation knowledge out of rendering.
+//
+// A function, not a frozen constant, for the same reason
+// getGalleryRenderWindow/getViewportOpeningGeometry already are one: it
+// reads window.innerWidth, which changes on resize.
+//
+// Derivation: projectWorldToScreenX resolves to screenX = worldX at the
+// neutral camera state (distance=0, scale=1, pan=0), so the world-space
+// width visible across the full screen at any scale s is
+// viewportWidth / s. Zoom is anchored at screen center (the world point
+// at distance + viewportWidth/2 always projects to viewportWidth/2), so
+// it reveals width symmetrically -- half of the extra width beyond the
+// neutral view appears on each side. The worst case this contract must
+// cover is the lowest reachable effective scale: the visitor's own zoom
+// floor combined with the drawer's own automatic floor
+// (CAMERA_ZOOM_MIN * FILTER_DRAWER_ZOOM_FLOOR) -- both independent,
+// both can bind at once (see getEffectiveScale in createGalleryRenderer).
+function getGuaranteedWorldReach() {
+  const viewportWidth =
+    typeof window === "undefined" ? 1200 : window.innerWidth;
+  const worstCaseScale = CAMERA_ZOOM_MIN * FILTER_DRAWER_ZOOM_FLOOR;
+
+  return (viewportWidth * (1 / worstCaseScale - 1)) / 2;
+}
+
 function getImageName(src) {
   return src.split("/").pop()?.replace(/\.[^.]+$/, "") || "";
 }
@@ -367,9 +418,32 @@ function getImageDimensions(src) {
 // load as a bottleneck.
 function shouldEagerLoadImage(item) {
   const itemIndex = Number(item.id.split("-")[1] || 0);
-  return item.batchIndex === 0 && itemIndex < 12;
+  // Centered Initial Composition: batchIndex 0 is still the start of the
+  // rightward pass, but the true first-paint viewport now also includes
+  // the center seed (batchIndex -1) and the leftward pass (batchIndex
+  // -2) -- see createCenterSeedBatch/createLeftwardGalleryBatch and
+  // regenerateGallery below. Same itemIndex<12 per-part budget as the
+  // original single-batch threshold; an approximation, not an exact
+  // viewport-visibility calculation, same as before.
+  return (
+    (item.batchIndex === 0 || item.batchIndex === -1 || item.batchIndex === -2) &&
+    itemIndex < 12
+  );
 }
 
+// The left boundary is the render window's half of the same
+// getGuaranteedWorldReach contract createLeftwardGalleryBatch's
+// generation boundary already consumes (see that function's own
+// comment). Previously a hardcoded 0 -- an assumption, predating both
+// zoom and any leftward-generated content, that nothing meaningful
+// could ever exist left of world-X 0. Math.max(...) still governs the
+// same distance-driven sliding-window behavior as before: near
+// distance=0 the guaranteedWorldReach term binds; once the visitor has
+// scrolled far enough right that distance - overscan exceeds
+// -getGuaranteedWorldReach(), the ordinary rightward-scrolling term
+// takes back over exactly as it always has. This function has no
+// knowledge of procedural generation, pattern selection, or DGPC; it
+// only ever sees the plain px number getGuaranteedWorldReach() returns.
 function getGalleryRenderWindow(distance = 0) {
   const viewportWidth =
     typeof window === "undefined" ? 1200 : window.innerWidth;
@@ -380,7 +454,7 @@ function getGalleryRenderWindow(distance = 0) {
   );
 
   return {
-    left: Math.max(0, distance - overscan),
+    left: Math.max(-getGuaranteedWorldReach(), distance - overscan),
     right: distance + viewportWidth + overscan,
   };
 }
@@ -572,6 +646,15 @@ function getRandomImageMotion() {
 // pre-validated to have zero internal overlaps, so patterns can simply be
 // placed edge-to-edge with one calibrated seam gap.
 //
+// DESIGN EXPERIMENT (temporary, reversible) -- gates regenerateGallery
+// (below) between the original single rightward generator and the new
+// Centered Initial Composition (center-seed + bounded leftward pass +
+// unmodified rightward pass). Touches nothing about createGalleryBatch
+// itself, which remains byte-for-byte unchanged either way. Flip back
+// to `false` to instantly restore the original -galleryEdgeBleed-only
+// composition for comparison.
+const useCenteredInitialComposition = true;
+
 // REFACTORED (extension-pipeline fix): this is now plain, immutable data.
 // Nothing in this file mutates a columnState object in place anymore --
 // createGalleryBatch() (below) takes one as input and returns a brand new
@@ -796,6 +879,206 @@ function buildGalleryItems(
   }
 
   return { items: allItems, nextColumnState: state };
+}
+
+// --- Centered Initial Composition (design experiment, see
+// useCenteredInitialComposition below) -------------------------------
+//
+// createGalleryBatch (above) is left completely untouched -- both
+// functions below are deliberately self-contained, even where that
+// means duplicating pieces of its tile-placement logic, so the existing
+// rightward generator remains a byte-for-byte unmodified point of
+// comparison for as long as this experiment is being evaluated.
+
+// PURE. Generates exactly one procedural column/pattern -- the same unit
+// createGalleryBatch places repeatedly -- positioned so its own
+// midpoint (not its left edge, not a seam) lands at the true visual
+// center of the viewport. No hero pattern, no image bias, no manual
+// weighting: patternIndex and every tile's image are drawn via the same
+// pickPatternIndex/pickImage calls createGalleryBatch itself uses.
+function createCenterSeedBatch(
+  batchIndex,
+  columnState,
+  worldCanvasHeight,
+  imagePool = DEFAULT_IMAGE_POOL,
+) {
+  const patternIndex = pickPatternIndex(columnState.lastPatternIndex);
+  const pattern = COLUMN_PATTERNS[patternIndex];
+  const columnWidthPx = pattern.aspect * worldCanvasHeight;
+  const viewportWidth =
+    typeof window === "undefined" ? 1200 : window.innerWidth;
+  const viewportCenterX = viewportWidth / 2;
+  // This column's own midpoint lands at the viewport's true visual
+  // center -- per the approved design, one complete procedural module
+  // occupies the center, rather than a seam between two halves landing
+  // there.
+  const columnLeft = viewportCenterX - columnWidthPx / 2;
+
+  let pickerState = columnState.pickerState;
+  const items = [];
+  let itemIndex = 0;
+
+  pattern.tiles.forEach((tile) => {
+    const { src, nextPickerState } = pickImage(
+      pickerState,
+      tile.orientation,
+      imagePool,
+    );
+    pickerState = nextPickerState;
+    const width = (tile.w / 100) * columnWidthPx;
+    const height = (tile.h / 100) * worldCanvasHeight;
+    const left = columnLeft + (tile.left / 100) * columnWidthPx;
+    const top = (tile.top / 100) * worldCanvasHeight;
+    const archiveItem = findArchiveItemBySrc(src);
+
+    items.push({
+      id: `${batchIndex}-${itemIndex}`,
+      batchIndex,
+      moduleIndex: columnState.moduleIndex,
+      patternIndex,
+      src,
+      alt: `Gallery image ${itemIndex + 1}`,
+      layout: {
+        width: `${Math.round(width)}px`,
+        height: `${Math.round(height)}px`,
+        left: `${Math.round(left)}px`,
+        top: `${Math.round(top)}px`,
+        relationshipMotion: null,
+        zIndex: Math.round(getRandomBetween(1, 12)),
+        discovery: tile.discovery === true,
+      },
+      opacity: getRandomOpacity(),
+      tag: imageTags[src] || null,
+      archiveNumber: archiveItem?.archiveNumber ?? null,
+      project: archiveItem?.project ?? null,
+      theme: archiveItem?.theme ?? null,
+      themes: archiveItem?.themes ?? [],
+      tags: archiveItem?.tags ?? [],
+      motion: getRandomImageMotion(),
+    });
+
+    itemIndex += 1;
+  });
+
+  return {
+    items,
+    columnLeft,
+    columnWidthPx,
+    nextColumnState: {
+      cursorX: columnState.cursorX,
+      lastPatternIndex: patternIndex,
+      pickerState,
+      moduleIndex: columnState.moduleIndex + 1,
+    },
+  };
+}
+
+// Leftward Initial-Composition Budget (design experiment, temporary and
+// reversible, gated the same way as the rest of Centered Initial
+// Composition -- createLeftwardGalleryBatch below is only ever called
+// from inside the useCenteredInitialComposition branch, so this is
+// already fully reversible by flipping that one toggle). This pass
+// originally stopped exactly at world-X 0; per a follow-up request, it
+// now continues roughly one additional average column past 0 before
+// stopping, giving the initial leftward fill slightly more room at its
+// outer edge -- the stopping boundary is the only thing that changes
+// here. Pattern selection, image selection, tile placement, and seam
+// math are all identical to before.
+//
+// PURE. Mirrors createGalleryBatch's shape, but walks the cursor
+// LEFTWARD from a starting boundary instead of rightward from a
+// starting edge -- each successive column's RIGHT edge sits at the
+// current cursor (rather than each column's LEFT edge sitting at the
+// cursor, as createGalleryBatch does), and the cursor decrements by
+// that column's width plus the same seam gap. Bounded, not infinite:
+// stops once the engine's own guaranteedWorldReach contract is
+// satisfied (see getGuaranteedWorldReach's own comment) -- a fixed,
+// mount-only budget, never a runtime bidirectional-growth mechanism.
+// This function has no knowledge of zoom, drawers, or the camera; it
+// only ever sees the plain px number getGuaranteedWorldReach() returns.
+function createLeftwardGalleryBatch(
+  batchIndex,
+  columnState,
+  worldCanvasHeight,
+  imagePool = DEFAULT_IMAGE_POOL,
+) {
+  const seamGapPx = (SEAM_GAP_PCT / 100) * worldCanvasHeight;
+  // The engine-level spatial contract (see getGuaranteedWorldReach),
+  // not a generation-specific heuristic -- whatever this returns is
+  // how far past world-X 0 this pass must continue so that content
+  // already exists for every presentation state the render window
+  // (see getGalleryRenderWindow) is separately guaranteed to expose.
+  const leftwardCompositionBudgetPx = getGuaranteedWorldReach();
+  const items = [];
+  let itemIndex = 0;
+
+  let cursorX = columnState.cursorX;
+  let lastPatternIndex = columnState.lastPatternIndex;
+  let pickerState = columnState.pickerState;
+  let moduleIndex = columnState.moduleIndex;
+
+  while (cursorX > -leftwardCompositionBudgetPx) {
+    const patternIndex = pickPatternIndex(lastPatternIndex);
+    lastPatternIndex = patternIndex;
+    const pattern = COLUMN_PATTERNS[patternIndex];
+    const columnWidthPx = pattern.aspect * worldCanvasHeight;
+    // This column's RIGHT edge sits at the current cursor; the cursor
+    // for the next (further-left) column becomes this column's LEFT
+    // edge minus the seam gap.
+    const columnRight = cursorX;
+    const columnLeft = columnRight - columnWidthPx;
+    const thisModuleIndex = moduleIndex;
+    moduleIndex += 1;
+
+    pattern.tiles.forEach((tile) => {
+      const { src, nextPickerState } = pickImage(
+        pickerState,
+        tile.orientation,
+        imagePool,
+      );
+      pickerState = nextPickerState;
+      const width = (tile.w / 100) * columnWidthPx;
+      const height = (tile.h / 100) * worldCanvasHeight;
+      const left = columnLeft + (tile.left / 100) * columnWidthPx;
+      const top = (tile.top / 100) * worldCanvasHeight;
+      const archiveItem = findArchiveItemBySrc(src);
+
+      items.push({
+        id: `${batchIndex}-${itemIndex}`,
+        batchIndex,
+        moduleIndex: thisModuleIndex,
+        patternIndex,
+        src,
+        alt: `Gallery image ${itemIndex + 1}`,
+        layout: {
+          width: `${Math.round(width)}px`,
+          height: `${Math.round(height)}px`,
+          left: `${Math.round(left)}px`,
+          top: `${Math.round(top)}px`,
+          relationshipMotion: null,
+          zIndex: Math.round(getRandomBetween(1, 12)),
+          discovery: tile.discovery === true,
+        },
+        opacity: getRandomOpacity(),
+        tag: imageTags[src] || null,
+        archiveNumber: archiveItem?.archiveNumber ?? null,
+        project: archiveItem?.project ?? null,
+        theme: archiveItem?.theme ?? null,
+        themes: archiveItem?.themes ?? [],
+        tags: archiveItem?.tags ?? [],
+        motion: getRandomImageMotion(),
+      });
+
+      itemIndex += 1;
+    });
+
+    cursorX = columnLeft - seamGapPx;
+  }
+
+  return {
+    items,
+    nextColumnState: { cursorX, lastPatternIndex, pickerState, moduleIndex },
+  };
 }
 
 function getGalleryTrackWidth(items) {
@@ -1593,12 +1876,61 @@ function App() {
     renderWindowRef.current = getGalleryRenderWindow(0);
     setRenderWindow(renderWindowRef.current);
     animatedImagesRef.current.clear();
-    const { items, nextColumnState } = buildGalleryItems(
-      createColumnState(),
-      initialGalleryBatches,
-      nextOpeningGeometry.height,
-      activeImagePoolRef.current,
-    );
+
+    let items;
+    let nextColumnState;
+
+    if (useCenteredInitialComposition) {
+      const seedColumnState = createColumnState();
+      const centerSeed = createCenterSeedBatch(
+        -1,
+        seedColumnState,
+        nextOpeningGeometry.height,
+        activeImagePoolRef.current,
+      );
+      const seamGapPx = (SEAM_GAP_PCT / 100) * nextOpeningGeometry.height;
+
+      const leftwardResult = createLeftwardGalleryBatch(
+        -2,
+        {
+          cursorX: centerSeed.columnLeft - seamGapPx,
+          lastPatternIndex: centerSeed.nextColumnState.lastPatternIndex,
+          pickerState: centerSeed.nextColumnState.pickerState,
+          moduleIndex: centerSeed.nextColumnState.moduleIndex,
+        },
+        nextOpeningGeometry.height,
+        activeImagePoolRef.current,
+      );
+
+      const rightwardResult = buildGalleryItems(
+        {
+          cursorX: centerSeed.columnLeft + centerSeed.columnWidthPx + seamGapPx,
+          lastPatternIndex: leftwardResult.nextColumnState.lastPatternIndex,
+          pickerState: leftwardResult.nextColumnState.pickerState,
+          moduleIndex: leftwardResult.nextColumnState.moduleIndex,
+        },
+        initialGalleryBatches,
+        nextOpeningGeometry.height,
+        activeImagePoolRef.current,
+      );
+
+      items = [
+        ...leftwardResult.items,
+        ...centerSeed.items,
+        ...rightwardResult.items,
+      ];
+      nextColumnState = rightwardResult.nextColumnState;
+    } else {
+      const built = buildGalleryItems(
+        createColumnState(),
+        initialGalleryBatches,
+        nextOpeningGeometry.height,
+        activeImagePoolRef.current,
+      );
+      items = built.items;
+      nextColumnState = built.nextColumnState;
+    }
+
     columnStateRef.current = nextColumnState;
     setGalleryItems(items);
   }, []);

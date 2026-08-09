@@ -1654,15 +1654,26 @@ function App() {
   // redundant setState calls.
   const isScrollingRef = useRef(false);
   // Camera owns this and this alone: the current zoom scale. No vertical
-  // state, no interaction logic. Default is 1 -- the untouched, pre-camera
-  // baseline. A ref, not state, since it's read every animation frame by
-  // Gallery Renderer (galleryMovementRef's own reasoning applies here too:
-  // no React re-render is needed just because a frame ticked or a zoom
-  // button was clicked -- the next requestAnimationFrame tick picks up the
-  // new value on its own). Archive and Navigator still never read this.
-  // Set directly by handleZoomStep below, with a plain, un-eased
-  // assignment; no smoothing or inertia.
-  const viewportScaleRef = useRef(1);
+  // state, no interaction logic. A ref, not state, since it's read every
+  // animation frame by Gallery Renderer (galleryMovementRef's own
+  // reasoning applies here too: no React re-render is needed just because
+  // a frame ticked or a zoom button was clicked -- the next
+  // requestAnimationFrame tick picks up the new value on its own). Archive
+  // and Navigator still never read this. Set directly by handleZoomStep
+  // below, with a plain, un-eased assignment; no smoothing or inertia.
+  //
+  // Default (client request, polish pass): starts at CAMERA_ZOOM_MIN, not
+  // 1 -- the Archive's existing zoom-out floor is now its opening/default
+  // state instead of the old untouched-scale baseline. This is the
+  // visitor's own zoom level only; deliberately NOT CAMERA_NEUTRAL_SCALE,
+  // even though CAMERA_NEUTRAL_SCALE also happens to equal 1 today --
+  // CAMERA_NEUTRAL_SCALE is a separate concept (the drawer scale
+  // multiplier's own identity/ceiling value, see viewportDrawerScaleRef
+  // and its clamp below) that must stay exactly 1 regardless of what the
+  // Archive's own default scale is, so it was deliberately left alone.
+  // CAMERA_ZOOM_MIN/MAX/STEP and FILTER_DRAWER_ZOOM_FLOOR are all
+  // unchanged -- only where the Archive's own scale STARTS moved.
+  const viewportScaleRef = useRef(CAMERA_ZOOM_MIN);
   // Camera owns two things total: scale, and one pan correction, on the X
   // axis only. viewportPanXRef is a constant screen-px offset that makes
   // horizontal zoom anchor on the cursor (or, for the buttons, viewport
@@ -2019,8 +2030,15 @@ function App() {
   // effect, does not get invoked automatically at zoom limits, and does not
   // infer intent from camera values. Camera exposes it; callers (e.g.
   // regenerateGallery) decide when a reset is warranted.
+  //
+  // Scale target is CAMERA_ZOOM_MIN, matching viewportScaleRef's own new
+  // initial value above (client request, polish pass) -- so a reset always
+  // returns to the same Archive default the visitor started at, not the
+  // old 1.0 baseline. Deliberately not CAMERA_NEUTRAL_SCALE, for the same
+  // reason viewportScaleRef's own initializer isn't -- see that ref's
+  // comment.
   const resetCameraToNeutral = useCallback(() => {
-    viewportScaleRef.current = CAMERA_NEUTRAL_SCALE;
+    viewportScaleRef.current = CAMERA_ZOOM_MIN;
     viewportPanXRef.current = CAMERA_NEUTRAL_PAN;
   }, []);
 

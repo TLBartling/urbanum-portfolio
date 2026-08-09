@@ -2174,15 +2174,29 @@ html.is-browsing .zoom-controls {
 /* --- Splash screen -------------------------------------------------------
    A temporary full-screen overlay, mounted once above Router in main.jsx.
    Static, traditional entry screen (Josh review, Commit 1; refined per
-   client note, Commit 1 follow-up): a fixed positioning frame, a plain
-   background layer, and a centered logo layer. Nothing about the logo
-   itself ever animates -- the one exception is .splash-overlay's own
-   opacity transition below, which fades the WHOLE overlay (background and
-   logo together, as one layer) out on click, very short and understated
-   by design. See SplashScreen.jsx for the click-to-exit interaction that
-   toggles .splash-overlay--exiting. Sized and composed to match the
-   approved reference: a modest, centered wordmark with generous
-   surrounding whitespace, not a hero-sized mark. */
+   client note, Commit 1 follow-up and reveal-refinement follow-up): a
+   fixed positioning frame, a plain background layer, and a centered logo
+   layer. Nothing about the logo itself ever moves, scales, or
+   transforms -- the only motion anywhere here is opacity, and it is
+   deliberately split into two independent, staged fades rather than one
+   shared fade on .splash-overlay:
+     1. .splash-logo-wrap fades out alone first (200ms) -- see the
+        .splash-overlay--exiting .splash-logo-wrap rule below.
+     2. .splash-overlay itself (the whole curtain: background + the now-
+        invisible logo layer) then fades out (400ms), via a
+        transition-delay equal to the logo's own fade duration plus a
+        small handoff buffer, so the curtain never starts becoming
+        see-through until the logo has fully finished disappearing.
+   A single class toggle (.splash-overlay--exiting, set once on click --
+   see SplashScreen.jsx) drives both stages; nothing here needs its own
+   JS timer. This is what eliminates the previous "ghost imprint" bug: a
+   single shared opacity fade let the logo become partially transparent
+   at the same time the surface behind it was also becoming transparent,
+   which visually read as a faint duplicate logo bleeding through onto
+   the Archive. Splitting them means the logo is already fully gone
+   before the surface starts revealing anything underneath it. Sized and
+   composed to match the approved reference: a modest, centered wordmark
+   with generous surrounding whitespace, not a hero-sized mark. */
 .splash-overlay {
   position: fixed;
   inset: 0;
@@ -2192,7 +2206,11 @@ html.is-browsing .zoom-controls {
   justify-content: center;
   cursor: pointer;
   opacity: 1;
-  transition: opacity 400ms ease-out;
+  /* Curtain fade: starts only once the logo's own 200ms fade (below) plus
+     a 50ms handoff buffer have both elapsed -- see this block's own
+     comment above. Keep this delay in sync with .splash-logo-wrap's
+     transition duration if either ever changes. */
+  transition: opacity 400ms ease-out 250ms;
 }
 
 .splash-overlay--exiting {
@@ -2209,6 +2227,15 @@ html.is-browsing .zoom-controls {
 .splash-logo-wrap {
   position: relative;
   z-index: 1;
+  opacity: 1;
+  /* Logo fade: the first stage of the two-stage reveal, see
+     .splash-overlay's own comment above. No delay -- starts the instant
+     .splash-overlay--exiting is applied. */
+  transition: opacity 200ms ease-out;
+}
+
+.splash-overlay--exiting .splash-logo-wrap {
+  opacity: 0;
 }
 
 .splash-logo {

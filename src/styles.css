@@ -750,25 +750,39 @@ body {
      .hover-overlay is unaffected either way -- it's a sibling of this
      element, not a descendant, so this dim never touches its own opacity
      or timing. 180ms ease-out reuses .hover-overlay's own existing
-     transition value (see below) rather than introducing a new one. */
-  transition: opacity 180ms ease-out;
+     transition value (see below) rather than introducing a new one; filter
+     rides the same transition so the blur added below (client note: reuse
+     the entrance/loading blur's visual language for Relationship Mode)
+     fades in and out in lockstep with the opacity dim, on the one element
+     GSAP never touches, instead of being a second, separately-timed
+     effect. */
+  transition: opacity 180ms ease-out, filter 180ms ease-out;
 }
 
 /* Applied only to the <img>, only while something else is hovered and this
    image's Archive Number isn't in the Gallery's relatedArchiveNumbers
    state (see the isDimmed computation at this component's render call
-   site). Opacity only, per spec -- no scale/blur/movement/transform/filter/
-   color change, no pointer-events change (this element was never
-   interactive to begin with; the wrapper button's own click/hover
-   handling is untouched). Third calibration pass: 0.46, then 0.22, then
-   0.15 -- 0.10 pushes unrelated images almost out of legibility while
-   staying just above fully invisible, so they remain technically visible
-   and hoverable (the wrapper underneath is unchanged) without competing
-   with the related cluster. Transition (.gallery-image above) and every
-   other value here remain unchanged -- only this one opacity number moved
-   again. */
+   site). No scale/movement/transform/color change, no pointer-events
+   change (this element was never interactive to begin with; the wrapper
+   button's own click/hover handling is untouched). Third calibration
+   pass: 0.46, then 0.22, then 0.15 -- 0.10 pushes unrelated images almost
+   out of legibility while staying just above fully invisible, so they
+   remain technically visible and hoverable (the wrapper underneath is
+   unchanged) without competing with the related cluster. That opacity
+   value is unchanged here.
+   Blur added (client note, reveal-refinement follow-up): a restrained
+   reuse of .gallery-image-wrapper's own entrance/loading blur language
+   (blur(8px) saturate(0.72) brightness(0.94), see that rule), not a new
+   effect -- calibrated through three live passes (2px, then 4px, then
+   6px) toward the more noticeable entrance-blur look the client
+   preferred, while staying under the entrance recipe's own 8px so
+   Relationship Mode still reads as unrelated imagery quietly receding,
+   not as still-loading. Blur only, no saturate/brightness, per spec --
+   opacity alone already carries the "receding" read; this just softens
+   it further. */
 .gallery-image--dimmed {
   opacity: 0.1;
+  filter: blur(6px);
 }
 
 /* HoverOverlay -- Phase 1 (presentation only). A translucent metadata layer

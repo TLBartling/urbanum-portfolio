@@ -1,136 +1,76 @@
-import { useLayoutEffect, useRef, useState } from "react";
-import gsap from "gsap";
+import { useEffect, useState } from "react";
 import Logo from "./Logo";
 
-// One quiet gesture in three parts, not a launch: the centered logo rests
-// just long enough to register as the site's identity, then begins a
-// slow, deliberate move/scale toward the real header logo's measured
-// position. The homepage stays fully hidden behind the still-opaque
-// overlay for most of that movement -- it only starts emerging in the
-// final stretch of the logo's travel, and finishes emerging at the exact
-// moment the logo arrives, so the page reads as quietly appearing beneath
-// the arriving logo rather than racing it there.
+// Traditional static splash/entry screen (Josh review, Commit 1; refined
+// per client note, Commit 1 follow-up): the Urbanum logo, static,
+// centered -- nothing about the logo itself ever moves, scales, or
+// transitions, while the splash is displayed or while it exits. The only
+// motion anywhere in this component is a very short, understated fade of
+// the WHOLE overlay -- background and logo together, as one layer, via a
+// single opacity transition on .splash-overlay itself (see styles.css) --
+// once the visitor clicks. The logo does not fade or move on its own; it
+// simply disappears along with everything else because it's inside the
+// one element that's fading, not because anything targets it
+// individually.
 //
-// The real Header (with its own real logo) is already mounted normally
-// behind this overlay the whole time -- nothing here duplicates or
-// reaches into Header.jsx. The splash only needs to know where that real
-// logo already is, measured directly from the DOM via
-// getBoundingClientRect, so the destination stays exact even if the
-// header's own responsive sizing changes later.
+// Three states instead of two: idle (fully opaque, waiting for a click),
+// exiting (the fade is playing, via the .splash-overlay--exiting class),
+// and gone (unmounted). The exiting -> gone transition is driven by the
+// CSS transition's own onTransitionEnd event, so the unmount happens
+// exactly when the fade visually finishes rather than on a separately
+// tuned JS timer. EXIT_FALLBACK_MS is a safety net only, in case that
+// event never fires for some reason -- without it, a missed event would
+// leave the splash stuck fully transparent but still mounted, still
+// intercepting clicks. Its value must stay comfortably above
+// styles.css's own `.splash-overlay { transition: opacity ... }`
+// duration; keep the two in sync if either changes.
 //
-// power1.inOut rather than the power2/3.out used elsewhere on the site:
-// those are tuned for quick UI feedback (a few hundred ms) and have a
-// fast opening burst that would read as a "launch" here. This is a
-// single, slow, scene-setting transition, not interactive feedback, so
-// it gets its own gentler curve -- smooth in, smooth out, nothing that
-// calls attention to itself.
-const HOLD_DURATION = 0.4; // the quiet breath before any motion begins
-const MOVE_DURATION = 1.9; // slower/more deliberate than the original 1.6s
-// The reveal only spans the final quarter of the logo's travel, and is
-// timed to end at the same moment the move ends -- derived from
-// MOVE_DURATION rather than a separate constant, so the two can never
-// drift out of sync with each other.
-const REVEAL_START_FRACTION = 0.75;
-const REVEAL_DURATION = MOVE_DURATION * (1 - REVEAL_START_FRACTION);
-const ANIMATION_EASE = "power1.inOut";
-
-// App.jsx mounts a Header-less shell on its very first commit (while its
-// gallery data is still empty) and only renders the real Header a commit
-// later, once that data arrives. This component's own mount effect fires
-// once, immediately, which used to mean it could check for the header
-// logo before Header had rendered at all and give up prematurely -- a
-// timing mismatch, not a rendering or lifecycle problem. This polls for
-// the header logo across a few frames (invisible to the visitor, since
-// the opaque overlay is already covering the screen the whole time) and
-// proceeds the instant it actually exists. A short timeout still protects
-// against hanging if it never shows up for some unrelated reason.
-const HEADER_LOGO_WAIT_TIMEOUT = 2000;
+// Markup and classes are otherwise unchanged from the previous version
+// (.splash-overlay / .splash-overlay__bg / .splash-logo-wrap /
+// .splash-logo, see styles.css) so the visual language -- background
+// color, logo size, centering -- carries over exactly.
+const EXIT_FALLBACK_MS = 460; // CSS duration (400ms) + a small safety margin
 
 export default function SplashScreen() {
-  const overlayBgRef = useRef(null);
-  const logoWrapRef = useRef(null);
+  const [isExiting, setIsExiting] = useState(false);
   const [isDone, setIsDone] = useState(false);
 
-  useLayoutEffect(() => {
-    const logoWrap = logoWrapRef.current;
-    const overlayBg = overlayBgRef.current;
+  useEffect(() => {
+    if (!isExiting) return undefined;
 
-    if (!logoWrap || !overlayBg) {
-      setIsDone(true);
-      return undefined;
-    }
-
-    const prefersReducedMotion = window.matchMedia(
-      "(prefers-reduced-motion: reduce)"
-    ).matches;
-
-    if (prefersReducedMotion) {
-      setIsDone(true);
-      return undefined;
-    }
-
-    let cancelled = false;
-    let rafId = null;
-    let tl = null;
-    const startTime = performance.now();
-
-    const runAnimation = (headerLogo) => {
-      const from = logoWrap.getBoundingClientRect();
-      const to = headerLogo.getBoundingClientRect();
-
-      // Center-to-center delta, not edge-to-edge -- combined with scaling
-      // around the wrap's own default transform-origin (50% 50%), this
-      // lands the moved/scaled logo exactly on the real logo's box, at
-      // exactly its size, regardless of viewport size.
-      const dx = to.left + to.width / 2 - (from.left + from.width / 2);
-      const dy = to.top + to.height / 2 - (from.top + from.height / 2);
-      const scale = to.width / from.width;
-
-      tl = gsap.timeline({ onComplete: () => setIsDone(true) });
-      tl.to(
-        logoWrap,
-        { x: dx, y: dy, scale, duration: MOVE_DURATION, ease: ANIMATION_EASE },
-        HOLD_DURATION
-      );
-      tl.to(
-        overlayBg,
-        { opacity: 0, duration: REVEAL_DURATION, ease: ANIMATION_EASE },
-        HOLD_DURATION + MOVE_DURATION * REVEAL_START_FRACTION
-      );
-    };
-
-    const waitForHeaderLogo = () => {
-      if (cancelled) return;
-
-      const headerLogo = document.querySelector(".brand");
-      if (headerLogo) {
-        runAnimation(headerLogo);
-        return;
-      }
-
-      if (performance.now() - startTime >= HEADER_LOGO_WAIT_TIMEOUT) {
-        setIsDone(true);
-        return;
-      }
-
-      rafId = requestAnimationFrame(waitForHeaderLogo);
-    };
-
-    waitForHeaderLogo();
-
-    return () => {
-      cancelled = true;
-      if (rafId !== null) cancelAnimationFrame(rafId);
-      tl?.kill();
-    };
-  }, []);
+    const fallbackId = setTimeout(() => setIsDone(true), EXIT_FALLBACK_MS);
+    return () => clearTimeout(fallbackId);
+  }, [isExiting]);
 
   if (isDone) return null;
 
+  const enterArchive = () => setIsExiting(true);
+
+  const handleKeyDown = (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      enterArchive();
+    }
+  };
+
+  const handleTransitionEnd = (event) => {
+    if (event.target === event.currentTarget && event.propertyName === "opacity") {
+      setIsDone(true);
+    }
+  };
+
   return (
-    <div className="splash-overlay">
-      <div className="splash-overlay__bg" ref={overlayBgRef} />
-      <div className="splash-logo-wrap" ref={logoWrapRef}>
+    <div
+      className={`splash-overlay${isExiting ? " splash-overlay--exiting" : ""}`}
+      role="button"
+      tabIndex={0}
+      aria-label="Enter the archive"
+      onClick={enterArchive}
+      onKeyDown={handleKeyDown}
+      onTransitionEnd={handleTransitionEnd}
+    >
+      <div className="splash-overlay__bg" />
+      <div className="splash-logo-wrap">
         <Logo className="splash-logo" />
       </div>
     </div>

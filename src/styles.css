@@ -2173,11 +2173,16 @@ html.is-browsing .zoom-controls {
 
 /* --- Splash screen -------------------------------------------------------
    A temporary full-screen overlay, mounted once above Router in main.jsx.
-   Three plain layers: a fixed positioning frame, a background layer that
-   fades away, and a logo layer that moves/scales into the real header
-   logo's position -- see SplashScreen.jsx for the motion itself. Sized
-   and composed to match the approved reference: a modest, centered
-   wordmark with generous surrounding whitespace, not a hero-sized mark. */
+   Static, traditional entry screen (Josh review, Commit 1; refined per
+   client note, Commit 1 follow-up): a fixed positioning frame, a plain
+   background layer, and a centered logo layer. Nothing about the logo
+   itself ever animates -- the one exception is .splash-overlay's own
+   opacity transition below, which fades the WHOLE overlay (background and
+   logo together, as one layer) out on click, very short and understated
+   by design. See SplashScreen.jsx for the click-to-exit interaction that
+   toggles .splash-overlay--exiting. Sized and composed to match the
+   approved reference: a modest, centered wordmark with generous
+   surrounding whitespace, not a hero-sized mark. */
 .splash-overlay {
   position: fixed;
   inset: 0;
@@ -2185,6 +2190,13 @@ html.is-browsing .zoom-controls {
   display: flex;
   align-items: center;
   justify-content: center;
+  cursor: pointer;
+  opacity: 1;
+  transition: opacity 400ms ease-out;
+}
+
+.splash-overlay--exiting {
+  opacity: 0;
 }
 
 .splash-overlay__bg {

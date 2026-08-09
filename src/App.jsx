@@ -1606,6 +1606,15 @@ function App() {
     hasBrowsed: false,
   });
   const isExtendingGalleryRef = useRef(false);
+  // TEMPORARY DIAGNOSTIC (extension-race verification pass -- see the
+  // duplicate-batch/duplicate-id console.warn checks inside
+  // extendGalleryIfNeeded and the standalone galleryItems-duplicate-id
+  // effect below). Tracks every batchIndex extendGalleryIfNeeded has ever
+  // generated for this mounted archive session. Write-only: nothing reads
+  // it for actual behavior, so it is safe to delete this declaration and
+  // every block that references it once the extension-race fix is
+  // verified.
+  const generatedBatchIndicesRef = useRef(new Set());
   const animatedImagesRef = useRef(new Set());
   // Registry ownership fix: a single persistent Map(item id -> wrapper DOM
   // node), maintained entirely by each wrapper's own callback ref (see the
@@ -1623,6 +1632,17 @@ function App() {
   // stale relative to the DOM: registration and deregistration are React
   // mount/unmount events, not a periodic snapshot.
   const wrapperRegistryRef = useRef(new Map());
+  // Perf fix (unbounded per-frame entrance/relationship-motion work):
+  // mirrors renderedGalleryItems (below, computed once per render from
+  // the SAME isItemInRenderWindow filter already used for JSX) so the
+  // per-frame animation loop can read the currently-relevant subset
+  // without re-filtering the full, ever-growing galleryItems array on
+  // every animation frame. Written during render (see
+  // renderedGalleryItems below), read imperatively inside the big
+  // navigation effect -- the same ref-mirrors-render-value pattern this
+  // file already uses for renderWindowRef/openingGeometryRef relative
+  // to their own state counterparts.
+  const renderedGalleryItemsRef = useRef([]);
   // Mirrors the isScrolling state (declared further down, with its own
   // comment) for the animateGallery loop's own use: that loop runs every
   // frame and is not recreated when isScrolling changes (its effect only
@@ -2613,6 +2633,25 @@ function App() {
 
     if (!scrollContainer || !track) return;
 
+    // Extension-guard release (extension-race fix): this effect body only
+    // runs once React has committed the current `galleryItems` -- this
+    // effect's own dependency -- and flushed this component's effects for
+    // that commit. Reaching this line IS the "the newly generated batch
+    // has actually committed" signal extendGalleryIfNeeded's guard is
+    // meant to wait for, so the guard is released here, synchronously, and
+    // nowhere else. Previously this was released on an independent
+    // requestAnimationFrame scheduled from inside extendGalleryIfNeeded
+    // (untracked by this effect's own cleanup below), which could fire
+    // before React had actually flushed the cleanup/re-setup for this
+    // effect -- letting a stale animateGallery closure from the PREVIOUS
+    // effect instance (still closed over the pre-extension galleryItems)
+    // observe the guard as open and recompute the same nextBatchIndex a
+    // second time. Resetting here instead means a stale closure can only
+    // ever observe isExtendingGalleryRef.current === true until this exact
+    // point is reached -- and a stale closure, by definition, never reaches
+    // this point again (only the current, non-stale effect instance does).
+    isExtendingGalleryRef.current = false;
+
     const movement = galleryMovementRef.current;
     const animatedImages = animatedImagesRef.current;
     const preEntryDistance = 360;
@@ -2687,12 +2726,11 @@ function App() {
       // render's own state value (this whole effect re-runs and recreates
       // this closure on every galleryItems commit, so it's always the
       // latest committed value by the time a genuinely new invocation gets
-      // this far -- the guard's own reset is deferred to the NEXT
-      // animation frame specifically so the current commit has already
-      // landed and this closure has already been refreshed before that
-      // happens). columnStateRef.current is mutated exactly once, right
-      // here, as a single plain assignment -- not from inside anything
-      // React could re-invoke.
+      // this far -- the guard is released at the TOP of this effect body,
+      // once this closure's own galleryItems commit has actually landed;
+      // see that reset's own comment above for why. columnStateRef.current
+      // is mutated exactly once, right here, as a single plain assignment
+      // -- not from inside anything React could re-invoke.
       //
       // The updater actually passed to setGalleryItems below is now just
       // `(currentItems) => [...currentItems, ...newBatch]` -- newBatch is a
@@ -2701,6 +2739,28 @@ function App() {
       // that updater, it produces the identical result every time and
       // mutates nothing, so replay is harmless by construction.
       const nextBatchIndex = getNextGalleryBatchIndex(galleryItems);
+
+      // TEMPORARY DIAGNOSTIC (extension-race verification pass -- see
+      // generatedBatchIndicesRef's own comment). Two independent signals:
+      // (1) this closure's own, possibly-stale galleryItems already
+      // contains the batchIndex it's about to generate again; (2) this
+      // batchIndex has been generated by ANY closure (stale or current)
+      // during this mounted session, which is the check that actually
+      // catches the traced race, since a stale closure's own galleryItems
+      // does not yet contain the batch that made it stale.
+      if (galleryItems.some((item) => item.batchIndex === nextBatchIndex)) {
+        console.warn(
+          "[gallery-extension-diagnostic] extendGalleryIfNeeded computed nextBatchIndex that this closure's own galleryItems already contains.",
+          { nextBatchIndex, galleryItemsLength: galleryItems.length, timestamp: performance.now() },
+        );
+      }
+      if (generatedBatchIndicesRef.current.has(nextBatchIndex)) {
+        console.warn(
+          "[gallery-extension-diagnostic] batchIndex has already been generated once before during this scroll session -- this is the stale-closure extension race.",
+          { nextBatchIndex, timestamp: performance.now() },
+        );
+      }
+      generatedBatchIndicesRef.current.add(nextBatchIndex);
 
       const { items: newBatch, nextColumnState } = createGalleryBatch(
         nextBatchIndex,
@@ -2713,9 +2773,14 @@ function App() {
 
       setGalleryItems((currentItems) => [...currentItems, ...newBatch]);
 
-      requestAnimationFrame(() => {
-        isExtendingGalleryRef.current = false;
-      });
+      // isExtendingGalleryRef is released once this effect re-runs against
+      // the committed galleryItems that now contains newBatch -- see the
+      // reset at the top of this effect body, not here. Releasing it here
+      // via an independent requestAnimationFrame (the previous
+      // implementation) could fire before React had actually flushed this
+      // effect's cleanup/re-setup, letting a stale animateGallery closure
+      // observe the guard as open before its own galleryItems reflected
+      // this extension -- see this function's own comment above.
     };
 
     const updateGalleryMotion = () => {
@@ -2920,6 +2985,27 @@ function App() {
     };
   }, [galleryItems]);
 
+  // TEMPORARY DIAGNOSTIC (extension-race verification pass -- see
+  // generatedBatchIndicesRef's own comment). Runs whenever galleryItems
+  // commits and scans for duplicate item.id values, which is the direct,
+  // observable consequence of the extension race this pass is verifying
+  // the fix for (duplicate batchIndex -> duplicate id -> React key
+  // collision -> orphaned wrapperRegistryRef entry). Self-contained and
+  // side-effect-free (console.warn only) -- safe to delete this entire
+  // effect once the fix is verified.
+  useEffect(() => {
+    const seenIds = new Set();
+    for (const item of galleryItems) {
+      if (seenIds.has(item.id)) {
+        console.warn(
+          "[gallery-extension-diagnostic] duplicate item.id present in committed galleryItems.",
+          { id: item.id, batchIndex: item.batchIndex, galleryItemsLength: galleryItems.length, timestamp: performance.now() },
+        );
+      }
+      seenIds.add(item.id);
+    }
+  }, [galleryItems]);
+
   if (galleryItems.length === 0) {
     return <div className="app-shell" />;
   }
@@ -2928,6 +3014,7 @@ function App() {
     focusedId === null
       ? galleryItems.filter((item) => isItemInRenderWindow(item, renderWindow))
       : galleryItems;
+  renderedGalleryItemsRef.current = renderedGalleryItems;
 
   // Relationship Mode Visibility Gate: evaluated once per render, not per
   // item -- shouldActivateRelationshipMode doesn't depend on which item is

@@ -2282,14 +2282,18 @@ html.is-browsing .zoom-controls {
 
 /* --- Journal page -------------------------------------------------------
    A plain three-column image archive -- reuses .about-page/.about-content
-   for the page shell and outer margins (same as About/Projects), and adds
-   only a fixed-ratio grid. No masonry, no variable sizing: the page is
-   meant to feel like a quiet visual notebook, not a gallery. Minimal
-   Hover Caption (Journal CMS cleanup): the one exception to "no hover
-   states" -- an entry with an Image Caption (see cms/schemaTypes/
-   journalEntryType.js) shows it as small, quiet text on hover; an entry
-   with none has zero hover behavior at all, since JournalPage.jsx only
-   ever renders .journal-tile__caption when a caption actually exists. */
+   for the page shell and outer margins (same as About/Projects). Image-
+   only field (Josh review): no captions anywhere, hover or otherwise --
+   the earlier hover-caption treatment was removed entirely, and
+   JournalPage.jsx no longer even renders `entry.caption` (the field
+   itself is untouched in the data/CMS layer, just not displayed). Two
+   fixed frames, not a freeform masonry: every tile is either
+   .journal-tile--landscape or .journal-tile--portrait (see below) based
+   on its own image's real orientation -- a small, controlled vocabulary
+   that lets landscape and portrait photographs each keep substantially
+   more of their own crop than the old single near-square frame did,
+   while the grid itself stays a plain, structured 3-column CSS grid, the
+   same restrained "quiet visual notebook" feel as before. */
 .journal-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -2297,9 +2301,6 @@ html.is-browsing .zoom-controls {
 }
 
 .journal-tile {
-  /* Anchors .journal-tile__caption below -- absolutely positioned
-     within this tile so an entry having a caption never affects this
-     tile's own size or its row's height in the grid. */
   position: relative;
   overflow: hidden;
   /* Palette normalization (Josh review): same taupe "darker neutral" ->
@@ -2308,9 +2309,35 @@ html.is-browsing .zoom-controls {
      the same rgb(205, 200, 193) already established for the Archive
      hover card. */
   background: #cdc8c1;
-  /* Slightly squarer than a standard photo crop, per the approved
-     reference -- a subtle nudge, not a different feeling. */
+  /* Controlled frame vocabulary (Josh review): this base rule's own
+     ratio is now only the transient placeholder shown before a tile's
+     real orientation is known (see JournalTile in JournalPage.jsx) --
+     once known, .journal-tile--landscape/--portrait below override it
+     with one of exactly two fixed frames. Kept at the original 5:4 (a
+     near-square, neither clearly landscape nor portrait) specifically
+     because it sits roughly between the two real frames, so the swap
+     from placeholder to final frame is a modest step either direction,
+     not a jarring one. */
   aspect-ratio: 5 / 4;
+}
+
+/* Controlled frame vocabulary (Josh review): exactly two fixed frames,
+   not a freeform/organic-height masonry -- a landscape source image gets
+   .journal-tile--landscape, a portrait source gets .journal-tile--portrait
+   (assignment logic in JournalPage.jsx's JournalTile). Both ratios are
+   evidence-based, not invented: 3:2 and its exact inverse 2:3 are the
+   single most common real landscape/portrait ratios already present in
+   this project's own photography (public/img/*.jpg), so most images land
+   close to their native crop here rather than being forced into the old
+   uniform near-square, while the inverse relationship between the two
+   numbers keeps them reading as one restrained vocabulary rather than
+   two arbitrary shapes. */
+.journal-tile--landscape {
+  aspect-ratio: 3 / 2;
+}
+
+.journal-tile--portrait {
+  aspect-ratio: 2 / 3;
 }
 
 .journal-tile__img {
@@ -2318,40 +2345,6 @@ html.is-browsing .zoom-controls {
   height: 100%;
   display: block;
   object-fit: cover;
-}
-
-/* Minimal Hover Caption (presentation refinement -- Urbanum voice pass):
-   discovered, not announced -- a quiet gallery-label/field-note feel
-   rather than a photo caption. Deliberately no panel/card/background/
-   scrim behind it, and no text-shadow either now: legibility comes from
-   placement and the soft gray color alone, not a glow. Bottom-left with
-   generous padding (never spans the full tile width, and never hugs the
-   corner) -- max-width keeps it compact enough to read as one quiet
-   line; if a caption is ever too long for that, it wraps naturally
-   rather than being truncated or forced into a wide block. Hidden until
-   hover/focus, easing in slowly enough to feel noticed rather than
-   triggered, and settling at less than full opacity so it reads as part
-   of the photograph rather than something laid on top of it.
-   Absolutely positioned (see .journal-tile above), so it never shifts
-   this tile's own layout or its neighbors'. */
-.journal-tile__caption {
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  max-width: 60%;
-  margin: 0;
-  padding: 0 0 1.1rem 1.1rem;
-  font-size: 0.7rem;
-  font-weight: 400;
-  color: #d0d0d0;
-  opacity: 0;
-  transition: opacity 220ms ease-out;
-  pointer-events: none;
-}
-
-.journal-tile:hover .journal-tile__caption,
-.journal-tile:focus-within .journal-tile__caption {
-  opacity: 0.85;
 }
 
 @media (max-width: 700px) {

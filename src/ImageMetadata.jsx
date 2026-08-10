@@ -54,8 +54,11 @@ export default function ImageMetadata({ image }) {
 
   return (
     <div className="project-image-metadata">
+      {/* Archive-number presentation rule (Josh review): bracketed
+          site-wide, e.g. "[033]" -- display-only, wraps whatever value
+          this field already holds rather than reformatting it. */}
       <span className="project-image-metadata__number">
-        {image.archiveNumber}
+        {`[${image.archiveNumber}]`}
       </span>
       {themeList.length > 0 && (
         <p className="project-image-metadata__themes">

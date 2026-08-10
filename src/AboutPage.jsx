@@ -58,7 +58,11 @@ function StudioImage({ number, src }) {
         loading="lazy"
         decoding="async"
       />
-      <span className="studio-image__number">{number}</span>
+      {/* Archive-number presentation rule (Josh review): bracketed
+          site-wide, e.g. "[002]" -- display-only; the img's own alt text
+          above is left as plain descriptive text, unbracketed, since it's
+          read aloud rather than visually presented. */}
+      <span className="studio-image__number">{`[${number}]`}</span>
     </div>
   );
 }

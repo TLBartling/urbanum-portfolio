@@ -56,7 +56,11 @@ function ProjectTile({ number, label, year, src }) {
         decoding="async"
       />
       <div className="about-tile__caption">
-        <span className="about-tile__number">{number}</span>
+        {/* Archive-number presentation rule (Josh review): bracketed
+            site-wide, e.g. "[001]" -- display-only; .about-tile__year
+            below is a year, not an archive number, and stays unbracketed,
+            as does the alt text above. */}
+        <span className="about-tile__number">{`[${number}]`}</span>
         <span className="about-tile__label">{label}</span>
       </div>
       <span className="about-tile__year">{year}</span>

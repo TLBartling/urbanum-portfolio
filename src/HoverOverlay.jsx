@@ -185,8 +185,15 @@ function HoverOverlay({
 
   return (
     <div className="hover-overlay" aria-hidden="true">
+      {/* Archive-number presentation rule (Josh review): bracketed
+          site-wide, e.g. "[033]" -- a display-only wrap of whatever value
+          this prop already carries, not a reformat of it. The raw,
+          unbracketed archiveNumber is still what's passed in from
+          App.jsx/matched against relatedArchiveNumbers elsewhere; nothing
+          about that data or the Relationship Engine's matching changes
+          here. */}
       {archiveNumber != null && (
-        <div className="hover-overlay__number">{archiveNumber}</div>
+        <div className="hover-overlay__number">{`[${archiveNumber}]`}</div>
       )}
       {/* Discovery: the only editorial gate, checked before container
           queries ever run. Non-discovery tiles never render this markup, so

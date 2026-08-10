@@ -1,7 +1,118 @@
+/* Site-wide typeface (Josh review): GT America, the client's branded
+   typeface, self-hosted from the licensed files in public/fonts/ -- not a
+   web substitute, not a system-font approximation. Investigation before
+   this pass found the site had never actually loaded a custom font at
+   all: `Inter` (below) and `"Neue Haas Grotesk Display"` (see
+   .text-control and its siblings further down) were both plain fallback
+   chains with no @font-face/@import anywhere, so in practice every
+   visitor was already seeing whatever generic sans their OS substituted
+   (Helvetica/Arial in most cases) -- these two roles are what "site-wide
+   font" replaces here.
+   Follow-up (Josh review): the Archive hover card's metadata --
+   .hover-overlay__number, .hover-overlay__themes, .hover-overlay__tags --
+   was originally left on Courier New along with the rest of this file's
+   typewriter/archival-index-card usages, but the client asked for that
+   metadata to visually participate in the new site-wide GT America
+   system too, so those three rules were moved onto GT America in this
+   follow-up (same "Helvetica Neue"/Helvetica/Arial/sans-serif fallback
+   chain used by this file's other GT America roles). `"Courier New"`
+   elsewhere -- .focus-theme-title only (the Focus/zoom-mode caption, a
+   distinct full-screen component, not part of the hover card; it's now
+   the sole remaining Courier New usage in this file) -- is left
+   untouched: still a deliberate, separate typewriter/archival treatment
+   outside what either pass was asked to change.
+   Seven weights only -- Thin/Ultra-Light/Light/Regular/Medium/Bold/Black
+   (100/200/300/400/500/700/900) -- because that's what the supplied GT
+   America Standard package actually contains; no invented in-between
+   weight was added. The one gap that matters: this site uses
+   font-weight: 600 in several places, and GT America Standard has no
+   600. No special-casing was added for that -- with 500 and 700 both
+   registered as separate @font-face weights and no 600 face present, the
+   CSS font-matching algorithm resolves an unmatched 600 request to the
+   nearest heavier match already available, i.e. GT America Bold (700),
+   automatically and correctly, exactly as it would for any other
+   character in this font family missing that one weight. No italic
+   faces were loaded -- font-style: italic isn't used anywhere in this
+   file today, so loading seven unused italic files would only add
+   weight with nothing to render them. woff (small, universally
+   supported) is listed first in each src list, with ttf (also supplied)
+   as a fallback format; no woff2 was provided in the licensed package,
+   so none is referenced. font-display: swap avoids invisible text while
+   each face loads, matching ordinary self-hosted-font practice. */
+@font-face {
+  font-family: "GT America";
+  src:
+    url("/fonts/GT-America-Standard-Thin.woff") format("woff"),
+    url("/fonts/GT-America-Standard-Thin.ttf") format("truetype");
+  font-weight: 100;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "GT America";
+  src:
+    url("/fonts/GT-America-Standard-Ultra-Light.woff") format("woff"),
+    url("/fonts/GT-America-Standard-Ultra-Light.ttf") format("truetype");
+  font-weight: 200;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "GT America";
+  src:
+    url("/fonts/GT-America-Standard-Light.woff") format("woff"),
+    url("/fonts/GT-America-Standard-Light.ttf") format("truetype");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "GT America";
+  src:
+    url("/fonts/GT-America-Standard-Regular.woff") format("woff"),
+    url("/fonts/GT-America-Standard-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "GT America";
+  src:
+    url("/fonts/GT-America-Standard-Medium.woff") format("woff"),
+    url("/fonts/GT-America-Standard-Medium.ttf") format("truetype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "GT America";
+  src:
+    url("/fonts/GT-America-Standard-Bold.woff") format("woff"),
+    url("/fonts/GT-America-Standard-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "GT America";
+  src:
+    url("/fonts/GT-America-Standard-Black.woff") format("woff"),
+    url("/fonts/GT-America-Standard-Black.ttf") format("truetype");
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   color-scheme: light;
-  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    sans-serif;
+  font-family: "GT America", system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
   background: #faf9f5;
   color: #1a1a1a;
 
@@ -171,7 +282,7 @@ body {
   padding: 0;
   cursor: pointer;
 
-  font-family: "Neue Haas Grotesk Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-family: "GT America", "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-size: 0.78rem;
   font-weight: 400;
   letter-spacing: 0.18em;
@@ -244,7 +355,7 @@ body {
   border-bottom: 1px solid transparent;
   outline: none;
   background: none;
-  font-family: "Neue Haas Grotesk Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-family: "GT America", "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-size: 0.78rem;
   font-weight: 400;
   letter-spacing: 0.18em;
@@ -413,7 +524,7 @@ body {
   padding: 0;
   cursor: pointer;
   white-space: nowrap;
-  font-family: "Neue Haas Grotesk Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-family: "GT America", "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-size: 0.78rem;
   font-weight: 400;
   letter-spacing: 0.18em;
@@ -541,7 +652,7 @@ body {
   padding: 0;
   cursor: pointer;
 
-  font-family: "Neue Haas Grotesk Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-family: "GT America", "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-size: 0.72rem;
   font-weight: 400;
   letter-spacing: 0.13em;
@@ -811,7 +922,19 @@ body {
    still translucent enough for the photograph to read through it. The
    inset box-shadow is a barely-perceptible 1px tonal hairline, not a
    border or drop shadow, meant only to keep the hovered image's silhouette
-   legible against the page while the overlay is up. Position, inset,
+   legible against the page while the overlay is up.
+   Legibility calibration pass (Josh review): metadata (.hover-overlay__number
+   / __themes, both #1a1a1a) could still lose contrast against a busy or
+   dark photo showing through at the original 75% opacity. Two changes to
+   the one background declaration below, nothing else: opacity raised
+   0.75 -> 0.88 so the card's own color dominates far more reliably
+   regardless of what photo is behind it (still translucent -- 12% of the
+   photo still reads through, not the "completely opaque panel" this was
+   explicitly asked not to become); the warm stone itself narrowed toward
+   warm gray by pulling its three channels closer together (was R-G-B
+   deltas of 8/15/23, now 5/7/12) and darkened slightly (~199 average vs
+   ~221 before) -- still clearly warm (R > G > B), just less taupe/beige,
+   more restrained. Position, inset,
    container-type, the :hover trigger, and the opacity transition itself
    are all unchanged from Phase 1. Design refinement: the archive number
    and theme list are now both normal flex-flow children again (instead
@@ -850,7 +973,7 @@ body {
   gap: 0.35rem;
   opacity: 0;
   pointer-events: none;
-  background: rgba(231, 223, 208, 0.75);
+  background: rgba(205, 200, 193, 0.88);
   box-shadow: inset 0 0 0 1px rgba(26, 26, 26, 0.04);
   transition: opacity 180ms ease-out;
   will-change: opacity;
@@ -897,7 +1020,7 @@ body {
      there was no safe room left to cut there. This padding was where the
      actual removable whitespace around the number lived. */
   padding: 0.2rem 0.5rem;
-  font-family: "Courier New", Courier, monospace;
+  font-family: "GT America", "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-weight: 300;
   /* Dominance-reduction pass: clamp scaled down ~10-15% at every point
      (floor 0.65rem->0.6rem, cqmin coefficient 7->6, ceiling 1.15rem->1rem)
@@ -907,7 +1030,13 @@ body {
      with card size exactly as before, just consistently one notch down. */
   font-size: clamp(0.6rem, 6cqmin, 1rem);
   line-height: 1;
-  letter-spacing: 0.03em;
+  /* Tracking follow-up (Josh review): a subtler value than the header's
+     own .text-control/.search-control__input letter-spacing (0.18em, see
+     .top-menu above) -- 0.18em read as too pronounced here on visual
+     review, so this calibrated down to 0.10em, still a deliberate step
+     up from the pre-GT-America 0.03em toward the header's typographic
+     character, just not an exact match. */
+  letter-spacing: 0.1em;
   text-align: center;
   color: #1a1a1a;
 }
@@ -943,7 +1072,7 @@ body {
   max-height: 6.9rem;
   overflow: hidden;
   list-style: none;
-  font-family: "Courier New", Courier, monospace;
+  font-family: "GT America", "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-weight: 300;
   /* Responsive font-size, clamped between a 9px floor and the original
      0.78rem (12.48px) ceiling. The middle term is the smaller of two
@@ -952,9 +1081,27 @@ body {
          worst-case real primary theme string -- "Adaptive Reuse" /
          "Material Study" / "Urban Strategy", all 14 characters, the
          longest of the 7 real values -- would overflow this container's
-         own width. Courier New is a true monospace face (0.6em advance
+         own width. This 11.5207cqw coefficient was derived when this
+         rule was on Courier New, a true monospace face (0.6em advance
          per character) plus the existing 0.02em letter-spacing = 0.62em
          per character; 14 * 0.62 = 8.68, and 100cqw / 8.68 = 11.5207cqw.
+         GT America (this rule's font-family as of the site-wide type
+         follow-up) is a proportional face, not monospace, so its real
+         per-character advance for this string differs from 0.62em and
+         this coefficient is now a carried-over approximation, not a
+         re-derivation against GT America's own metrics -- flagged for a
+         visual check against the worst-case theme strings above, since
+         nowrap + overflow: hidden below mean a wider real advance could
+         clip rather than just wrap. Tracking follow-up (Josh review):
+         letter-spacing below raised 0.02em -> 0.18em, then calibrated
+         down to 0.1em (too pronounced at 0.18em on visual review).
+         Holding this coefficient's own math to the same method, 0.1em
+         alone raises the assumed per-character advance from 0.62em to
+         0.7em (+13%, down from +26% at the earlier 0.18em) before any GT
+         America-vs-Courier discrepancy is even counted -- reported here
+         rather than silently re-deriving 11.5207cqw, per instruction; a
+         visual check of the worst-case strings above is the reliable way
+         to confirm whether this still fits without clipping.
        - height budget (45.4545cqh - 9.8182px): how large the font can be
          before one theme line, at this same 2.2 line-height, plus the
          Archive Number's own footprint and the flex gap above it (16.0px
@@ -972,7 +1119,11 @@ body {
      fixed-size system never rendered into at all (it was simply absent). */
   font-size: clamp(9px, min(11.5207cqw, calc(45.4545cqh - 9.8182px)), 0.78rem);
   line-height: 2.2;
-  letter-spacing: 0.02em;
+  /* Calibrated down to 0.1em (was 0.18em, too pronounced on visual
+     review; originally 0.02em before the tracking follow-up). See the
+     width-budget note above: this also feeds that clamp()'s coefficient,
+     flagged there rather than re-derived here. */
+  letter-spacing: 0.1em;
   text-align: center;
   color: #1a1a1a;
 }
@@ -1091,11 +1242,17 @@ body {
   max-width: 100%;
   max-height: 4.4rem;
   overflow: hidden;
-  font-family: "Courier New", Courier, monospace;
+  font-family: "GT America", "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-weight: 300;
   font-size: 0.68rem;
   line-height: 1.6;
-  letter-spacing: 0.02em;
+  /* Calibrated down to 0.1em (was 0.18em, too pronounced on visual
+     review; originally 0.02em before the tracking follow-up). This
+     region wraps (not nowrap, see the comment above), so the wider
+     tracking only ever adds more line-wraps within the existing
+     max-height budget, not a width-clip risk like .hover-overlay__themes
+     above. */
+  letter-spacing: 0.1em;
   text-align: center;
   color: rgba(26, 26, 26, 0.62);
 }
@@ -1444,7 +1601,7 @@ html.is-browsing .zoom-controls {
   text-transform: uppercase;
   opacity: 0.98;
   font-weight: 600;
-  font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: "GT America", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 .gallery-shape {
@@ -1660,7 +1817,16 @@ html.is-browsing .zoom-controls {
   position: relative;
   width: 100%;
   overflow: hidden;
-  background: #e7e4dc;
+  /* Palette normalization (Josh review): this tile's placeholder/frame
+     color -- the site's taupe "darker neutral" role -- moved to the same
+     warmer-gray already established for the Archive hover card (see
+     .hover-overlay's own comment on that calibration), a direct hex
+     match for rgb(205, 200, 193), solid here since this is an opaque
+     fill rather than a translucent overlay. Was #e7e4dc. object-fit:
+     cover below still fills this tile edge-to-edge for any normal photo,
+     so this color is a loading-state/fallback background in practice,
+     same as before -- nothing about sizing/cropping/layout changes. */
+  background: #cdc8c1;
 }
 
 .about-tile::before {
@@ -1693,7 +1859,7 @@ html.is-browsing .zoom-controls {
   gap: 0.5em;
   color: #fff;
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
-  font-family: "Neue Haas Grotesk Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-family: "GT America", "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
 .about-tile__number {
@@ -1717,7 +1883,7 @@ html.is-browsing .zoom-controls {
   color: #fff;
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
   font-size: 0.8rem;
-  font-family: "Neue Haas Grotesk Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-family: "GT America", "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
 .about-column--one .about-tile:first-child {
@@ -1949,7 +2115,11 @@ html.is-browsing .zoom-controls {
   position: relative;
   height: 100%;
   overflow: hidden;
-  background: #e7e4dc;
+  /* Palette normalization (Josh review): same taupe "darker neutral" ->
+     warmer-gray move as .about-tile above -- see that rule's own
+     comment for the full rationale. Was #e7e4dc, now the same
+     rgb(205, 200, 193) already established for the Archive hover card. */
+  background: #cdc8c1;
   animation: studio-image-reveal 900ms var(--reveal-ease) both;
 }
 
@@ -1972,7 +2142,7 @@ html.is-browsing .zoom-controls {
   left: clamp(14px, 1.4vw, 20px);
   color: #fff;
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
-  font-family: "Neue Haas Grotesk Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-family: "GT America", "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-size: 0.85rem;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -2132,7 +2302,12 @@ html.is-browsing .zoom-controls {
      tile's own size or its row's height in the grid. */
   position: relative;
   overflow: hidden;
-  background: #e7e4dc;
+  /* Palette normalization (Josh review): same taupe "darker neutral" ->
+     warmer-gray move as .about-tile/.studio-image above -- see
+     .about-tile's own comment for the full rationale. Was #e7e4dc, now
+     the same rgb(205, 200, 193) already established for the Archive
+     hover card. */
+  background: #cdc8c1;
   /* Slightly squarer than a standard photo crop, per the approved
      reference -- a subtle nudge, not a different feeling. */
   aspect-ratio: 5 / 4;
@@ -2358,7 +2533,19 @@ html.is-browsing .zoom-controls {
      height as well as column width, rather than always filling the
      column width regardless of how tall that made it. */
   overflow: hidden;
-  background: #eeece6;
+  /* Palette normalization (Josh review): this frame's background is
+     exactly what shows around any image whose natural aspect ratio
+     doesn't fill the column (see the comment above -- no cover/crop
+     here by design), so unlike .about-tile/.studio-image/.journal-tile
+     above it's routinely visible, not just a loading-state fallback.
+     Same taupe "darker neutral" -> warmer-gray move as those, though it
+     started from a slightly different taupe value here (#eeece6, not
+     #e7e4dc) -- both were the same palette role, now both the same
+     rgb(205, 200, 193) already established for the Archive hover card.
+     Color only: sizing, cropping, centering, and the frame's own layout
+     logic above are all unchanged -- the larger Project Page image-frame
+     redesign is separate, later work. */
+  background: #cdc8c1;
 }
 
 .project-image-frame__img {

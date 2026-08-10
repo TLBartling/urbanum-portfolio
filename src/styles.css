@@ -2281,76 +2281,76 @@ html.is-browsing .zoom-controls {
 }
 
 /* --- Journal page -------------------------------------------------------
-   A plain three-column image archive -- reuses .about-page/.about-content
-   for the page shell and outer margins (same as About/Projects). Image-
-   only field (Josh review): no captions anywhere, hover or otherwise --
-   the earlier hover-caption treatment was removed entirely, and
-   JournalPage.jsx no longer even renders `entry.caption` (the field
-   itself is untouched in the data/CMS layer, just not displayed). Two
-   fixed frames, not a freeform masonry: every tile is either
-   .journal-tile--landscape or .journal-tile--portrait (see below) based
-   on its own image's real orientation -- a small, controlled vocabulary
-   that lets landscape and portrait photographs each keep substantially
-   more of their own crop than the old single near-square frame did,
-   while the grid itself stays a plain, structured 3-column CSS grid, the
-   same restrained "quiet visual notebook" feel as before. */
+   A plain image archive -- reuses .about-page/.about-content for the page
+   shell and outer margins (same as About/Projects). Image-only field
+   (Josh review): no captions anywhere, hover or otherwise -- the earlier
+   hover-caption treatment was removed entirely.
+
+   Justified gallery, third layout pass (Josh review): the previous two
+   CSS-only layout mechanisms (plain Grid auto-rows, then CSS
+   multi-column) and the pass after that (same-orientation "run" grouping
+   into small per-run Grids, with two rigid fixed-ratio frame classes,
+   .journal-tile--landscape/--portrait) are all gone. See JournalPage.jsx's
+   own file-level comment for the full history of why each broke down.
+   This pass is a real justified-gallery algorithm, computed in JS
+   (buildJustifiedRows in JournalPage.jsx) because the row math -- "what
+   height makes these images' widths sum to exactly the container's
+   width" -- isn't expressible in CSS alone. What CSS still owns here is
+   only the visual shell: .journal-grid is a plain block container (the
+   gallery's own measured-width element, via a ResizeObserver in
+   JournalPage.jsx); .journal-row is a flex row whose height and gap are
+   set per-row via inline style (each row's own solved height, not a
+   fixed value -- see buildJustifiedRows); .journal-tile's width is also
+   set per-image via inline style (solved from that row's height and the
+   image's own real aspect ratio), and stretches to the row's full height
+   automatically via ordinary flex cross-axis stretch (the default
+   align-items behavior, not a rule written here). There are no
+   .journal-tile--landscape/--portrait modifier classes left -- every
+   image now renders at (or extremely close to) its own real aspect
+   ratio, not one of two preset boxes, so there's nothing left to crop
+   away in the common case. No breakpoint-specific CSS is needed either:
+   narrower/wider rows are a direct, continuous result of the same
+   algorithm re-solving for whatever width the ResizeObserver reports,
+   not a small number of fixed column-count steps. */
 .journal-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: clamp(14px, 1.6vw, 24px);
+  width: 100%;
+}
+
+.journal-row {
+  display: flex;
+  /* height and gap are both set inline per row in JournalPage.jsx (each
+     row's own solved height/gutter -- see buildJustifiedRows) --
+     deliberately not fixed values here. */
 }
 
 .journal-tile {
   position: relative;
   overflow: hidden;
+  flex-shrink: 0;
+  /* height is intentionally not set here -- ordinary flex cross-axis
+     stretch (align-items' default value) already fills the row's own
+     inline-styled height; width is set inline per tile in
+     JournalPage.jsx (solved from that row's height and this image's own
+     real aspect ratio). */
   /* Palette normalization (Josh review): same taupe "darker neutral" ->
      warmer-gray move as .about-tile/.studio-image above -- see
      .about-tile's own comment for the full rationale. Was #e7e4dc, now
      the same rgb(205, 200, 193) already established for the Archive
-     hover card. */
+     hover card. Still relevant here as the tile's own decode-in-progress
+     placeholder color, same role it always had. */
   background: #cdc8c1;
-  /* Controlled frame vocabulary (Josh review): this base rule's own
-     ratio is now only the transient placeholder shown before a tile's
-     real orientation is known (see JournalTile in JournalPage.jsx) --
-     once known, .journal-tile--landscape/--portrait below override it
-     with one of exactly two fixed frames. Kept at the original 5:4 (a
-     near-square, neither clearly landscape nor portrait) specifically
-     because it sits roughly between the two real frames, so the swap
-     from placeholder to final frame is a modest step either direction,
-     not a jarring one. */
-  aspect-ratio: 5 / 4;
-}
-
-/* Controlled frame vocabulary (Josh review): exactly two fixed frames,
-   not a freeform/organic-height masonry -- a landscape source image gets
-   .journal-tile--landscape, a portrait source gets .journal-tile--portrait
-   (assignment logic in JournalPage.jsx's JournalTile). Both ratios are
-   evidence-based, not invented: 3:2 and its exact inverse 2:3 are the
-   single most common real landscape/portrait ratios already present in
-   this project's own photography (public/img/*.jpg), so most images land
-   close to their native crop here rather than being forced into the old
-   uniform near-square, while the inverse relationship between the two
-   numbers keeps them reading as one restrained vocabulary rather than
-   two arbitrary shapes. */
-.journal-tile--landscape {
-  aspect-ratio: 3 / 2;
-}
-
-.journal-tile--portrait {
-  aspect-ratio: 2 / 3;
 }
 
 .journal-tile__img {
   width: 100%;
   height: 100%;
   display: block;
+  /* Safety net for rounding only, not a real crop: a tile's width/height
+     are solved specifically so its aspect ratio already matches this
+     image's own real ratio (see buildJustifiedRows in JournalPage.jsx),
+     so object-fit: cover has essentially nothing left to crop in the
+     common case -- it only ever absorbs sub-pixel rounding. */
   object-fit: cover;
-}
-
-@media (max-width: 700px) {
-  .journal-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
 }
 
 /* --- Splash screen -------------------------------------------------------

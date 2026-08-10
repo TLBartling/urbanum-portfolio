@@ -242,15 +242,24 @@ export async function fetchThemes() {
 // `privateNotes` stays unprojected, same as always: it's explicitly
 // internal-only per its own schema description, the same treatment
 // Archive Item's own privateNotes field already gets in
-// ARCHIVE_ITEMS_QUERY above. `caption` IS now projected -- it backs the
-// Journal page's minimal per-entry hover caption (JournalPage.jsx), so
-// unlike privateNotes it's genuinely needed by the frontend now, not
-// speculative future-proofing.
+// ARCHIVE_ITEMS_QUERY above. `caption` is still projected here even
+// though JournalPage.jsx no longer displays it anywhere (the earlier
+// hover-caption treatment was removed at the client's request) --
+// leaving it in the query keeps the underlying data available for any
+// future surface, per that removal's own "presentation only" scope.
+//
+// Row-packing follow-up (Josh review): `"aspectRatio":
+// image.asset->metadata.dimensions.aspectRatio` is unchanged from the
+// prior follow-up (added then, not touched again by the justified-
+// gallery rework below). Sanity always stores this on every image asset
+// regardless of schema config -- no schema change was needed, this is
+// purely an additional field in the existing projection.
 export const JOURNAL_ENTRIES_QUERY = `
   *[_type == "journalEntry" && !(_id in path("drafts.**"))] | order(date desc) {
     image,
     date,
-    caption
+    caption,
+    "aspectRatio": image.asset->metadata.dimensions.aspectRatio
   }
 `;
 
@@ -260,13 +269,25 @@ export const JOURNAL_ENTRIES_QUERY = `
 // image URL passed in separately as `imageUrl` (see fetchJournalEntries
 // below) so this stays testable with a plain synthetic object. `date`
 // and `caption` are both optional in the schema, so either may be
-// undefined here -- JournalPage.jsx's hover caption already only renders
-// when `caption` is present, and simply never displays `date`.
+// undefined here.
+//
+// Justified-gallery follow-up (Josh review): `aspectRatio` is now passed
+// through as-is (the raw width/height ratio), not collapsed into a
+// derived landscape/portrait label the way the previous row-packing pass
+// did. JournalPage.jsx's row-packing algorithm needs each image's actual
+// ratio to compute proportional widths within a row, not just a binary
+// classification -- a fixed landscape/portrait split was exactly the
+// "too rigid" frame system this follow-up replaces. `null` (not a
+// guessed default) when `raw.aspectRatio` is missing -- e.g. an existing
+// asset uploaded before Sanity computed this metadata -- so
+// JournalPage.jsx's own fallback logic handles "unknown" explicitly
+// rather than this function silently picking a value.
 export function normalizeJournalEntry(raw, imageUrl) {
   return {
     image: imageUrl,
     date: raw.date,
     caption: raw.caption,
+    aspectRatio: typeof raw.aspectRatio === "number" ? raw.aspectRatio : null,
   };
 }
 

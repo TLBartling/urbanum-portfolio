@@ -1,80 +1,99 @@
-// The template's large image, plus the one navigation affordance that
-// lives directly on it: Image Navigation -- moving to a different Archive
-// Item within the same Project. Image Navigation is deliberately separate
-// from Project Navigation (ProjectNavigation.jsx): it never changes which
-// Project is loaded and never leaves this page, it only changes which
-// image is current, via the same onSelectImage callback ProjectTemplate
-// already uses to resolve the initial image from the URL.
-//
-// Zoom controls have been removed from this page (presentation-only
-// change -- the image now simply displays at its designed presentation
-// size). The shared .zoom-controls/.zoom-control CSS is left untouched,
-// since the homepage gallery still owns those classes.
-//
-// The prev/next image control here is a minimal, functional placeholder --
-// arrows plus a plain count -- since neither the mockup nor the approved
-// architecture specified a visual treatment for "continue exploring the
-// remaining images" (a filmstrip, thumbnails, etc.). Worth a design pass
-// before this is considered final.
-//
-// Layout refinement: `caption` is an accepted-as-is ReactNode (ProjectTemplate
-// passes its own <ImageMetadata/> straight through, unchanged) -- this
-// component still doesn't know or care what's inside it, it only places it
-// in .project-image-footer alongside the nav controls so the caption reads
-// as directly attached to the image, in the same row as (not stacked below)
-// the image-navigation controls. No metadata logic lives here; this is
-// purely a slot.
+import { getOptimizedImageSrc, getOptimizedImageSrcSet } from "./imageOptimization.js";
 
-export default function ImageViewer({ image, images, onSelectImage, caption }) {
-  const currentIndex = images.findIndex(
-    (item) => item.archiveNumber === image.archiveNumber,
-  );
-  const previousImage = currentIndex > 0 ? images[currentIndex - 1] : null;
-  const nextImage =
-    currentIndex < images.length - 1 ? images[currentIndex + 1] : null;
-
-  const handleSelect = (target) => {
-    if (!target) return;
-    onSelectImage(target.archiveNumber);
-  };
-
+// The template's large image, plus the one control that lives directly on
+// it: the Project Information trigger (the +/X, passed in via `overlay`).
+// Image Navigation and the Archive Number used to render here too, but
+// both moved out to ProjectTemplate.jsx as of the final correction pass
+// (Josh review) -- see ImageNavigation.jsx and ProjectTemplate.jsx's own
+// comments for why. This component's only remaining job is: display the
+// current image, at its own natural size, with nothing overlaid on it
+// except the metadata trigger.
+//
+// Cropping correction (Josh review, final correction pass): the previous
+// pass anchored the metadata trigger using a wrapper
+// (.project-image-frame__inner) sized via an inline CSS `aspect-ratio`
+// computed from this image's PRECOMPUTED intrinsic dimensions
+// (image-metadata.json, generated at build time by
+// scripts/optimize-images.mjs). That's a real risk of mismatch -- most
+// concretely, that script reads metadata via a plain `sharp(...).metadata()`
+// call BEFORE its own `.rotate()` step, so a source photo with an EXIF
+// orientation flag could have its recorded width/height transposed
+// relative to what actually renders -- and forcing the wrapper (and via
+// it, effectively the image) into a WRONG aspect-ratio box means the
+// photo gets stretched/distorted to fill it, which is exactly the kind of
+// cropping/distortion this page must never do. Fixed by removing the
+// precomputed aspect-ratio dependency entirely: the image now sizes
+// itself purely from its own loaded content plus a non-percentage CSS
+// constraint (see .project-image-frame__img in styles.css -- the same
+// viewport-derived formula .project-image-frame's own height already
+// uses, not a percentage of anything), and .project-image-frame__inner
+// simply shrink-wraps to whatever box the image ends up rendering at, via
+// ordinary flex-item content-sizing -- no wrapper-imposed ratio, no
+// width/height attributes standing in for the image's real content. The
+// relationship is now strictly IMAGE determines its own rendered
+// dimensions -> WRAPPER conforms to IMAGE -> the metadata trigger anchors
+// to WRAPPER, never the reverse. See .project-image-frame__inner's own
+// comment in styles.css for the non-circular sizing reasoning.
+//
+// Image-first redesign: the taupe .project-image-frame background is
+// gone -- the frame is now purely a centering/sizing box, not a visible
+// "container." `overlay` is the one remaining slot, an accepted-as-is
+// ReactNode this component doesn't inspect or know the meaning of --
+// rendered inside .project-image-frame__inner (see above), so whatever's
+// passed in -- the Project Information trigger -- can be positioned via
+// plain CSS `position: absolute` against the actual photo's own corner,
+// correctly for every aspect ratio, with no cropping.
+//
+// Image loading (Josh review, final polish pass): this <img> requests a
+// properly-sized width variant through the same getOptimizedImageSrc/
+// getOptimizedImageSrcSet pipeline the homepage gallery already uses (see
+// imageOptimization.js) instead of the full original file.
+// loading="eager"/fetchPriority="high" mirror what the homepage's own
+// single-large-image case (its "focused image" lightbox) already does
+// for the one prominent image a user is looking at -- see App.jsx.
+// Delivery (which sized asset to request) and presentation (how it's
+// laid out once it arrives) are kept strictly separate here: nothing
+// about this request-sizing logic constrains the image's own aspect
+// ratio or crops it -- both optimized delivery paths (the local
+// pre-generated variants and the live Sanity CDN transform) only ever
+// constrain width, letting height follow proportionally; see
+// imageOptimization.js's own comment.
+//
+// onImageLoaded (Josh review, final correction pass): fired from the
+// <img>'s own onLoad event once the CURRENTLY REQUESTED image has
+// actually finished loading -- this is what lets ProjectTemplate.jsx
+// know when it's safe to advance the counter/archive-number display
+// (see ImageNavigation.jsx and ProjectTemplate's handleImageLoaded), so
+// the visible "N / M" text and archive number never run ahead of the
+// photograph that's actually on screen.
+export default function ImageViewer({ image, overlay, onImageLoaded }) {
   return (
     <div className="project-image-viewer">
       <div className="project-image-frame">
-        <img
-          className="project-image-frame__img"
-          src={image.image}
-          alt={image.title || image.caption || `Archive ${image.archiveNumber}`}
-        />
-      </div>
-
-      <div className="project-image-footer">
-        {caption}
-        {images.length > 1 && (
-          <div className="project-image-nav" aria-label="Image navigation">
-            <button
-              type="button"
-              className="project-image-nav__control"
-              onClick={() => handleSelect(previousImage)}
-              disabled={!previousImage}
-              aria-label="Previous image"
-            >
-              ‹
-            </button>
-            <span className="project-image-nav__count">
-              {currentIndex + 1} / {images.length}
-            </span>
-            <button
-              type="button"
-              className="project-image-nav__control"
-              onClick={() => handleSelect(nextImage)}
-              disabled={!nextImage}
-              aria-label="Next image"
-            >
-              ›
-            </button>
-          </div>
-        )}
+        <div className="project-image-frame__inner">
+          <picture>
+            <source
+              type="image/webp"
+              srcSet={getOptimizedImageSrcSet(image.image, "webp")}
+              sizes="90vw"
+            />
+            <source
+              type="image/jpeg"
+              srcSet={getOptimizedImageSrcSet(image.image, "jpg")}
+              sizes="90vw"
+            />
+            <img
+              className="project-image-frame__img"
+              src={getOptimizedImageSrc(image.image, 1200)}
+              alt={image.title || image.caption || `Archive ${image.archiveNumber}`}
+              loading="eager"
+              fetchPriority="high"
+              decoding="async"
+              onLoad={() => onImageLoaded?.(image.archiveNumber)}
+            />
+          </picture>
+          {overlay}
+        </div>
       </div>
     </div>
   );

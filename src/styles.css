@@ -532,17 +532,41 @@ body {
   color: #111;
 }
 
-/* Menu active-page indicator (About Page CMS milestone): the currently
-   active page's Menu-drawer label reads as [ ABOUT ] rather than getting
-   a filled/gray tab treatment. Same muted bracket tone as the archive
-   index's own selected-value brackets (.index-drawer__option-bracket,
-   #c8c8c8 above) -- reusing that exact color is what ties this to the
-   site's existing "[ urbānum ]" logo/bracket language instead of reading
-   as a conventional UI active/selected state. Inactive labels are
-   untouched plain text; no background, weight, or color change of any
-   kind is applied to .index-drawer__label-text itself. */
-.index-drawer__label-bracket {
-  color: #c8c8c8;
+/* Menu active-page indicator, refinement pass: the bracket treatment
+   ([ ABOUT ]) above is retired -- .index-drawer__label-bracket and its
+   JSX are both gone (see Header.jsx). The active label now just switches
+   to #9d9d9d, the exact same neutral gray SEARCH already sits in
+   (.text-control--muted above, same hex literal -- duplicated rather
+   than cross-referenced since the two live in unrelated component
+   contexts, same reasoning UrbanumArchiveNav.jsx's own INK/MUTED_INK
+   duplication already documents for this codebase). Scoped to
+   .index-drawer__row--menu specifically (the Menu drawer's own row,
+   About/Journal/Contact only) rather than the bare .index-drawer__label-
+   text class, which the Filter drawer's Theme/Project/Year/etc. fields
+   also use elsewhere in this same file (.index-drawer__row, no --menu)
+   -- scoping it this way means this change cannot leak into Filter's
+   own field labels. */
+.index-drawer__row--menu .index-drawer__label-text--active {
+  color: #9d9d9d;
+}
+
+/* Hover parity with MENU/FILTER: About/Journal/Contact now use the exact
+   same hover effect as the top-nav MENU/FILTER controls
+   (.text-control--filter/.text-control--filter:hover above) -- same
+   properties, same values, same easing, reproduced here rather than
+   shared because .index-drawer__label-text is a different component
+   context (inside the Menu drawer, not the top nav row) with no existing
+   cross-reference between the two. Layers on top of the active-gray rule
+   above exactly the way .text-control:hover already layers on top of
+   .text-control--muted for SEARCH itself -- an active (gray) label still
+   fades/lifts on hover, it isn't a mutually-exclusive state. */
+.index-drawer__row--menu .index-drawer__label-text {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.index-drawer__row--menu .index-drawer__label-text:hover {
+  opacity: 0.72;
+  transform: translateY(-1px);
 }
 
 /* The Context Panel no longer shows individual selected values -- only how

@@ -972,20 +972,57 @@ export default function Header({
                Theme/Project/Year use below -- see the shared Active Panel
                further down for its reveal. */
             <div className="index-drawer__row index-drawer__row--menu">
-              {MENU_LINKS.map((label) => (
-                <div className="index-drawer__field" key={label}>
-                  <div className="index-drawer__field-row">
-                    <button
-                      type="button"
-                      className="index-drawer__label-text"
-                      onClick={() => navigate(MENU_LINK_PATHS[label])}
-                      tabIndex={isMenuOpen ? 0 : -1}
-                    >
-                      {label}
-                    </button>
+              {/* Navigation active-state (bracket language, About Page CMS
+                  milestone): reuses this exact site's own existing bracket
+                  UI language -- .index-drawer__option-bracket already
+                  brackets a selected Filter/Search value elsewhere in this
+                  same drawer -- rather than a new highlight/background
+                  treatment, per explicit instruction ("do NOT use the gray
+                  filled tab/background treatment," brackets should relate
+                  to the "[ urbānum ]" wordmark itself). `path` (from
+                  useCurrentPath(), already read above for isChildPage/
+                  isProjectPage) tells About/Journal whether they ARE the
+                  current page; Contact has no page/path of its own (it's a
+                  panel, not a route -- see MENU_CONTACT_ITEMS' own comment),
+                  so its "active" instead means its own Active Panel is
+                  currently open (`activeEntry === "contact"`, the same
+                  state its aria-expanded below already reads). Brackets are
+                  only ever rendered when active -- an inactive label is
+                  completely unchanged, still exactly the same plain
+                  uppercase text with no bracket, no bold, no color change. */}
+              {MENU_LINKS.map((label) => {
+                const isActive = path === MENU_LINK_PATHS[label];
+                return (
+                  <div className="index-drawer__field" key={label}>
+                    <div className="index-drawer__field-row">
+                      <button
+                        type="button"
+                        className="index-drawer__label-text"
+                        onClick={() => navigate(MENU_LINK_PATHS[label])}
+                        tabIndex={isMenuOpen ? 0 : -1}
+                      >
+                        {isActive && (
+                          <span
+                            className="index-drawer__label-bracket"
+                            aria-hidden="true"
+                          >
+                            [
+                          </span>
+                        )}
+                        {label}
+                        {isActive && (
+                          <span
+                            className="index-drawer__label-bracket"
+                            aria-hidden="true"
+                          >
+                            ]
+                          </span>
+                        )}
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               <div
                 className="index-drawer__field"
                 ref={(el) => {
@@ -1000,7 +1037,23 @@ export default function Header({
                     onClick={() => handleAddClick("contact")}
                     tabIndex={isMenuOpen ? 0 : -1}
                   >
+                    {activeEntry === "contact" && (
+                      <span
+                        className="index-drawer__label-bracket"
+                        aria-hidden="true"
+                      >
+                        [
+                      </span>
+                    )}
                     Contact
+                    {activeEntry === "contact" && (
+                      <span
+                        className="index-drawer__label-bracket"
+                        aria-hidden="true"
+                      >
+                        ]
+                      </span>
+                    )}
                   </button>
                 </div>
               </div>

@@ -309,3 +309,52 @@ export async function fetchJournalEntries() {
     normalizeJournalEntry(raw, raw.image ? urlFor(raw.image).url() : null),
   );
 }
+
+// -----------------------------------------------------------------------
+// About Page (About Page CMS milestone). A singleton, not a collection --
+// unlike every query above, this fetches at most one document, so it
+// takes `[0]` rather than ordering/mapping over an array. Same
+// drafts-excluded guard as every other query here, for the same reason:
+// an unpublished in-progress edit should never be what a visitor sees.
+//
+// Deliberately does NOT project an image field -- the About page's
+// right-side image is not a field on this document at all. It reuses the
+// existing Archive Item `displayRole: 'Featured'` concept instead (see
+// src/AboutPage.jsx's own comment for the full reasoning), which is
+// already fetched via ARCHIVE_ITEMS_QUERY/getArchiveItems() -- no second
+// image pipeline, no new query needed for it.
+// -----------------------------------------------------------------------
+export const ABOUT_PAGE_QUERY = `
+  *[_type == "aboutPage" && !(_id in path("drafts.**"))][0] {
+    title,
+    subtitle,
+    body
+  }
+`;
+
+// Reshapes the one raw Sanity result into the shape src/AboutPage.jsx
+// reads. `raw` is null/undefined until an editor has actually created
+// and published the About Page document -- returning null (not an
+// object with blank fields) lets the frontend's own presence guards
+// (matching the pattern already established in ProjectInfoPanel.jsx: an
+// absent field simply doesn't render, rather than rendering an empty
+// heading/paragraph) decide what "no About Page content yet" looks like.
+export function normalizeAboutPage(raw) {
+  if (!raw) return null;
+
+  return {
+    title: raw.title,
+    subtitle: raw.subtitle,
+    body: raw.body,
+  };
+}
+
+// The one exported entry point this milestone needs: fetch the About
+// Page singleton from Sanity, already reshaped. Mirrors
+// fetchThemes()/fetchProjects()/fetchArchiveItems() exactly -- see
+// src/content/aboutPage.js for where this gets called from and how the
+// async boundary around it is contained.
+export async function fetchAboutPage() {
+  const raw = await client.fetch(ABOUT_PAGE_QUERY);
+  return normalizeAboutPage(raw);
+}

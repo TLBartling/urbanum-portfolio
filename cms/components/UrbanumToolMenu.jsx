@@ -67,6 +67,19 @@ import {ARCHIVE_TOOL_NAMES, DEFAULT_ARCHIVE_TOOL_NAME} from '../archiveSections'
 // place to change how Studio behaves. Scope matches the earlier
 // Advanced -> Settings rename: only this display label changed, the
 // underlying Tool object/route did not.
+// About Page CMS milestone (reverted in the CMS-completion pass): a
+// fourth top-nav group, "About," was briefly added here, giving About
+// Page its own separate link alongside Import/Archive/System. That
+// turned out to be the wrong placement -- Josh already reaches Photo
+// Journal through the persistent Archive rail's "JOURNAL" cluster
+// (UrbanumArchiveNav.jsx), not through a top-nav link of its own, so a
+// brand-new top-nav entry was an easy place for About Page to go
+// unnoticed. About Page is now a regular ARCHIVE_SECTIONS entry
+// (`group: 'Journal'`, see archiveSections.js) and reached the exact same
+// way Photo Journal already is: click "Archive" here, then "About Page"
+// in the rail's JOURNAL group. This file goes back to exactly the three
+// groups it had before that milestone -- no About-specific code left
+// here at all.
 const GROUP_ORDER = ['Import', 'Archive', 'System']
 
 const GROUP_TOOL_NAME = {

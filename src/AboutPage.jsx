@@ -1,81 +1,94 @@
 import { useState } from "react";
 import Header from "./Header";
-import { allImages } from "./App";
+import { getAboutPage, getArchiveItems } from "./content";
+import { getOptimizedImageSrc, getOptimizedImageSrcSet } from "./imageOptimization.js";
 
-// The studio's About page -- an extension of the homepage's own reading
-// language rather than a conventional "about us" page. A narrow intro
-// column (name/location/established, a generous gap, and a short editorial
-// statement) sits beside a two-row image grid that carries the page --
-// images are the dominant feature, each labelled with only a stylized
-// archive number, no titles, clients, categories, or tags. A full-width
-// footer below closes the page with three short editorial text blocks
-// and, past a vertical rule, the studio's contact details.
+// About Page redesign (About Page CMS milestone): replaces the previous
+// six-image collage + Philosophy/Practice/Process + Contact footer with
+// one restrained two-column composition -- an editable title/subtitle/
+// body on the left, one dominant architectural image on the right.
 //
-// The `images` prop is the CMS seam: six placeholder entries below fill
-// the grid's six fixed slots (three per row) until the studio's own
-// photography is wired up, following the same prop-default pattern
-// Header.jsx already uses for its MOCK_THEMES/etc. Swapping in real
-// images later means passing a differently-populated `images` array of
-// the same shape -- nothing here needs to change structurally.
-const PLACEHOLDER_IMAGES = [
-  { number: "002", src: allImages[2] },
-  { number: "008", src: allImages[8] },
-  { number: "013", src: allImages[13] },
-  { number: "019", src: allImages[19] },
-  { number: "021", src: allImages[21] },
-  { number: "030", src: allImages[30] },
-];
+// The left column's three fields (title, subtitle/location, body) all
+// come from the About Page singleton document in Sanity
+// (src/content/aboutPage.js), never from hardcoded JSX -- the site owner
+// edits every word of this page from Sanity, without touching source.
+// Each field is presence-guarded (renders only if populated, exactly the
+// "an unpopulated field disappears cleanly rather than rendering blank
+// space" convention already established in ProjectInfoPanel.jsx) --
+// there is deliberately no hardcoded fallback title or copy anywhere in
+// this file.
+//
+// The right-side image reuses the existing Archive Item `displayRole:
+// 'Featured'` concept rather than a separate, unrelated image field --
+// see selectFeaturedImage() below for the full selection behavior.
+//
+// The old collage (StudioImage/.studio-grid), its six PLACEHOLDER_IMAGES,
+// and the Philosophy/Practice/Process + Contact footer (FOOTER_COLUMNS/
+// CONTACT_FIELDS) are removed outright, per explicit instruction -- none
+// of it is reused or redundant elsewhere, it's simply gone. The header
+// and the page shell (.about-page/.about-content, shared with the
+// Project Page and unrelated to this page's own content) are both
+// untouched.
 
-const FOOTER_COLUMNS = [
-  {
-    label: "Our Philosophy",
-    text: "Good architecture is measured by how well it serves the people who use it -- quietly, and for a long time.",
-  },
-  {
-    label: "Our Practice",
-    text: "Every project begins with the site itself: its light, its climate, its history.",
-  },
-  {
-    label: "Our Process",
-    text: "Clarity comes through collaboration, curiosity, and a deep respect for context.",
-  },
-];
-
-const CONTACT_FIELDS = [
-  { label: "Email", value: "hello@urbanumstudio.com" },
-  { label: "Phone", value: "+1 (305) 555-0123" },
-  { label: "Instagram", value: "@urbanumstudio" },
-  { label: "Location", value: "Miami, Florida" },
-];
-
-function StudioImage({ number, src }) {
-  return (
-    <div className="studio-image">
-      <img
-        className="studio-image__img"
-        src={src}
-        alt={`Archive ${number}`}
-        loading="lazy"
-        decoding="async"
-      />
-      {/* Archive-number presentation rule (Josh review): bracketed
-          site-wide, e.g. "[002]" -- display-only; the img's own alt text
-          above is left as plain descriptive text, unbracketed, since it's
-          read aloud rather than visually presented. */}
-      <span className="studio-image__number">{`[${number}]`}</span>
-    </div>
+// Featured-image selection (IMAGE REQUIREMENT): reuses the exact Archive
+// Item field Project Pages already use for their own opening image
+// (archiveItemType.js's `displayRole`; see projectContent.js's
+// resolveInitialImageId for the precedent) -- but globally, across every
+// Archive Item regardless of which Project it belongs to, since the
+// About page isn't scoped to one Project. No new Sanity query: this
+// filters the exact same already-cached array getArchiveItems() already
+// exposes to every other component, so it stays entirely inside the
+// existing content-layer seam.
+//
+//   0 Featured items -- falls back to the first Archive Item that has an
+//     image at all (same real content pool, just without the Featured
+//     filter), so the page never shows a missing/broken image. If there
+//     are no Archive Items at all yet, returns null and the image column
+//     simply doesn't render (see the presence guard below) instead of a
+//     broken <img>.
+//   1 Featured item -- that's the only candidate, always selected.
+//   2+ Featured items -- one is picked at random. This only ever runs
+//     inside useState's lazy initializer below, which fires once on this
+//     component's initial mount -- so a visitor sitting on the page
+//     never sees it change (no interval, no re-roll on re-render), while
+//     a fresh page load/refresh may land on a different one, exactly as
+//     specified.
+function selectFeaturedImage() {
+  const items = getArchiveItems();
+  const featured = items.filter(
+    (item) => item.displayRole === "Featured" && item.image,
   );
+
+  if (featured.length > 0) {
+    return featured[Math.floor(Math.random() * featured.length)];
+  }
+
+  const anyWithImage = items.find((item) => item.image);
+  return anyWithImage ?? null;
 }
 
-export default function AboutPage({ images = PLACEHOLDER_IMAGES }) {
-  // Same drawer-height/opacity wiring App.jsx and ProjectsPage.jsx already
-  // use for their own scroll-container, reused as-is so the header's
-  // Filter/Search/Menu drawer pushes and dims this page's content the
-  // same way it does everywhere else.
+export default function AboutPage() {
+  // Same drawer-height/opacity wiring App.jsx/ProjectsPage.jsx/the
+  // Project Page all already use for their own scroll-container, reused
+  // as-is so the header's Filter/Search/Menu drawer pushes and dims this
+  // page's content the same way it does everywhere else.
   const [isIndexDrawerOpen, setIsIndexDrawerOpen] = useState(false);
   const [indexDrawerHeight, setIndexDrawerHeight] = useState(0);
 
-  const [row1a, row1b, row1c, row2a, row2b, row2c] = images;
+  const aboutPage = getAboutPage();
+  // Lazy initializer -- runs exactly once, on mount, per the selection
+  // behavior documented above.
+  const [featuredImage] = useState(selectFeaturedImage);
+
+  // One blank line between paragraphs in Sanity's plain-text field becomes
+  // one <p> here -- the same lightweight convention the schema's own
+  // field description asks the editor to follow (see aboutPageType.js).
+  const paragraphs = aboutPage?.body
+    ? aboutPage.body
+        .split(/\n\s*\n/)
+        .map((paragraph) => paragraph.trim())
+        .filter(Boolean)
+    : [];
 
   return (
     <div className="about-page">
@@ -85,91 +98,69 @@ export default function AboutPage({ images = PLACEHOLDER_IMAGES }) {
       />
 
       <div
-        className={`about-content studio-content${
+        className={`about-content about-content--redesign${
           isIndexDrawerOpen ? " scroll-container--drawer-open" : ""
         }`}
         style={{
           // margin-top, not transform: on a child page the drawer stays
           // open for the whole visit (see Header.jsx), so this offset is
-          // steady-state, not a brief animated toggle -- transform's per-
-          // frame compositing cost, paid the whole time the page is open,
-          // is what caused child-page scrolling to regress. margin-top
-          // adds to this element's own existing padding-top via normal
-          // document flow (no calc()/clamp duplication needed) and, with
-          // no transition declared on it, changes apply instantly rather
-          // than animating -- consistent with Menu no longer being a
-          // brief, animated interaction here. The homepage keeps its own
-          // transform-based push untouched (see App.jsx): Filter/Menu are
-          // genuinely frequent, animated toggles there.
+          // steady-state, not a brief animated toggle -- same reasoning
+          // as every other child page's own scroll-container wiring.
           marginTop: indexDrawerHeight
             ? `${Math.round(indexDrawerHeight) + 8}px`
             : undefined,
         }}
       >
-        <div className="studio-layout">
-          <div className="studio-intro">
-            <h1 className="about-hero__title">Urbānum Studio</h1>
-            <p className="about-hero__location">Miami, Florida, USA</p>
+        <div className="about-layout">
+          <div className="about-layout__text">
+            {aboutPage?.title && (
+              <h1 className="about-hero__title about-hero__title--small">
+                {aboutPage.title}
+              </h1>
+            )}
 
-            <div className="studio-intro__copy">
-              <p className="studio-intro__paragraph">
-                Urbānum Studio began with a simple premise: that architecture
-                should clarify a place, not compete with it. Every project
-                starts by listening to its site -- its light, its climate,
-                its history -- before a single line is drawn.
-              </p>
-              <p className="studio-intro__paragraph">
-                Our work spans residential, commercial, and urban-scale
-                projects across South Florida and beyond. Regardless of
-                scale, the same discipline applies: remove what isn&rsquo;t
-                necessary, and let what remains carry the weight of the
-                design.
-              </p>
-              <p className="studio-intro__paragraph">
-                We work in close collaboration with clients who value
-                restraint over spectacle, and architecture that ages well --
-                both materially and in memory.
-              </p>
-            </div>
-          </div>
+            {aboutPage?.subtitle && (
+              <p className="about-hero__location">{aboutPage.subtitle}</p>
+            )}
 
-          <div className="studio-composition">
-            <div className="studio-grid">
-              <div className="studio-grid__row studio-grid__row--one">
-                <StudioImage {...row1a} />
-                <StudioImage {...row1b} />
-                <StudioImage {...row1c} />
+            {paragraphs.length > 0 && (
+              <div className="about-layout__copy">
+                {paragraphs.map((paragraph, index) => (
+                  <p className="about-layout__paragraph" key={index}>
+                    {paragraph}
+                  </p>
+                ))}
               </div>
-              <div className="studio-grid__row studio-grid__row--two">
-                <StudioImage {...row2a} />
-                <StudioImage {...row2b} />
-                <StudioImage {...row2c} />
-              </div>
-            </div>
+            )}
           </div>
-        </div>
 
-        <div className="studio-footer">
-          {FOOTER_COLUMNS.map((col) => (
-            <div className="studio-footer__col" key={col.label}>
-              <span className="studio-footer__label">{col.label}</span>
-              <p className="studio-footer__text">{col.text}</p>
+          {featuredImage && (
+            <div className="about-layout__image">
+              <picture>
+                <source
+                  type="image/webp"
+                  srcSet={getOptimizedImageSrcSet(featuredImage.image, "webp")}
+                  sizes="(max-width: 900px) 100vw, 55vw"
+                />
+                <source
+                  type="image/jpeg"
+                  srcSet={getOptimizedImageSrcSet(featuredImage.image, "jpg")}
+                  sizes="(max-width: 900px) 100vw, 55vw"
+                />
+                <img
+                  className="about-layout__img"
+                  src={getOptimizedImageSrc(featuredImage.image, 1200)}
+                  alt={
+                    featuredImage.title ||
+                    featuredImage.caption ||
+                    `Archive ${featuredImage.archiveNumber}`
+                  }
+                  loading="eager"
+                  decoding="async"
+                />
+              </picture>
             </div>
-          ))}
-
-          <div className="studio-footer__divider" aria-hidden="true" />
-
-          <div className="studio-footer__contact">
-            <span className="studio-footer__contact-heading">Contact</span>
-            <dl className="studio-footer__contact-fields">
-              {CONTACT_FIELDS.map(({ label, value }) => (
-                <div className="studio-footer__contact-field" key={label}>
-                  <dt>{label}</dt>
-                  <dd>{value}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
+          )}
         </div>
       </div>
     </div>

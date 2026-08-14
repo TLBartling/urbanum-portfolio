@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 import Router from "./Router";
 import SplashScreen from "./SplashScreen";
-import { loadArchiveItems, loadProjects, loadThemes, loadJournalEntries } from "./content";
+import { loadArchiveItems, loadProjects, loadThemes, loadJournalEntries, loadAboutPage } from "./content";
 import "./styles.css";
 
 // Repository milestone (startup-experience fix): Archive Items come from
@@ -37,13 +37,25 @@ import "./styles.css";
 // the same reason loadProjects() did -- App.jsx reads getThemes() at
 // render time now (see App.jsx's own comment at that call site), so the
 // cache needs to already be warm by then.
+//
+// About Page CMS milestone: loadAboutPage() joins the same Promise.all
+// for the same reason -- src/AboutPage.jsx reads getAboutPage() at
+// render time, and Router (which renders AboutPage) doesn't mount until
+// this whole Promise.all settles, so the cache is already warm by the
+// time it could ever be read.
 function Root() {
   const [isRepositoryReady, setIsRepositoryReady] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
 
-    Promise.all([loadArchiveItems(), loadProjects(), loadThemes(), loadJournalEntries()]).finally(() => {
+    Promise.all([
+      loadArchiveItems(),
+      loadProjects(),
+      loadThemes(),
+      loadJournalEntries(),
+      loadAboutPage(),
+    ]).finally(() => {
       if (!cancelled) setIsRepositoryReady(true);
     });
 

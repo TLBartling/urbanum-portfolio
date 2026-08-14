@@ -1,7 +1,7 @@
 import {defineConfig} from 'sanity'
 import {structureTool} from 'sanity/structure'
 import {schemaTypes} from './schemaTypes'
-import {archiveItemsStructure, projectsStructure, themesStructure, photoJournalStructure} from './structure'
+import {archiveItemsStructure, projectsStructure, themesStructure, photoJournalStructure, aboutPageStructure} from './structure'
 import {ARCHIVE_SECTIONS} from './archiveSections'
 import {StudioIcon} from './components/StudioIcon'
 import {importWorkspaceTool} from './importWorkspaceTool'
@@ -26,11 +26,17 @@ import {UrbanumArchiveLayout} from './components/UrbanumArchiveLayout'
 // per `structure` function, so "four independently-landable sections"
 // means four separate resolvers, looked up here by the same `name` each
 // section is keyed by everywhere else.
+//
+// CMS-completion pass: `aboutPage` joins this lookup as a fifth entry,
+// mapped to structure.js's own `aboutPageStructure` (the singleton
+// resolver, not `sectionStructure`'s document-list one) -- everything
+// else about how this map is built and used is unchanged.
 const STRUCTURE_BY_SECTION_NAME = {
   archiveItems: archiveItemsStructure,
   projects: projectsStructure,
   themes: themesStructure,
   photoJournal: photoJournalStructure,
+  aboutPage: aboutPageStructure,
 }
 
 export default defineConfig({
@@ -128,6 +134,13 @@ export default defineConfig({
   // exactly one, non-overlapping document type, the same constraint
   // advancedTool.js's own comment already documents for why *that* tool
   // isn't a second structureTool() instance.
+  //
+  // CMS-completion pass: ARCHIVE_SECTIONS now has a fifth entry (`aboutPage`,
+  // see archiveSections.js), so this same `.map()` -- unchanged -- also
+  // registers About Page's Structure Tool automatically. It previously had
+  // its own separate `structureTool()` call here plus a manual append onto
+  // `tools` below; both are gone now that it's a regular section like the
+  // other four, reached the same way Josh already reaches Photo Journal.
   plugins: ARCHIVE_SECTIONS.map((section) =>
     structureTool({
       name: section.name,
@@ -137,11 +150,11 @@ export default defineConfig({
     }),
   ),
 
-  // Prepends Urbanum Import to Studio's tool list and appends the new
+  // Prepends Urbanum Import to Studio's tool list and appends the
   // Advanced placeholder tool (`prev` is the list contributed by
-  // `plugins` above -- the four Archive Structure Tools, as of the
-  // navigation-architecture pass). Import staying first is what makes it
-  // the default landing tool, per Sanity's Tools docs -- unaffected by
+  // `plugins` above -- the five Archive/Journal Structure Tools, as of
+  // the CMS-completion pass). Import staying first is what makes it the
+  // default landing tool, per Sanity's Tools docs -- unaffected by
   // Advanced being appended after them. Advanced is a wholly separate
   // Tool with no document types of its own (see advancedTool.js for why
   // it isn't a second structureTool() instance).

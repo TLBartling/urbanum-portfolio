@@ -2,6 +2,7 @@ import {ArchiveIcon} from '@sanity/icons/Archive'
 import {ProjectsIcon} from '@sanity/icons/Projects'
 import {TagIcon} from '@sanity/icons/Tag'
 import {BookIcon} from '@sanity/icons/Book'
+import {DocumentTextIcon} from '@sanity/icons/DocumentText'
 
 // Navigation-architecture pass ("one Archive application, four sections"):
 // the single source of truth for the Archive's four sections, born out of
@@ -43,6 +44,15 @@ import {BookIcon} from '@sanity/icons/Book'
 // of these four orderings are guesses: each matches the order the
 // underlying field already carries real meaning in elsewhere in this
 // project (see the per-entry comments below).
+//
+// CMS-completion pass: this array now holds five entries, not four --
+// "About Page" was added below (`group: 'Journal'`) alongside Photo
+// Journal. It's shaped differently from the original four (no
+// `defaultOrdering`, since it isn't a browsable list -- see its own
+// per-entry comment), but it plugs into every one of the shared
+// mechanisms this file documents above exactly the same way: tool
+// registration, the rail's Archive-tool detection, and the rail's own
+// grouped listing all still just read this array generically.
 export const ARCHIVE_SECTIONS = [
   {
     name: 'archiveItems',
@@ -117,6 +127,38 @@ export const ARCHIVE_SECTIONS = [
     // expectation for a journal/log, using the entry's own `date` field
     // rather than editing recency.
     defaultOrdering: [{field: 'date', direction: 'desc'}],
+  },
+  {
+    // CMS-completion pass ("finish the About Page CMS implementation"):
+    // About Page moved here from being its own standalone 5th Structure
+    // Tool + 4th top-nav group (About Page CMS milestone's original
+    // placement). That placement was the actual reason Josh couldn't find
+    // it: About Page never appeared inside the Archive/Journal rail he
+    // already uses to reach Photo Journal, only behind a brand-new,
+    // easy-to-miss top-nav link nobody told him to look for. Filing it
+    // here instead -- as a fifth ARCHIVE_SECTIONS entry with
+    // `group: 'Journal'` -- means every mechanism that already reads this
+    // array picks it up automatically and for free: sanity.config.js's
+    // `plugins: ARCHIVE_SECTIONS.map(...)` registers its Structure Tool,
+    // `ARCHIVE_TOOL_NAMES` (below) makes UrbanumArchiveLayout.jsx treat it
+    // as part of the Archive app (so the persistent rail renders while
+    // it's open), and UrbanumArchiveNav.jsx's own `group === 'Journal'`
+    // filter lists it directly beneath Photo Journal under the rail's
+    // "JOURNAL" label -- exactly "Journal -> Photo Journal / About Page,"
+    // with no changes needed to either of those two files.
+    //
+    // It does NOT get a `defaultOrdering` -- that option only means
+    // anything for `S.documentTypeList()` (see structure.js's
+    // `sectionStructure`), and About Page is a singleton opened via
+    // `S.document().schemaType('aboutPage').documentId('aboutPage')`
+    // (structure.js's own `aboutPageStructure`, unchanged from the
+    // original milestone) -- there's exactly one document, nothing to
+    // order.
+    name: 'aboutPage',
+    title: 'About Page',
+    schemaType: 'aboutPage',
+    icon: DocumentTextIcon,
+    group: 'Journal',
   },
 ]
 

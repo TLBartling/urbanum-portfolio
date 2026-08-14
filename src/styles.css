@@ -532,6 +532,19 @@ body {
   color: #111;
 }
 
+/* Menu active-page indicator (About Page CMS milestone): the currently
+   active page's Menu-drawer label reads as [ ABOUT ] rather than getting
+   a filled/gray tab treatment. Same muted bracket tone as the archive
+   index's own selected-value brackets (.index-drawer__option-bracket,
+   #c8c8c8 above) -- reusing that exact color is what ties this to the
+   site's existing "[ urbānum ]" logo/bracket language instead of reading
+   as a conventional UI active/selected state. Inactive labels are
+   untouched plain text; no background, weight, or color change of any
+   kind is applied to .index-drawer__label-text itself. */
+.index-drawer__label-bracket {
+  color: #c8c8c8;
+}
+
 /* The Context Panel no longer shows individual selected values -- only how
    many are selected, so the row stays visually stable no matter how many
    values a category holds. Same muted color/opacity as .filter-count,
@@ -2003,280 +2016,152 @@ html.is-browsing .zoom-controls {
   }
 }
 
-/* --- About page (studio) -----------------------------------------------
-   The dedicated About page reuses .about-page/.about-content for the page
-   shell and .about-hero__title/__location/__established + .about-meta__*
-   for typography (both already carry the site's restrained editorial
-   type scale), and adds only the layout this page needs: a two-region
-   split between a quiet intro column and an authored image composition. */
-.studio-content {
-  /* Refinement pass: previously clamp(130px, 13vw, 170px), deliberately
-     deeper than the archive pages -- that read as floating too far below
-     the header rather than sitting close to it. Now reuses the exact
-     same restrained clearance as the Project page's own
-     .project-content (clamp(92px, calc(7vw + 12px), 114px), itself
-     pegged 12px below .site-header__row1's real rendered height at any
-     viewport width), so the page hugs the header the same way the
-     Project page does. */
+/* --- About page ----------------------------------------------------------
+   Redesign (About Page CMS milestone): the previous six-image collage +
+   Philosophy/Practice/Process + Contact footer (.studio-*) is removed
+   outright and replaced with one restrained two-column composition -- an
+   editable title/subtitle/body on the left (all three sourced from the
+   About Page singleton document in Sanity; see src/AboutPage.jsx), one
+   dominant architectural image on the right (sourced from the existing
+   Archive Item `displayRole: 'Featured'` concept, also see
+   src/AboutPage.jsx). Reuses .about-page/.about-content for the page
+   shell and .about-hero__title/__location for the title/subtitle
+   typography -- both already carry the site's restrained editorial type
+   scale and are shared with ProjectsPage.jsx's own heading, so only the
+   one small modifier below (.about-hero__title--small) is new; it's
+   additive, applied alongside .about-hero__title rather than replacing
+   it, so ProjectsPage's own heading size is completely unaffected. */
+.about-content--redesign {
+  /* Same restrained top clearance as the Project Page's own
+     .project-content -- see that rule's own comment for the formula's
+     origin. Longhand padding-top at equal selector specificity + later
+     source order wins over .about-content's own shorthand `padding`,
+     the same technique .project-content already uses for the same
+     reason (see that rule's comment) -- padding-right/bottom still
+     inherit .about-content's shared values unchanged. */
   padding-top: clamp(92px, calc(7vw + 12px), 114px);
 }
 
-.studio-layout {
-  display: flex;
-  align-items: flex-start;
-  gap: clamp(32px, 4vw, 64px);
+/* Smaller than the shared .about-hero__title's own clamp(1.8rem, 2.6vw,
+   2.4rem) -- per explicit instruction, this page's title is meant to
+   read as quiet editorial copy beside a dominant image, not a
+   page-scale heading. Only font-size is overridden; color, weight,
+   letter-spacing, and margin all still come from the shared rule. */
+.about-hero__title--small {
+  font-size: clamp(1.3rem, 1.7vw, 1.6rem);
 }
 
-/* A narrow, fixed-width intro column so the image grid -- not the text --
-   reads as the dominant feature of the page, per the approved mockup. */
-.studio-intro {
-  flex: 0 0 clamp(220px, 20vw, 300px);
+.about-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: clamp(48px, 6vw, 96px);
+}
+
+/* Dominance pass ("small text | LARGE IMAGE"): narrowed from `flex: 1 1
+   320px; max-width: 420px;`. The min-height pass just before this one
+   only stopped the image column from collapsing SHORTER than a normal
+   image already rendered -- it never made the column any WIDER, so in
+   the ordinary case (a normal-ish Featured image) it looked unchanged,
+   which is exactly the "didn't materially change what I'm seeing"
+   feedback. Width dominance is controlled here, not on the image side:
+   .about-layout__image below has always absorbed effectively 100% of
+   any extra row width once this column hits its own `max-width` (see
+   its own comment for the flex-grow math), so narrowing THIS column's
+   cap is what actually hands more width to the image -- bumping the
+   image's own flex-grow number alone would not have, since text was
+   already the binding constraint. */
+.about-layout__text {
+  flex: 1 1 260px;
   min-width: 0;
+  max-width: 320px;
   display: flex;
   flex-direction: column;
 }
 
-.studio-intro__copy {
+.about-layout__copy {
   display: flex;
   flex-direction: column;
   gap: 0.9em;
-  margin-top: clamp(32px, 4vw, 56px);
+  margin-top: clamp(28px, 3.2vw, 44px);
   max-width: 42ch;
 }
 
-.studio-intro__paragraph {
+/* Same typography the previous intro column already used
+   (.studio-intro__paragraph, now removed) -- carried forward unchanged
+   rather than invented fresh, since it already matched this site's
+   restrained editorial type scale. */
+.about-layout__paragraph {
   margin: 0;
   font-size: clamp(0.9rem, 1.05vw, 1rem);
   line-height: 1.7;
   color: #333;
 }
 
-.studio-composition {
-  flex: 1;
+/* Dominance pass ("small text | LARGE IMAGE," second refinement): this is
+   the "large image stage" -- both the WIDTH lever and the HEIGHT lever
+   for that are set here.
+   Width: flex-basis raised 420px -> 560px and flex-grow raised 1.8 -> 2.6.
+   The basis increase matters most at moderate two-column widths (just
+   above the 900px stacking breakpoint), where there isn't much leftover
+   row width for grow ratios to distribute in the first place -- a bigger
+   starting basis claims more of the row before any growth math even
+   happens. The grow bump matters at wide viewports, though it's now
+   largely academic: .about-layout__text's own max-width (320px, see that
+   rule's own comment) is reached quickly, after which -- per the flex
+   "resolve flexible lengths" algorithm -- literally all remaining free
+   row width flows to this column regardless of the exact grow number, so
+   this column ends up controlling somewhere around 75-80% of the row's
+   width at ordinary desktop widths.
+   Height: `min-height` raised from the previous pass's clamp(320px, 30vw,
+   480px) to a substantially taller clamp(480px, 58vh, 760px) -- and
+   switched from a vw-driven to a vh-driven middle term. That switch is
+   deliberate, not cosmetic: 30vw was calibrated to roughly match a normal
+   landscape image's OWN natural rendered height in this column, so it
+   only ever bound for an unusually wide/short pick, and even then only
+   floored it back up to "normal" -- which is exactly why the previous
+   pass "didn't materially change what I'm seeing" for anything but an
+   extreme image. 58vh instead ties the floor to how much of the actual
+   viewport the image stage occupies, independent of the column's own
+   width or the current image's own ratio, so this reads as a genuinely
+   large, dominant visual area for every Featured image, not a
+   collapse-guard that rarely engages. It remains a FLOOR only, exactly as
+   before -- a short image still doesn't fill it (unfilled space is
+   ordinary page background, no cropping/letterboxing), and a portrait
+   image that naturally renders taller than this floor is completely
+   unconstrained, rendering at its own full natural size. */
+.about-layout__image {
+  flex: 2.6 1 560px;
   min-width: 0;
-  /* A small nudge down from the intro column's top edge, giving the
-     heading a touch more breathing room above the grid. */
-  padding-top: clamp(22px, 2.6vw, 34px);
+  min-height: clamp(480px, 58vh, 760px);
 }
 
-/* Two fixed-height rows of images -- widths vary per the approved
-   mockup's proportions, but every image in a row shares the row's exact
-   height (object-fit: cover crops to fill), which is what makes the grid
-   read as a single authored composition instead of a gallery. */
-.studio-grid {
-  display: flex;
-  flex-direction: column;
-  gap: clamp(10px, 1.2vw, 16px);
-}
-
-.studio-grid__row {
-  display: flex;
-  gap: clamp(10px, 1.2vw, 16px);
-}
-
-.studio-grid__row--one {
-  height: clamp(220px, 23vw, 360px);
-}
-
-.studio-grid__row--one > .studio-image {
-  flex: 1;
-}
-
-.studio-grid__row--two {
-  height: clamp(190px, 19.5vw, 300px);
-}
-
-.studio-grid__row--two > .studio-image:nth-child(1) {
-  flex: 1.8;
-}
-
-.studio-grid__row--two > .studio-image:nth-child(2) {
-  flex: 2.2;
-}
-
-.studio-grid__row--two > .studio-image:nth-child(3) {
-  flex: 1;
-}
-
-/* Quiet fade-in on appearance, using the same opacity + reveal-ease
-   language as the rest of the site (see .index-drawer__field). The
-   second row starts a beat after the first rather than all six firing
-   at once, kept understated -- no movement, just opacity. */
-@keyframes studio-image-reveal {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-.studio-image {
-  position: relative;
-  height: 100%;
-  overflow: hidden;
-  /* Palette normalization (Josh review): same taupe "darker neutral" ->
-     warmer-gray move as .about-tile above -- see that rule's own
-     comment for the full rationale. Was #e7e4dc, now the same
-     rgb(205, 200, 193) already established for the Archive hover card. */
-  background: #cdc8c1;
-  animation: studio-image-reveal 900ms var(--reveal-ease) both;
-}
-
-.studio-grid__row--two > .studio-image {
-  animation-delay: 120ms;
-}
-
-.studio-image__img {
+/* Sizing philosophy matches the Project Page's own image (see
+   .project-image-frame__img above): natural aspect ratio only, no
+   object-fit: cover, no forced/cropped height -- this image renders at
+   whatever height its own intrinsic ratio produces at this column's
+   width, never stretched or cropped to fill a fixed box. This is a
+   deliberate departure from the old collage's own .studio-image__img
+   (object-fit: cover, fixed row heights), in favor of the more current,
+   more deliberately-reasoned "never crop" philosophy already established
+   for the Project Page's own image. */
+.about-layout__img {
+  display: block;
   width: 100%;
-  height: 100%;
-  display: block;
-  object-fit: cover;
-}
-
-/* Number only -- no secondary caption, category, or tag, per the
-   approved mockup. */
-.studio-image__number {
-  position: absolute;
-  top: clamp(12px, 1.2vw, 18px);
-  left: clamp(14px, 1.4vw, 20px);
-  color: #fff;
-  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
-  font-family: "GT America", "Helvetica Neue", Helvetica, Arial, sans-serif;
-  font-size: 0.85rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-}
-
-/* Full-width footer below the intro/grid layout: five short editorial
-   text blocks, a vertical rule, and the studio's contact details -- laid
-   out per the approved mockup. */
-.studio-footer {
-  display: flex;
-  align-items: flex-start;
-  gap: clamp(20px, 2.6vw, 40px);
-  margin-top: clamp(56px, 6vw, 96px);
-  padding-top: clamp(28px, 3vw, 40px);
-  padding-bottom: clamp(24px, 2.6vw, 36px);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-}
-
-.studio-footer__col {
-  flex: 1;
-  min-width: 0;
-}
-
-.studio-footer__label {
-  display: block;
-  font-size: 0.68rem;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: #9d9d9d;
-  margin-bottom: 0.7em;
-}
-
-.studio-footer__text {
-  margin: 0;
-  font-size: 0.82rem;
-  line-height: 1.6;
-  color: #333;
-}
-
-.studio-footer__divider {
-  width: 1px;
-  align-self: stretch;
-  background: rgba(0, 0, 0, 0.12);
-}
-
-.studio-footer__contact {
-  /* Refinement pass: with "Our Collaboration" removed, three equal-width
-     text columns (flex: 1 each, unchanged) remain instead of four --
-     this alone gives Contact more room automatically. It's widened
-     further and given an explicit floor (was flex: 1.02, no basis) so
-     the email value has reliable, generous room at any typical desktop
-     width rather than wrapping mid-address; the flex-basis is a
-     minimum, not a fixed width, so this column still grows/shrinks with
-     the rest of the row and stays aligned to the same footer grid. */
-  flex: 1.6 1 240px;
-  min-width: 0;
-}
-
-.studio-footer__contact-heading {
-  display: block;
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: #1a1a1a;
-  margin-bottom: 0.9em;
-}
-
-.studio-footer__contact-fields {
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5em;
-}
-
-.studio-footer__contact-field {
-  display: flex;
-  gap: 0.6em;
-  align-items: baseline;
-}
-
-.studio-footer__contact-field dt {
-  margin: 0;
-  font-size: 0.82rem;
-  font-weight: 700;
-  color: #1a1a1a;
-  min-width: 68px;
-}
-
-.studio-footer__contact-field dd {
-  margin: 0;
-  font-size: 0.82rem;
-  color: #333;
-  /* Without this, the flex row can't shrink the unbroken email string
-     below its own content width, which is what was pushing the contact
-     block past the right edge of the viewport. */
-  min-width: 0;
-  overflow-wrap: break-word;
+  height: auto;
 }
 
 @media (max-width: 900px) {
-  .studio-layout {
+  .about-layout {
     flex-direction: column;
+    gap: clamp(28px, 5vw, 48px);
   }
 
-  .studio-intro {
-    flex: 1 1 auto;
+  .about-layout__text {
+    max-width: none;
   }
 
-  .studio-grid__row {
-    flex-direction: column;
-    height: auto;
-  }
-
-  .studio-grid__row > .studio-image {
-    height: clamp(220px, 60vw, 320px);
-    flex: unset;
-  }
-
-  .studio-footer {
-    flex-wrap: wrap;
-  }
-
-  .studio-footer__col {
-    flex: 1 1 40%;
-  }
-
-  .studio-footer__divider {
-    display: none;
-  }
-
-  .studio-footer__contact {
-    flex: 1 1 100%;
-    padding-top: clamp(16px, 2vw, 24px);
-    border-top: 1px solid rgba(0, 0, 0, 0.08);
+  .about-layout__image {
+    width: 100%;
   }
 }
 

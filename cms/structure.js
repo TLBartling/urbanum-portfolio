@@ -44,3 +44,22 @@ export const archiveItemsStructure = (S) => sectionStructure(S, 'archiveItems')
 export const projectsStructure = (S) => sectionStructure(S, 'projects')
 export const themesStructure = (S) => sectionStructure(S, 'themes')
 export const photoJournalStructure = (S) => sectionStructure(S, 'photoJournal')
+
+// About Page (About Page CMS milestone; re-homed under Journal in the
+// CMS-completion pass): a singleton, not a browsable list like the other
+// entries in ARCHIVE_SECTIONS, so it still gets its own resolver here
+// rather than going through `sectionStructure`'s `S.documentTypeList(...)`
+// -- there's exactly one About Page document, never a list of them.
+// `S.document().schemaType(...).documentId(...)` is Sanity's own
+// documented pattern for a singleton: it skips the list pane entirely and
+// opens straight into one fixed document's editor, and that document does
+// NOT need to be created/initialized ahead of time -- Sanity creates the
+// draft the moment Josh edits a field, the same as any other document,
+// just always addressed by this one fixed `documentId` instead of a
+// generated one. `aboutPage` IS now a regular ARCHIVE_SECTIONS entry
+// (`group: 'Journal'`, see archiveSections.js) so it gets a real Structure
+// Tool via sanity.config.js's generic `ARCHIVE_SECTIONS.map(...)` --
+// wired up via STRUCTURE_BY_SECTION_NAME the same way as every other
+// section, this resolver is just the one that isn't `sectionStructure`.
+export const aboutPageStructure = (S) =>
+  S.document().schemaType('aboutPage').documentId('aboutPage')

@@ -2535,7 +2535,15 @@ html.is-browsing .zoom-controls {
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
+  /* overflow: hidden removed (Josh review, hover-icon pass): the +/X
+     trigger now sits OUTSIDE .project-image-frame__inner's own box (see
+     .project-info-trigger below), and for an image whose rendered height
+     reaches this frame's own height cap, .project-image-frame__inner's
+     top edge coincides exactly with this frame's top edge -- clipping
+     here would cut the trigger off in that exact case. Nothing else in
+     this frame ever exceeds its bounds (the image is capped by its own
+     max-width/max-height, see .project-image-frame__img below), so
+     removing this is safe. */
   /* Image-first redesign (Josh review): the taupe "darker neutral"
      background (#cdc8c1, the same palette-normalized warm-gray used at
      .about-tile/.studio-image/.journal-tile) is removed entirely -- the
@@ -2626,7 +2634,15 @@ html.is-browsing .zoom-controls {
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
   column-gap: clamp(14px, 1.6vw, 22px);
-  margin-top: clamp(14px, 1.6vw, 20px);
+  /* Tightened ~10px (Josh review, hover-icon pass) so this row sits
+     noticeably closer to the photo above it -- same responsive clamp
+     shape as before, just the whole curve shifted down by 10px (each
+     bound reduced by 10px), not a fixed value. Still driven purely by
+     this row's own margin, with no dependency on the image's own
+     rendered size/aspect ratio -- .project-viewer's height stays fixed
+     via .project-image-frame's own reserved height (see above), so this
+     row's vertical position is unaffected by which image is showing. */
+  margin-top: clamp(4px, calc(1.6vw - 10px), 10px);
   width: 100%;
 }
 
@@ -2706,27 +2722,57 @@ html.is-browsing .zoom-controls {
 }
 
 /* Project Information trigger (ProjectInfoPanel.jsx's ProjectInfoTrigger)
-   -- the icon-only control that sits inside the photo's own top-right
-   corner (positioned against .project-image-frame__inner, its containing
-   block -- see that rule's own comment for why it's the inner wrapper
-   and not .project-image-frame itself). Corrected across several review
-   passes (Josh review):
-   circled-i -> Urbanum's own existing plus-glyph (.index-drawer__add's
-   bare "+") -> circular backdrop stripped entirely -- "no circular
-   backgrounds... no filled or translucent button background... a small
-   piece of typography/interface language belonging to the image rather
-   than a floating UI button." This button element itself carries NO
-   visual styling at all (no background, no border, no opacity of its
-   own) -- it's purely an invisible, comfortably-sized hit area
-   (width/height below) positioned over the glyph, larger than the glyph
-   for click/touch usability while the visible control itself stays
-   minimal. All visible styling -- color, legibility, fade, rotation --
-   lives on .project-info-trigger__glyph below, deliberately consolidated
-   onto that one element (see its own comment for why). */
+   -- the icon-only control that sits just outside the photo's own
+   top-right corner, to the RIGHT of the image (Josh review, hover-icon
+   debugging pass -- moved from above the image to the side of it; see
+   below for why). Still positioned against .project-image-frame__inner,
+   its containing block -- that wrapper carries no size of its own and
+   shrink-wraps exactly to the actual rendered image (see that rule's own
+   comment), so anchoring here keeps the trigger locked to the image's
+   own true edge for both landscape and portrait, never to
+   .project-image-frame's fixed reserved height. `top: 0` aligns the
+   trigger's own top edge with the image's top edge; `left: 100%` +
+   `margin-left` below places it entirely to the right of that edge --
+   never overlapping the photo. Corrected across several review passes
+   (Josh review): circled-i -> Urbanum's own existing plus-glyph
+   (.index-drawer__add's bare "+") -> circular backdrop stripped entirely
+   -- "no circular backgrounds... no filled or translucent button
+   background... a small piece of typography/interface language
+   belonging to the image rather than a floating UI button." This button
+   element itself carries NO visual styling at all (no background, no
+   border, no opacity of its own) -- it's purely an invisible,
+   comfortably-sized hit area (width/height below) positioned over the
+   glyph, larger than the glyph for click/touch usability while the
+   visible control itself stays minimal. All visible styling -- color,
+   fade, rotation -- lives on .project-info-trigger__glyph below,
+   deliberately consolidated onto that one element (see its own comment
+   for why).
+
+   Moved from above the image to its right (Josh review, hover-icon
+   debugging pass): positioning the trigger entirely ABOVE the image
+   (the previous `bottom: 100%` approach) was confirmed via live browser
+   diagnostics to require clearance above the image's own top edge that
+   silently disappears -- and pushes the glyph off-screen -- the moment a
+   visitor has scrolled the page down even slightly before hovering, not
+   a rare edge case. Anchoring with `top: 0` instead keeps the trigger's
+   own vertical span entirely WITHIN the image's own top edge to
+   top+height range, rather than requiring extra space beyond it, so it
+   remains on screen under the same scroll conditions the image's own
+   top edge would. `left: 100%` + `margin-left` (restored to this
+   control's original 32px/8px sizing, no longer needing the
+   scroll-driven 22px/4px shrink the vertical version required) extends
+   it sideways instead of upward. Note: when the Project Information
+   panel is open, .project-info-panel--open's own margin-left
+   (clamp(32px, 4vw, 56px), see that rule below) is what keeps this
+   trigger clear of the panel's actual text content; at the narrowest end
+   of that clamp the trigger's own 40px horizontal footprint (32px width
+   + 8px margin-left) can reach as far as that panel's hairline divider,
+   though never as far as its padded text. */
 .project-info-trigger {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: 0;
+  left: 100%;
+  margin-left: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2736,13 +2782,9 @@ html.is-browsing .zoom-controls {
   background: none;
   padding: 0;
   cursor: pointer;
-  /* Interaction gating only -- no opacity here. Deliberately kept off
-     this element: CSS opacity != 1 forces a new stacking context, which
-     would isolate a *descendant's* mix-blend-mode from the photo behind
-     it (the glyph would blend against an empty group instead of the real
-     backdrop). Putting the fade on the glyph itself instead (see below)
-     avoids that entirely, so this button only ever toggles whether clicks
-     reach it. */
+  /* Interaction gating only -- no opacity here; the fade lives on the
+     glyph itself (see below), so this button only ever toggles whether
+     clicks reach it. */
   pointer-events: none;
 }
 
@@ -2752,38 +2794,39 @@ html.is-browsing .zoom-controls {
   pointer-events: auto;
 }
 
-/* Legibility fix (Josh review): a flat glyph color was sometimes
-   unreadable depending on the photograph behind it -- invisible against a
-   bright sky, or a dark background color choice would go invisible over
-   shadow. Fixed with an adaptive treatment instead of any new background:
-   white text with mix-blend-mode: difference inverts per-pixel against
-   whatever photo content sits behind it (light areas -> reads dark,
-   dark areas -> reads light), so the glyph stays visible over sky,
-   foliage, and mid-tone architectural surfaces alike, without a drop
-   shadow, glow, or translucent panel -- still monochrome, still just a
-   bare character. Opacity fade AND mix-blend-mode are deliberately on
-   this same element (not split across parent/child) so the blend
-   calculation always happens against the real photo first, with opacity
-   applied to that already-blended result -- splitting them across an
-   ancestor/descendant pair is what would trigger the isolation problem
-   noted on .project-info-trigger above. Invisible at rest; reveals on
+/* Color (Josh review, hover-icon pass): now that the trigger sits
+   outside the photo, over the page's own background rather than over
+   variable photo content, the adaptive white + mix-blend-mode:
+   difference treatment this used when it overlaid the image is no
+   longer needed -- a plain solid dark tone is legible against the
+   page's own consistent background. Invisible at rest; reveals on
    hover/focus of the photo (or whenever the panel is open) via the same
    selectors as the button's pointer-events above, so the two stay in
    sync. */
 /* Weight reduced (Josh review, final polish pass) from 500 to 300 --
    "more subtle... reduce the visual weight/stroke weight... a quiet
-   architectural interface detail," not a heavy glyph. Size/color/blend-
-   mode are unchanged (already the minimal, no-background treatment this
-   control requires); 300 is deliberately not lighter still, since a
-   thinner stroke than this stops registering as legible at 1.3rem
-   against a busy photograph. */
+   architectural interface detail," not a heavy glyph. */
+/* Size/color matched to the Archive Number (Josh review, hover-icon
+   pass): color matched directly to .project-archive-index__number's own
+   color (#9d9d9d) below the photo, rather than the darker #1a1a1a
+   treatment sized for sitting over/near the image. Font-size first
+   matched literally to that rule's 0.68rem, but a "+" glyph's own mark
+   only fills roughly the middle half of its em box in this typeface,
+   while the archive number's digits/letters fill close to full
+   cap-height -- so an equal font-size renders a visibly shorter mark.
+   Bumped to 0.95rem so the "+" mark's own rendered height lines up with
+   the archive number's rendered text height (a metrics-based estimate,
+   not something rendered/measured live -- may need one more small nudge
+   once actually viewed). Font-weight (300 here vs. 400 there),
+   letter-spacing, and text-transform are left as this glyph's own
+   values, since those don't meaningfully apply to a single "+"
+   character and weren't part of what was asked. */
 .project-info-trigger__glyph {
   display: inline-flex;
-  font-size: 1.3rem;
+  font-size: 0.95rem;
   font-weight: 300;
   line-height: 1;
-  color: #fff;
-  mix-blend-mode: difference;
+  color: #9d9d9d;
   opacity: 0;
   transform: rotate(0deg);
   /* Rotation made slightly more perceptible (Josh review, final polish
@@ -3002,9 +3045,21 @@ html.is-browsing .zoom-controls {
   text-align: right;
 }
 
+/* Weight lightened from 600 to 400 (Josh review, final typography
+   refinement): 600 read as too heavy/prominent next to the rest of the
+   site's restrained type system -- 400 is the same "quiet archival
+   marker" weight already used for the small-uppercase-gray treatment
+   elsewhere on this page (.project-archive-index__number), so
+   Previous/Current/Next now reads as subtle navigation metadata rather
+   than a heading, using an existing site weight rather than a new one.
+   This is shared verbatim by all three blocks (Previous/Current/Next
+   labels all use this one class -- see ProjectNavigation.jsx's own
+   comment), so the change applies uniformly without touching any other
+   rule. Size, letter-spacing, uppercase transform, and color are
+   unchanged. */
 .project-navigation__label {
   font-size: 0.68rem;
-  font-weight: 600;
+  font-weight: 400;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: #9d9d9d;

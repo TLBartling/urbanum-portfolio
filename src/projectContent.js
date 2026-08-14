@@ -65,6 +65,13 @@ export function getProjectBySlug(slug) {
     description: project.description,
     location: project.location,
     dates: project.dates,
+    // Data-flow correction (Josh review, final polish pass): Project.year
+    // is a real schema/query field (see cms/queries.js's PROJECTS_QUERY
+    // and normalizeProject) that simply wasn't being carried through this
+    // function -- ProjectInfoPanel.jsx now renders it as the Year line in
+    // its identity block, the same pass-through treatment every other
+    // Project field on this line already gets.
+    year: project.year,
     images: getVisibleItemsForProject(slug),
     // previousProject/nextProject are handed down as {slug, title} rather
     // than full Project objects -- enough to render a nav link without a

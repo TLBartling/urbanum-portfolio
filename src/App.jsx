@@ -4,16 +4,20 @@ import imageMetadata from "./image-metadata.json";
 import Header from "./Header";
 import HoverOverlay from "./HoverOverlay";
 import { navigate } from "./navigation";
-// Responsive Sanity Image Delivery: the one existing place a Sanity image
-// URL is ever built (see that file's own comment -- it already returns
-// the @sanity/image-url builder specifically so a caller can chain
-// .width()/.quality()/.auto('format') etc.). This is a rendering-layer
-// concern (which sized/format variant of an already-known image to
-// request), not a content-layer one (what data exists) -- the content
-// layer seam above (getArchiveItems/getProjects/getThemes) is untouched
-// and still the only source of *what* images exist; this import only
-// changes *how* one is requested once render already has its URL.
-import { urlFor } from "./cms/imageUrl.js";
+// Image-delivery helpers (which sized/format variant of an already-known
+// image to request) -- moved to imageOptimization.js (Project Page
+// image-loading polish, Josh review) so ImageViewer.jsx (the Project
+// Page) can share this exact pipeline instead of duplicating it; see that
+// file's own header comment for the full reasoning. This is a
+// rendering-layer concern only -- the content layer seam above
+// (getArchiveItems/getProjects/getThemes) is untouched and still the only
+// source of *what* images exist; this import only changes *how* one is
+// requested once render already has its URL.
+import {
+  getOptimizedImageSrc,
+  getOptimizedImageSrcSet,
+  getImageDimensions,
+} from "./imageOptimization.js";
 // Content layer seam (Frontend <-> CMS handshake, Phase 1): App.jsx no
 // longer imports mock data files directly -- it goes through
 // src/content/, the single source of content for the application. Today
@@ -174,7 +178,6 @@ const connectorTimings = [
 
 const viewportMargin = 28;
 const initialGalleryBatches = 3;
-const optimizedImageWidths = [400, 800, 1200];
 const minRenderOverscan = 1200;
 const maxRenderOverscan = 3600;
 
@@ -304,93 +307,13 @@ function getGuaranteedWorldReach() {
   return (viewportWidth * (1 / worstCaseScale - 1)) / 2;
 }
 
-function getImageName(src) {
-  return src.split("/").pop()?.replace(/\.[^.]+$/, "") || "";
-}
-
-// Handshake pass (default homepage pool): the optimized-image pipeline
-// (scripts/optimize-images.mjs, run at build time) only ever generated
-// width-variant/webp files for the known local stock photos under
-// /img/ -- a live Archive Item's `image` is a full cdn.sanity.io URL with
-// no corresponding pre-optimized file. This guard is not a redesign of
-// that pipeline (COLUMN_PATTERNS, the optimization script, and every
-// local-path call site are untouched) -- it's the minimum needed so a
-// live URL still renders instead of producing a broken /img/optimized/...
-// path. Actually optimizing/transforming live images (Sanity's own image
-// URL builder is the natural tool for that) is deliberately deferred to a
-// later, dedicated polish pass.
-function isLocalImageAsset(src) {
-  return typeof src === "string" && src.startsWith("/img/");
-}
-
-// Responsive Sanity Image Delivery: the live counterpart to
-// isLocalImageAsset immediately above -- every real Archive Item image is
-// a cdn.sanity.io URL (see cms/queries.js's normalizeArchiveItem, which
-// this milestone leaves completely untouched: item.image/item.src stays
-// exactly the same canonical, unsized URL it always was, so
-// findArchiveItemBySrc and anything else that compares/keys off item.src
-// is unaffected -- only how a *variant* of that URL gets requested at
-// render time changes here).
-function isSanityImageAsset(src) {
-  return typeof src === "string" && /^https?:\/\/cdn\.sanity\.io\//.test(src);
-}
-
-// Compression quality passed to Sanity's own image pipeline. 75 is
-// Sanity's own long-standing default for this parameter; made explicit
-// here (rather than left implicit) so the tradeoff is a visible, tunable
-// constant instead of an assumption baked into a function body.
-const SANITY_IMAGE_QUALITY = 75;
-
-// The live equivalent of "the optimized-image pipeline generated this
-// width-variant file at build time" -- except nothing needs generating
-// ahead of time, since Sanity's CDN performs the resize on request.
-// Built through the exact same urlFor(...) builder cms/imageUrl.js
-// already exports for this purpose (see its own comment). urlFor accepts
-// the already-resolved URL string directly -- verified against the real
-// installed @sanity/image-url package (not the cloud mirror's stub
-// node_modules): its parseSource() explicitly recognizes "an existing
-// image url" and recovers the asset id/dimensions/format by parsing the
-// URL's own filename, so no raw asset reference needs to be threaded
-// through from cms/queries.js for this to work.
-//
-// .auto("format") rather than a hardcoded .format(extension): Sanity's
-// CDN performs its own Accept-header content negotiation (serving
-// WebP/AVIF/original, whichever the requesting browser actually
-// supports) when auto("format") is set -- this is the live equivalent of
-// what the two hardcoded <source type="image/webp">/<source
-// type="image/jpeg"> branches below accomplish for pre-generated local
-// files, which, being static files with no server-side negotiation,
-// instead rely on two physical files and the browser's own <source type>
-// selection. A Sanity asset has exactly one URL-building path regardless
-// of which <source> slot it ends up filling; the browser's <source type>
-// matching still selects a slot normally, and whichever slot is chosen
-// receives whatever format Sanity's own negotiation decided was best for
-// that request. This is why this helper does not branch on extension the
-// way the local-asset path does.
-function buildSanityImageUrl(src, width) {
-  return urlFor(src).width(width).quality(SANITY_IMAGE_QUALITY).auto("format").url();
-}
-
-function getOptimizedImageSrc(src, width = 800, extension = "jpg") {
-  if (isSanityImageAsset(src)) return buildSanityImageUrl(src, width);
-  if (!isLocalImageAsset(src)) return src;
-  return `/img/optimized/${width}/${getImageName(src)}.${extension}`;
-}
-
-function getOptimizedImageSrcSet(src, extension) {
-  // Same guard shape as getOptimizedImageSrc above, extended to cover
-  // both known-optimizable source kinds: for a live Sanity URL there IS
-  // now a real width-variant srcSet to build (via getOptimizedImageSrc's
-  // own Sanity branch below, called once per breakpoint exactly like the
-  // local-asset case already does); for anything else (a src this
-  // pipeline doesn't recognize) this still omits the attribute
-  // (undefined -- React drops it from the rendered <source>) rather than
-  // emit a set of identical entries at different width descriptors.
-  if (!isLocalImageAsset(src) && !isSanityImageAsset(src)) return undefined;
-  return optimizedImageWidths
-    .map((width) => `${getOptimizedImageSrc(src, width, extension)} ${width}w`)
-    .join(", ");
-}
+// getImageName/isLocalImageAsset/isSanityImageAsset/getOptimizedImageSrc/
+// getOptimizedImageSrcSet now live in ./imageOptimization.js, imported
+// above -- extracted (Project Page image-loading polish, Josh review) so
+// ImageViewer.jsx can request the exact same appropriately-sized,
+// pre-optimized/Sanity-transformed image variants this gallery already
+// does, from one shared source instead of a second, possibly-drifting
+// copy. See that file's own comments for the full reasoning.
 
 function getGalleryImageSizes(layout) {
   const width = Math.ceil(Number.parseFloat(layout.width));
@@ -398,9 +321,9 @@ function getGalleryImageSizes(layout) {
   return `${width}px`;
 }
 
-function getImageDimensions(src) {
-  return imageMetadata[src] || { width: 1200, height: 800 };
-}
+// getImageDimensions also now lives in ./imageOptimization.js (imported
+// above) -- imageMetadata itself stays imported here too, since it's
+// still read directly below for aspect-ratio lookups outside that helper.
 
 // Responsive Sanity Image Delivery -- eager-loading threshold reviewed,
 // left unchanged: this constant's own risk was never "12 images" as a

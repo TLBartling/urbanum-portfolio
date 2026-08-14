@@ -1,9 +1,17 @@
 // Mock Project documents, shaped exactly like the Frontend <-> CMS Content
 // Contract's Project Object (Urbanum Content Model v1.0): title, slug,
-// description, location, dates, sortOrder. This is what a Sanity query for
-// the `project` document type is expected to return -- swapping the data
-// source later means replacing how PROJECTS is produced, not anything that
-// reads it.
+// description, location, dates, year, sortOrder. This is what a Sanity
+// query for the `project` document type is expected to return -- swapping
+// the data source later means replacing how PROJECTS is produced, not
+// anything that reads it.
+//
+// `year` (Josh review, data-flow correction, final polish pass): the
+// locked Sanity Project schema's real field is the numeric `year` --
+// `dates` (a hand-authored range string) has no schema counterpart and
+// was already unread by every component before this pass. Added here as
+// each record's end year, matching what `dates`' own range already
+// implied, so ProjectInfoPanel.jsx's new Year line has real per-project
+// data to render rather than one hardcoded value.
 //
 // Projects intentionally carry no image data of their own ("Projects do
 // not own images" -- the CMS Archive Item is the thing that references a
@@ -23,6 +31,7 @@ export const PROJECTS = [
       "A mixed-use residential tower organized around a public ground-level plaza, threading pedestrian movement beneath the building rather than around it.",
     location: "Miami, Florida, USA",
     dates: "2023 – 2026",
+    year: 2026,
     sortOrder: 2,
   },
   {
@@ -32,6 +41,7 @@ export const PROJECTS = [
       "A low-rise commercial district reworking a former industrial waterfront into a pedestrian-first mixed-use quarter.",
     location: "Portland, Oregon, USA",
     dates: "2021 – 2024",
+    year: 2024,
     sortOrder: 1,
   },
   {
@@ -41,6 +51,7 @@ export const PROJECTS = [
       "A small studio and gallery addition to an existing residential property, built around a single reused masonry wall.",
     location: "Austin, Texas, USA",
     dates: "2025",
+    year: 2025,
     sortOrder: 3,
   },
   // Added in the Prototype Metadata Population commit (Commit 3.5),
@@ -55,6 +66,7 @@ export const PROJECTS = [
       "A civic waterfront commons reclaiming a stretch of working harbor for public gathering, framed by a continuous covered promenade.",
     location: "Baltimore, Maryland, USA",
     dates: "2022 – 2025",
+    year: 2025,
     sortOrder: 4,
   },
   {
@@ -64,6 +76,7 @@ export const PROJECTS = [
       "A small liberal-arts campus expansion organized around a sequence of shaded courtyards linking existing and new academic buildings.",
     location: "Ann Arbor, Michigan, USA",
     dates: "2022 – 2025",
+    year: 2025,
     sortOrder: 5,
   },
   {
@@ -73,6 +86,7 @@ export const PROJECTS = [
       "A ground-up-feeling renovation of a derelict rowhouse, keeping its brick shell and timber structure while reorganizing the interior around a new stair.",
     location: "Philadelphia, Pennsylvania, USA",
     dates: "2023 – 2026",
+    year: 2026,
     sortOrder: 6,
   },
   {
@@ -82,6 +96,7 @@ export const PROJECTS = [
       "A competition-winning civic hall reasserting a small city's public realm, wrapping a double-height hall in a load-bearing concrete colonnade.",
     location: "Richmond, Virginia, USA",
     dates: "2022 – 2026",
+    year: 2026,
     sortOrder: 7,
   },
 ];

@@ -155,22 +155,28 @@ export const PROJECTS_QUERY = `
 // here, unlike Archive Item's description -> caption alias (Project's own
 // schema already calls its description field "description").
 //
+// `year` (Josh review, data-flow correction, final polish pass): PROJECTS_QUERY
+// above has always selected `year` -- this function simply never read it,
+// leaving every live Project's Year silently dropped before it could
+// reach any component. Confirmed via a fresh trace (ProjectInfoPanel.jsx
+// now needs a real Year for its identity block) that nothing about the
+// query or schema was missing; only this mapping was incomplete. Fixed by
+// exposing it directly, the same one-line mapping every other field here
+// already gets.
+//
 // `dates`: the one field in the mock contract with no schema counterpart
 // -- the locked Project schema has no free-form date-range string, only
-// the numeric `year` above. Traced every reader of the object this
-// function produces (ProjectHeader.jsx, ImageMetadata.jsx,
-// ProjectNavigation.jsx, ProjectTemplate.jsx, and projectContent.js's own
-// getProjectBySlug) and confirmed none of them ever read `.dates` --
-// getProjectBySlug carries it through from the raw Project object, but
-// nothing downstream consumes it. Left undefined here rather than
-// invented from `year`, so this stays a faithful reflection of what the
-// schema actually stores, not a new display feature.
+// the numeric `year` above. Left undefined here (not invented from
+// `year`) so this stays a faithful reflection of what the schema actually
+// stores; `year` is the real field now, `dates` remains unread by every
+// current caller.
 export function normalizeProject(raw) {
   return {
     title: raw.title,
     slug: raw.slug,
     description: raw.description,
     location: raw.location,
+    year: raw.year,
     dates: undefined,
     sortOrder: raw.sortOrder,
   };

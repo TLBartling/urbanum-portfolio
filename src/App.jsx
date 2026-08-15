@@ -117,24 +117,53 @@ const galleryEdgeBleed = 690;
 const SCROLL_IDLE_DELAY_MS = 200;
 const SCROLL_IDLE_VELOCITY_EPSILON = 0.5;
 
-// Real hand-built column compositions (extracted from the studio's own
-// reference layout). Each pattern is a fixed column of tiles sharing the
-// same render height; "left/top/w/h" are percentages of that column's own
-// box, "orientation" is used to pick a matching real photo for the slot.
-// `discovery: true` on a tile is an editorial annotation -- it marks which
-// compositional positions participate in metadata discovery at all. It is
-// intentionally independent of geometry (not derived from w/h/left/top)
-// and carries no meaning on its own; see item.layout.discovery and
-// HoverOverlay for how it's consumed.
-const COLUMN_PATTERNS = [{"aspect":0.557,"tiles":[{"left":33.858,"top":79.741,"w":16.535,"h":10.776,"orientation":"landscape"},{"left":62.598,"top":75.647,"w":35.039,"h":18.966,"orientation":"landscape","discovery":true},{"left":0,"top":55.172,"w":32.677,"h":18.534,"orientation":"landscape","discovery":true},{"left":38.189,"top":54.741,"w":59.449,"h":18.966,"orientation":"landscape","discovery":true},{"left":84.252,"top":49.353,"w":13.386,"h":3.017,"orientation":"landscape"},{"left":62.598,"top":48.06,"w":12.047,"h":5.043,"orientation":"landscape"},{"left":37.431,"top":42.466,"w":16.535,"h":10.776,"orientation":"landscape"},{"left":17.323,"top":42.888,"w":17.323,"h":10.56,"orientation":"landscape"},{"left":84.252,"top":38.793,"w":13.386,"h":5.172,"orientation":"landscape"},{"left":56.693,"top":35.56,"w":19.291,"h":10.991,"orientation":"landscape"},{"left":62.598,"top":29.53,"w":13.386,"h":4.526,"orientation":"landscape"},{"left":84.252,"top":29.095,"w":13.386,"h":5.819,"orientation":"landscape"},{"left":62.598,"top":11.207,"w":37.402,"h":15.948,"orientation":"landscape","discovery":true},{"left":62.598,"top":2.155,"w":13.386,"h":3.233,"orientation":"landscape"},{"left":12.205,"top":2.155,"w":45.276,"h":31.681,"orientation":"landscape","discovery":true},{"left":84.252,"top":1.509,"w":13.386,"h":4.31,"orientation":"landscape"}]},{"aspect":1.0696,"tiles":[{"left":46.479,"top":82.328,"w":17.304,"h":9.483,"orientation":"landscape","discovery":true},{"left":27.968,"top":76.293,"w":16.901,"h":23.707,"orientation":"portrait","discovery":true},{"left":71.429,"top":71.767,"w":25.352,"h":19.828,"orientation":"landscape","discovery":true},{"left":0.805,"top":69.612,"w":18.913,"h":17.241,"orientation":"square","discovery":true},{"left":1.408,"top":62.716,"w":6.841,"h":4.741,"orientation":"landscape"},{"left":12.475,"top":62.284,"w":6.841,"h":5.388,"orientation":"landscape"},{"left":23.541,"top":59.698,"w":21.127,"h":14.44,"orientation":"landscape","discovery":true},{"left":34.608,"top":53.861,"w":6.157,"h":4.461,"orientation":"landscape"},{"left":46.282,"top":52.155,"w":17.706,"h":25.862,"orientation":"portrait","discovery":true},{"left":65.392,"top":50.862,"w":31.791,"h":18.75,"orientation":"landscape","discovery":true},{"left":89.94,"top":43.966,"w":6.841,"h":4.31,"orientation":"landscape"},{"left":78.873,"top":43.966,"w":6.841,"h":4.31,"orientation":"landscape"},{"left":34.809,"top":42.883,"w":7.646,"h":9.483,"orientation":"portrait"},{"left":46.278,"top":42.879,"w":5.634,"h":7.328,"orientation":"portrait"},{"left":14.487,"top":42.879,"w":17.565,"h":13.965,"orientation":"landscape","discovery":true},{"left":0.402,"top":40.948,"w":12.475,"h":18.75,"orientation":"portrait","discovery":true},{"left":90.137,"top":34.483,"w":6.841,"h":4.526,"orientation":"landscape"},{"left":1.207,"top":34.483,"w":7.042,"h":4.526,"orientation":"landscape"},{"left":12.475,"top":34.052,"w":6.841,"h":5.388,"orientation":"landscape"},{"left":56.942,"top":33.621,"w":17.706,"h":15.302,"orientation":"landscape","discovery":true},{"left":90.137,"top":24.784,"w":6.841,"h":4.957,"orientation":"landscape"},{"left":56.74,"top":24.784,"w":6.841,"h":4.957,"orientation":"landscape"},{"left":12.475,"top":24.784,"w":6.841,"h":4.957,"orientation":"landscape"},{"left":67.61,"top":24.569,"w":7.042,"h":5.603,"orientation":"landscape"},{"left":76.056,"top":24.353,"w":12.676,"h":17.026,"orientation":"portrait","discovery":true},{"left":1.207,"top":24.353,"w":7.042,"h":6.034,"orientation":"landscape"},{"left":13.682,"top":1.207,"w":5.835,"h":4.526,"orientation":"landscape"},{"left":93.352,"top":16.164,"w":7.042,"h":5.388,"orientation":"landscape"},{"left":56.74,"top":15.733,"w":6.841,"h":4.31,"orientation":"landscape"},{"left":21.932,"top":15.086,"w":32.193,"h":26.293,"orientation":"landscape","discovery":true},{"left":93.352,"top":7.328,"w":7.042,"h":4.31,"orientation":"landscape"},{"left":65.392,"top":7.328,"w":26.559,"h":14.44,"orientation":"landscape","discovery":true},{"left":0.805,"top":7.112,"w":18.913,"h":14.224,"orientation":"landscape","discovery":true},{"left":23.541,"top":6.466,"w":6.841,"h":4.31,"orientation":"landscape"},{"left":57.344,"top":4.741,"w":5.634,"h":7.543,"orientation":"portrait"},{"left":46.68,"top":4.741,"w":4.628,"h":7.543,"orientation":"portrait"},{"left":35.01,"top":0,"w":9.256,"h":12.284,"orientation":"portrait","discovery":true}]},{"aspect":0.808,"tiles":[{"left":24.665,"top":86.638,"w":16.086,"h":6.25,"orientation":"landscape"},{"left":1.877,"top":86.638,"w":16.354,"h":6.466,"orientation":"landscape"},{"left":77.748,"top":86.422,"w":14.477,"h":6.681,"orientation":"landscape"},{"left":94.37,"top":84.483,"w":5.63,"h":8.405,"orientation":"portrait"},{"left":78.016,"top":72.845,"w":21.984,"h":9.914,"orientation":"landscape","discovery":true},{"left":45.308,"top":72.845,"w":29.491,"h":24.569,"orientation":"landscape","discovery":true},{"left":24.933,"top":72.845,"w":15.818,"h":7.543,"orientation":"landscape"},{"left":1.877,"top":72.629,"w":16.354,"h":7.974,"orientation":"landscape","discovery":true},{"left":45.576,"top":63.578,"w":9.383,"h":5.388,"orientation":"landscape"},{"left":60.322,"top":63.362,"w":9.383,"h":5.819,"orientation":"landscape"},{"left":45.591,"top":43.966,"w":27.078,"h":16.379,"orientation":"landscape","discovery":true},{"left":74.531,"top":36.638,"w":24.129,"h":31.034,"orientation":"portrait","discovery":true},{"left":45.576,"top":36.207,"w":9.115,"h":3.664,"orientation":"landscape"},{"left":60.322,"top":35.129,"w":9.115,"h":5.819,"orientation":"landscape"},{"left":1.34,"top":34.483,"w":39.678,"h":35.56,"orientation":"square","discovery":true},{"left":1.34,"top":26.509,"w":9.115,"h":4.31,"orientation":"landscape"},{"left":30.831,"top":25.862,"w":9.115,"h":5.603,"orientation":"landscape"},{"left":16.086,"top":25.862,"w":9.115,"h":5.603,"orientation":"landscape"},{"left":31.099,"top":17.241,"w":8.847,"h":4.095,"orientation":"landscape"},{"left":45.308,"top":16.379,"w":45.576,"h":16.81,"orientation":"landscape","discovery":true},{"left":45.576,"top":7.543,"w":9.383,"h":4.526,"orientation":"landscape"},{"left":30.831,"top":7.112,"w":9.115,"h":5.603,"orientation":"landscape"},{"left":60.858,"top":6.25,"w":8.043,"h":7.328,"orientation":"square"},{"left":74.263,"top":5.388,"w":18.231,"h":7.974,"orientation":"landscape","discovery":true},{"left":1.34,"top":1.94,"w":23.861,"h":21.121,"orientation":"square","discovery":true}]},{"aspect":0.3523,"tiles":[{"left":0,"top":87.5,"w":21.656,"h":5.603,"orientation":"landscape"},{"left":0,"top":78.879,"w":21.656,"h":4.095,"orientation":"landscape"},{"left":35.032,"top":76.94,"w":57.325,"h":21.336,"orientation":"landscape","discovery":true},{"left":70.064,"top":69.397,"w":22.293,"h":4.31,"orientation":"landscape"},{"left":35.032,"top":68.75,"w":22.293,"h":5.388,"orientation":"landscape"},{"left":0,"top":68.75,"w":21.656,"h":5.388,"orientation":"landscape"},{"left":0,"top":30.172,"w":92.357,"h":35.56,"orientation":"landscape","discovery":true},{"left":52.229,"top":19.612,"w":38.217,"h":7.974,"orientation":"landscape"},{"left":0,"top":19.612,"w":36.306,"h":7.759,"orientation":"landscape"},{"left":52.229,"top":7.112,"w":38.217,"h":6.25,"orientation":"landscape"},{"left":0,"top":7.112,"w":36.306,"h":6.25,"orientation":"landscape"}]},{"aspect":0.711,"tiles":[{"left":35.78,"top":89.44,"w":10.398,"h":4.095,"orientation":"landscape"},{"left":70.948,"top":87.931,"w":7.034,"h":7.328,"orientation":"square"},{"left":53.211,"top":87.931,"w":14.067,"h":12.069,"orientation":"landscape"},{"left":87.156,"top":87.716,"w":8.563,"h":7.543,"orientation":"square"},{"left":86.239,"top":79.957,"w":10.398,"h":4.31,"orientation":"landscape"},{"left":1.223,"top":78.233,"w":28.746,"h":14.655,"orientation":"landscape","discovery":true},{"left":86.239,"top":70.259,"w":10.398,"h":4.957,"orientation":"landscape"},{"left":18.96,"top":70.259,"w":10.092,"h":4.957,"orientation":"landscape"},{"left":1.835,"top":69.612,"w":10.398,"h":6.25,"orientation":"landscape"},{"left":1.835,"top":60.991,"w":10.398,"h":4.741,"orientation":"landscape"},{"left":18.96,"top":60.776,"w":10.398,"h":5.172,"orientation":"landscape"},{"left":33.333,"top":58.621,"w":48.93,"h":26.509,"orientation":"landscape","discovery":true},{"left":86.239,"top":51.078,"w":13.15,"h":15.302,"orientation":"portrait"},{"left":70.336,"top":50.009,"w":8.563,"h":7.112,"orientation":"landscape"},{"left":52.905,"top":47.638,"w":11.315,"h":9.483,"orientation":"landscape"},{"left":21.713,"top":42.241,"w":26.972,"h":13.772,"orientation":"landscape","discovery":true},{"left":52.599,"top":42.026,"w":8.838,"h":4.213,"orientation":"landscape"},{"left":0.612,"top":40.517,"w":18.96,"h":18.75,"orientation":"square","discovery":true},{"left":18.96,"top":32.543,"w":10.398,"h":5.172,"orientation":"landscape"},{"left":1.835,"top":32.543,"w":10.398,"h":4.957,"orientation":"landscape"},{"left":35.474,"top":25.862,"w":32.416,"h":14.655,"orientation":"landscape","discovery":true},{"left":70.642,"top":21.983,"w":26.911,"h":26.078,"orientation":"square","discovery":true},{"left":1.223,"top":13.362,"w":28.746,"h":17.241,"orientation":"landscape","discovery":true},{"left":70.642,"top":8.405,"w":25.994,"h":9.267,"orientation":"landscape","discovery":true},{"left":7.951,"top":1.293,"w":26.606,"h":9.698,"orientation":"landscape","discovery":true},{"left":42.508,"top":0,"w":25.688,"h":23.922,"orientation":"square","discovery":true}]},{"aspect":0.5696,"tiles":[{"left":60.769,"top":94.828,"w":13.077,"h":3.233,"orientation":"landscape"},{"left":81.923,"top":94.181,"w":13.077,"h":4.31,"orientation":"landscape"},{"left":60.769,"top":72.845,"w":37.692,"h":15.948,"orientation":"landscape","discovery":true},{"left":11.538,"top":66.164,"w":44.231,"h":31.897,"orientation":"landscape","discovery":true},{"left":60.769,"top":65.948,"w":13.077,"h":4.31,"orientation":"landscape"},{"left":81.923,"top":65.302,"w":13.077,"h":5.603,"orientation":"landscape"},{"left":81.923,"top":56.034,"w":13.462,"h":5.388,"orientation":"landscape"},{"left":55,"top":53.664,"w":18.846,"h":10.776,"orientation":"landscape"},{"left":81.923,"top":47.845,"w":13.077,"h":3.017,"orientation":"landscape"},{"left":60.769,"top":46.763,"w":11.769,"h":5.043,"orientation":"landscape"},{"left":36.182,"top":46.974,"w":16.154,"h":10.776,"orientation":"landscape"},{"left":16.538,"top":46.552,"w":16.923,"h":10.776,"orientation":"landscape"},{"left":36.923,"top":26.509,"w":58.077,"h":18.75,"orientation":"landscape","discovery":true},{"left":0,"top":26.509,"w":31.538,"h":18.534,"orientation":"landscape","discovery":true},{"left":8.462,"top":6.034,"w":42.308,"h":15.733,"orientation":"landscape","discovery":true},{"left":60.769,"top":5.388,"w":34.231,"h":18.966,"orientation":"landscape","discovery":true}]}];
+// Four designer-authored DAPC compositions (Stage A/B source-fidelity
+// audit, approved 2026-08-15) -- replaces the earlier six-of-eight
+// pattern pool entirely. Each pattern is a fixed column of tiles sharing
+// the same render height; "left/top/w/h" are percentages of that
+// column's own box, "orientation" is used to pick a matching real photo
+// for the slot. `discovery: true` on a tile is the same pre-existing
+// editorial annotation as before -- independent of geometry, carries no
+// meaning on its own; see item.layout.discovery and HoverOverlay for how
+// it's consumed. Assigned here to each pattern's largest ~third of tiles
+// by area, matching the rough density the previous eight-pattern set
+// used (28-42% per pattern); there was no equivalent markup in the new
+// source images to derive this from directly.
+//
+// Two fields are new, both introduced for the standardized DAPC
+// interlock (see INTERLOCK_* below, just after this array):
+// `interlockTab: true` marks the one tile per pattern whose rendered
+// width extends past its own column's right edge at render time, into
+// whichever pattern comes next -- everything else about that tile
+// (left/top/h, and its position in the tile list) is exactly the
+// audited authored geometry, untouched. `maxReceiveDepthPct` (pattern-
+// level, present only on Patterns 3 and 4) caps how far *any* neighbor's
+// tab may travel into this pattern's own canvas, as a percentage of this
+// pattern's own width -- both are audit-confirmed minimums needed to
+// clear real authored tiles (a site-plan drawing on Pattern 3, two
+// photos on Pattern 4) that sit closer to the left edge than the
+// standard interlock reach would otherwise allow.
+const COLUMN_PATTERNS = [{"aspect":1.1181,"tiles":[{"left":73.965,"top":0.0,"w":7.516,"h":13.033,"orientation":"portrait"},{"left":2.397,"top":4.507,"w":18.192,"h":14.129,"orientation":"landscape","discovery":true},{"left":83.878,"top":6.577,"w":3.813,"h":6.456,"orientation":"portrait"},{"left":93.028,"top":6.699,"w":3.813,"h":6.334,"orientation":"portrait"},{"left":44.553,"top":7.43,"w":16.013,"h":14.982,"orientation":"landscape","discovery":true},{"left":35.403,"top":8.161,"w":5.773,"h":3.41,"orientation":"landscape"},{"left":64.052,"top":8.161,"w":5.556,"h":3.532,"orientation":"landscape"},{"left":26.035,"top":8.526,"w":5.664,"h":2.68,"orientation":"landscape"},{"left":62.636,"top":15.834,"w":27.342,"h":23.264,"orientation":"landscape","discovery":true},{"left":92.484,"top":16.322,"w":4.357,"h":3.776,"orientation":"landscape"},{"left":25.926,"top":16.687,"w":16.667,"h":14.007,"orientation":"landscape","discovery":true},{"left":10.566,"top":22.533,"w":12.527,"h":14.129,"orientation":"square","discovery":true},{"left":0.327,"top":23.386,"w":6.318,"h":7.308,"orientation":"square"},{"left":44.88,"top":24.117,"w":5.773,"h":5.238,"orientation":"landscape"},{"left":54.466,"top":24.604,"w":5.664,"h":4.141,"orientation":"landscape"},{"left":92.484,"top":24.604,"w":4.357,"h":4.141,"orientation":"landscape"},{"left":35.403,"top":32.643,"w":5.882,"h":4.872,"orientation":"landscape"},{"left":54.357,"top":32.887,"w":5.773,"h":4.385,"orientation":"landscape"},{"left":25.926,"top":33.13,"w":5.773,"h":3.776,"orientation":"landscape"},{"left":44.88,"top":33.13,"w":5.773,"h":3.898,"orientation":"landscape"},{"left":23.42,"top":38.368,"w":8.279,"h":9.501,"orientation":"square"},{"left":34.749,"top":38.977,"w":15.904,"h":14.982,"orientation":"landscape","discovery":true},{"left":56.1,"top":40.317,"w":16.885,"h":13.642,"orientation":"landscape","discovery":true},{"left":76.58,"top":40.804,"w":6.318,"h":6.577,"orientation":"square"},{"left":15.251,"top":44.945,"w":7.081,"h":9.257,"orientation":"portrait"},{"left":76.797,"top":49.33,"w":5.882,"h":4.385,"orientation":"landscape"},{"left":26.035,"top":49.574,"w":5.664,"h":4.75,"orientation":"landscape"},{"left":15.359,"top":55.542,"w":25.708,"h":16.565,"orientation":"landscape","discovery":true},{"left":63.943,"top":55.542,"w":18.083,"h":12.667,"orientation":"landscape","discovery":true},{"left":54.357,"top":57.978,"w":5.773,"h":4.507,"orientation":"landscape"},{"left":44.88,"top":58.222,"w":5.773,"h":4.263,"orientation":"landscape"},{"left":83.551,"top":59.562,"w":13.29,"h":12.302,"orientation":"landscape","discovery":true},{"left":44.444,"top":63.581,"w":16.122,"h":16.322,"orientation":"square","discovery":true},{"left":0.0,"top":63.825,"w":12.636,"h":8.283,"orientation":"landscape"},{"left":67.865,"top":70.524,"w":14.27,"h":25.457,"orientation":"portrait","discovery":true},{"left":26.144,"top":74.3,"w":14.924,"h":16.565,"orientation":"square","discovery":true},{"left":7.19,"top":75.883,"w":12.854,"h":9.257,"orientation":"landscape"},{"left":83.769,"top":76.005,"w":13.072,"h":8.039,"orientation":"landscape"},{"left":89.651,"top":43.5,"w":10.349,"h":14.7,"orientation":"portrait","interlockTab":true}]},{"aspect":0.9794,"tiles":[{"left":31.351,"top":2.913,"w":17.348,"h":18.689,"orientation":"square","discovery":true},{"left":74.597,"top":3.883,"w":12.887,"h":9.466,"orientation":"landscape"},{"left":53.036,"top":7.646,"w":6.32,"h":4.733,"orientation":"landscape"},{"left":63.569,"top":8.01,"w":6.568,"h":3.883,"orientation":"landscape"},{"left":23.668,"top":8.738,"w":6.444,"h":4.005,"orientation":"landscape"},{"left":0.0,"top":8.981,"w":19.455,"h":12.621,"orientation":"landscape","discovery":true},{"left":76.952,"top":15.898,"w":19.331,"h":14.684,"orientation":"landscape","discovery":true},{"left":52.664,"top":16.019,"w":20.57,"h":13.107,"orientation":"landscape","discovery":true},{"left":23.668,"top":16.99,"w":6.32,"h":4.49,"orientation":"landscape"},{"left":42.255,"top":24.393,"w":6.32,"h":4.612,"orientation":"landscape"},{"left":20.57,"top":24.515,"w":6.444,"h":4.248,"orientation":"landscape"},{"left":1.735,"top":24.636,"w":15.118,"h":13.228,"orientation":"square","discovery":true},{"left":31.475,"top":24.757,"w":6.444,"h":3.762,"orientation":"landscape"},{"left":31.351,"top":32.039,"w":28.748,"h":31.311,"orientation":"square","discovery":true},{"left":74.597,"top":32.524,"w":6.32,"h":5.097,"orientation":"landscape"},{"left":20.57,"top":33.131,"w":6.444,"h":3.883,"orientation":"landscape"},{"left":63.817,"top":33.374,"w":6.32,"h":3.277,"orientation":"landscape"},{"left":20.57,"top":41.626,"w":6.444,"h":3.519,"orientation":"landscape"},{"left":63.817,"top":41.869,"w":13.135,"h":11.772,"orientation":"square","discovery":true},{"left":17.596,"top":49.272,"w":10.657,"h":13.35,"orientation":"portrait","discovery":true},{"left":74.597,"top":57.646,"w":6.32,"h":4.854,"orientation":"landscape"},{"left":63.817,"top":57.767,"w":6.444,"h":4.612,"orientation":"landscape"},{"left":31.846,"top":65.777,"w":11.524,"h":7.16,"orientation":"landscape"},{"left":48.575,"top":66.141,"w":11.524,"h":6.432,"orientation":"landscape"},{"left":63.569,"top":66.141,"w":21.19,"h":21.602,"orientation":"square","discovery":true},{"left":87.485,"top":66.141,"w":8.798,"h":8.495,"orientation":"square"},{"left":2.602,"top":66.262,"w":24.411,"h":17.597,"orientation":"landscape","discovery":true},{"left":87.485,"top":78.034,"w":8.798,"h":5.704,"orientation":"landscape"},{"left":31.846,"top":78.398,"w":11.524,"h":5.583,"orientation":"landscape"},{"left":48.451,"top":78.519,"w":11.648,"h":5.34,"orientation":"landscape"},{"left":24.04,"top":86.893,"w":11.276,"h":8.617,"orientation":"landscape"},{"left":85.874,"top":43.5,"w":14.126,"h":14.7,"orientation":"square","interlockTab":true}]},{"aspect":1.611,"tiles":[{"left":19.152,"top":0.0,"w":5.223,"h":12.683,"orientation":"portrait"},{"left":86.677,"top":1.098,"w":6.662,"h":7.073,"orientation":"landscape"},{"left":0.0,"top":4.39,"w":9.841,"h":17.073,"orientation":"square","discovery":true},{"left":61.923,"top":5.61,"w":9.311,"h":19.268,"orientation":"portrait","discovery":true},{"left":26.041,"top":6.463,"w":2.65,"h":6.341,"orientation":"portrait"},{"left":32.4,"top":6.463,"w":3.179,"h":6.341,"orientation":"portrait"},{"left":12.188,"top":7.805,"w":3.936,"h":3.659,"orientation":"landscape"},{"left":37.169,"top":8.537,"w":15.746,"h":12.805,"orientation":"landscape","discovery":true},{"left":53.671,"top":8.659,"w":3.179,"h":3.78,"orientation":"landscape"},{"left":74.413,"top":8.78,"w":4.769,"h":6.463,"orientation":"landscape"},{"left":81.302,"top":11.22,"w":4.012,"h":3.537,"orientation":"landscape"},{"left":87.661,"top":11.707,"w":10.144,"h":12.561,"orientation":"landscape","discovery":true},{"left":53.671,"top":15.122,"w":6.207,"h":6.707,"orientation":"landscape"},{"left":11.128,"top":15.61,"w":19.228,"h":23.415,"orientation":"landscape","discovery":true},{"left":32.021,"top":16.22,"w":3.936,"h":3.659,"orientation":"landscape"},{"left":74.716,"top":19.878,"w":11.582,"h":13.902,"orientation":"landscape","discovery":true},{"left":0.0,"top":23.902,"w":2.877,"h":5.244,"orientation":"square"},{"left":43.528,"top":23.902,"w":7.419,"h":15.0,"orientation":"portrait"},{"left":38.607,"top":24.146,"w":3.936,"h":4.756,"orientation":"landscape"},{"left":5.602,"top":24.39,"w":3.936,"h":4.39,"orientation":"landscape"},{"left":32.021,"top":24.39,"w":3.936,"h":4.146,"orientation":"landscape"},{"left":87.888,"top":27.195,"w":4.012,"h":5.244,"orientation":"landscape"},{"left":94.55,"top":27.683,"w":3.255,"h":4.268,"orientation":"landscape"},{"left":53.369,"top":28.659,"w":15.594,"h":14.878,"orientation":"landscape","discovery":true},{"left":32.097,"top":32.317,"w":10.447,"h":13.415,"orientation":"landscape","discovery":true},{"left":5.602,"top":32.683,"w":3.936,"h":4.512,"orientation":"landscape"},{"left":0.0,"top":32.927,"w":2.877,"h":4.024,"orientation":"landscape"},{"left":81.302,"top":35.854,"w":4.088,"h":4.756,"orientation":"landscape"},{"left":94.474,"top":35.976,"w":3.331,"h":4.512,"orientation":"landscape"},{"left":87.888,"top":36.098,"w":4.012,"h":4.024,"orientation":"landscape"},{"left":74.716,"top":36.341,"w":4.012,"h":3.659,"orientation":"landscape"},{"left":9.992,"top":40.244,"w":8.478,"h":13.659,"orientation":"square"},{"left":25.814,"top":40.244,"w":3.104,"h":6.341,"orientation":"portrait"},{"left":45.193,"top":41.585,"w":3.936,"h":3.659,"orientation":"landscape"},{"left":19.682,"top":41.951,"w":3.709,"h":7.439,"orientation":"portrait"},{"left":75.322,"top":44.39,"w":3.709,"h":6.829,"orientation":"square"},{"left":80.999,"top":44.878,"w":6.662,"h":10.732,"orientation":"square"},{"left":37.245,"top":47.683,"w":18.774,"h":16.707,"orientation":"landscape","discovery":true},{"left":61.014,"top":48.049,"w":5.072,"h":9.268,"orientation":"square"},{"left":67.298,"top":48.049,"w":4.921,"h":9.268,"orientation":"portrait"},{"left":25.814,"top":48.78,"w":10.522,"h":23.293,"orientation":"portrait","discovery":true},{"left":12.188,"top":55.61,"w":12.566,"h":12.805,"orientation":"landscape","discovery":true},{"left":67.373,"top":58.78,"w":17.865,"h":16.463,"orientation":"landscape","discovery":true},{"left":56.851,"top":59.024,"w":8.706,"h":16.22,"orientation":"portrait","discovery":true},{"left":94.474,"top":61.22,"w":3.331,"h":4.39,"orientation":"landscape"},{"left":87.888,"top":61.341,"w":4.012,"h":4.268,"orientation":"landscape"},{"left":2.952,"top":64.024,"w":7.267,"h":16.341,"orientation":"portrait","discovery":true},{"left":40.802,"top":66.463,"w":14.989,"h":17.683,"orientation":"landscape","discovery":true},{"left":87.358,"top":66.707,"w":8.251,"h":17.195,"orientation":"portrait","discovery":true},{"left":14.837,"top":70.61,"w":9.992,"h":25.732,"orientation":"portrait","discovery":true},{"left":25.965,"top":76.098,"w":10.144,"h":8.293,"orientation":"landscape"},{"left":63.437,"top":77.805,"w":4.542,"h":5.976,"orientation":"landscape"},{"left":73.808,"top":78.659,"w":8.706,"h":13.537,"orientation":"square","discovery":true},{"left":91.143,"top":43.5,"w":8.857,"h":14.7,"orientation":"square","interlockTab":true}],"maxReceiveDepthPct":7.5},{"aspect":1.4272,"tiles":[{"left":89.031,"top":2.67,"w":8.503,"h":11.286,"orientation":"square"},{"left":6.973,"top":3.155,"w":5.952,"h":12.985,"orientation":"portrait"},{"left":51.02,"top":6.068,"w":11.905,"h":18.568,"orientation":"square","discovery":true},{"left":65.731,"top":8.01,"w":13.265,"h":7.767,"orientation":"landscape"},{"left":14.711,"top":9.709,"w":2.976,"h":6.432,"orientation":"portrait"},{"left":80.782,"top":9.83,"w":3.997,"h":6.311,"orientation":"square"},{"left":0.0,"top":11.286,"w":3.656,"h":3.519,"orientation":"landscape"},{"left":27.211,"top":12.015,"w":17.602,"h":12.621,"orientation":"landscape","discovery":true},{"left":45.578,"top":12.015,"w":4.592,"h":3.762,"orientation":"landscape"},{"left":0.0,"top":18.932,"w":19.558,"h":18.932,"orientation":"landscape","discovery":true},{"left":73.129,"top":18.932,"w":22.619,"h":14.684,"orientation":"landscape","discovery":true},{"left":21.429,"top":19.539,"w":4.422,"h":3.641,"orientation":"landscape"},{"left":65.816,"top":19.66,"w":4.507,"h":3.519,"orientation":"landscape"},{"left":45.578,"top":20.024,"w":4.507,"h":4.49,"orientation":"landscape"},{"left":34.269,"top":27.184,"w":8.333,"h":14.927,"orientation":"portrait","discovery":true},{"left":28.827,"top":27.427,"w":4.422,"h":4.612,"orientation":"landscape"},{"left":58.333,"top":27.427,"w":4.507,"h":4.612,"orientation":"landscape"},{"left":65.816,"top":27.427,"w":4.507,"h":4.612,"orientation":"landscape"},{"left":21.429,"top":27.67,"w":4.422,"h":4.126,"orientation":"landscape"},{"left":51.02,"top":27.791,"w":4.422,"h":3.762,"orientation":"landscape"},{"left":51.02,"top":35.073,"w":19.813,"h":31.311,"orientation":"square","discovery":true},{"left":21.429,"top":35.437,"w":11.82,"h":13.35,"orientation":"landscape","discovery":true},{"left":43.537,"top":36.165,"w":4.507,"h":3.883,"orientation":"landscape"},{"left":72.874,"top":36.286,"w":13.69,"h":22.087,"orientation":"square","discovery":true},{"left":14.456,"top":43.325,"w":3.486,"h":6.311,"orientation":"portrait"},{"left":36.224,"top":44.66,"w":4.422,"h":3.641,"orientation":"landscape"},{"left":43.622,"top":44.66,"w":4.337,"h":3.519,"orientation":"landscape"},{"left":27.211,"top":50.728,"w":21.088,"h":16.505,"orientation":"landscape","discovery":true},{"left":14.456,"top":51.699,"w":11.82,"h":23.058,"orientation":"portrait","discovery":true},{"left":80.612,"top":60.68,"w":4.507,"h":4.854,"orientation":"landscape"},{"left":73.129,"top":60.922,"w":4.677,"h":4.49,"orientation":"landscape"},{"left":0.0,"top":62.379,"w":13.265,"h":8.738,"orientation":"landscape","discovery":true},{"left":51.361,"top":68.811,"w":7.908,"h":7.039,"orientation":"landscape"},{"left":62.755,"top":69.175,"w":7.908,"h":6.432,"orientation":"landscape"},{"left":75.935,"top":69.175,"w":11.735,"h":14.078,"orientation":"landscape","discovery":true},{"left":89.456,"top":69.175,"w":8.078,"h":8.495,"orientation":"landscape"},{"left":31.293,"top":69.296,"w":16.752,"h":17.476,"orientation":"landscape","discovery":true},{"left":5.697,"top":74.393,"w":6.633,"h":7.403,"orientation":"landscape"},{"left":14.626,"top":78.883,"w":11.395,"h":8.01,"orientation":"landscape"},{"left":50.85,"top":79.248,"w":14.796,"h":14.806,"orientation":"landscape","discovery":true},{"left":89.456,"top":81.068,"w":6.973,"h":5.704,"orientation":"landscape"},{"left":92.432,"top":43.5,"w":7.568,"h":14.7,"orientation":"portrait","interlockTab":true}],"maxReceiveDepthPct":7.5}];
+
+
 
 // Gap between adjacent pattern columns, as a percentage of the rendered
-// column height. Originally set to the median internal gap measured across
-// all 6 patterns (1.94%); nudged down slightly toward the tighter end of
-// that same measured range (min 1.38%, p10 1.50%) so the pattern-to-pattern
-// seam doesn't read as a wider, more obvious negative-space line than the
-// gaps within a pattern.
-const SEAM_GAP_PCT = 1.5;
+// column height. Zeroed per explicit instruction: the seam between two
+// patterns must have zero padding, with the interlock tab crossing directly
+// from one pattern's edge into the next (Pattern A edge | Pattern B edge,
+// not Pattern A edge | gap | Pattern B edge). Previously 1.0 (nudged down
+// from a 1.94% measured-gap baseline) when the seam was meant to read as a
+// deliberate, if narrow, negative-space line rather than a hard boundary.
+// This single constant is the sole spacing mechanism -- it drives both the
+// cursorX advance between columns (createGalleryBatch,
+// createLeftwardGalleryBatch, and the center-seed initial cursor setup) and
+// the seamGapPx term in the tab-tile width formula, so zeroing it removes
+// the gap from both without touching either call site. The interlock's own
+// physical reach (getInterlockReachPx) is unaffected -- it never referenced
+// this constant -- so a tab's reach now lands exactly that far into the
+// neighboring pattern instead of first having to cross the old 1%-of-height
+// gap.
+const SEAM_GAP_PCT = 0;
 
 // Guard window for logo-triggered regeneration (see handleLogoClick below):
 // how long to ignore repeat clicks after a regeneration starts, so a burst
@@ -598,6 +627,11 @@ function createColumnState() {
   };
 }
 
+// Four-pattern DAPC pool: all of COLUMN_PATTERNS now participates in
+// procedural selection -- the earlier six-of-eight filtering mechanism
+// (ACTIVE_PATTERN_INDICES) is gone, not just emptied, now that the pool
+// itself only contains the four approved patterns.
+//
 // PURE: does not mutate anything. Given the pattern used last time, returns
 // the next pattern index to use. The caller is responsible for carrying the
 // returned value forward as the new "last pattern index".
@@ -640,6 +674,122 @@ function pickPatternIndex(lastPatternIndex) {
 // supplied by the caller. This function never asks why it's that size and
 // never touches Application Layout's geometry function; that's the whole
 // point of the ownership boundary.
+
+// Standardized DAPC interlock (four-pattern audit, approved 2026-08-15).
+// Supersedes the interlock-stagger experiment above -- that mechanism
+// perturbed each column's own vertical origin/height (columnTop,
+// canvasHeight) to break up dense/sparse banding, which is fundamentally
+// incompatible with a standardized interlock: the interlock only works
+// because every column shares one identical worldCanvasHeight-based
+// coordinate system, so the same top/height band lands at the same place
+// in every pattern regardless of which one is selected next. Every call
+// site below now uses worldCanvasHeight directly (columnTop is gone
+// entirely, canvasHeight === worldCanvasHeight always) -- restoring the
+// original shared-origin behavior these functions had before that
+// experiment.
+//
+// Two adjacent columns "interlock" instead of just sitting side by side:
+// one pattern's designated tab tile (tile.interlockTab === true on
+// exactly one tile per pattern, see COLUMN_PATTERNS above) overshoots
+// past its own column's right edge, bridges the seam gap, and reaches a
+// short way into the next column's canvas -- landing inside a footprint
+// that pattern's own authored tiles are confirmed never to occupy. Only
+// that one tile's rendered width changes at render time; its own
+// left/top/h, and every other tile's geometry in both patterns, are read
+// exactly as authored -- nothing is moved or resized to make room.
+//
+// Source audit: the designer's own red interlock markup measured a
+// consistent ~43.5% top / ~14.7% height / ~25%-of-canvas-height depth
+// across all four patterns (within about half a percentage point) -- but
+// checking each marker's raw pixel position against its own canvas edge
+// showed the marker straddles the seam (roughly half on-canvas, half
+// off), so that 25% figure is the whole hand-drawn connector as it
+// appears straddling the seam in a single-pattern mockup, not the amount
+// that actually needs to land inside one pattern's own canvas once two
+// patterns are actually placed side by side. INTERLOCK_REACH_PCT below
+// is that on-canvas half (confirmed against the audited tile geometry to
+// clear every pattern's authored content except Patterns 3 and 4, each
+// of which gets its own smaller cap instead of shrinking the shared
+// figure for all four -- see INTERLOCK_MAX_RECEIVE_PCT).
+const INTERLOCK_TOP_PCT = 43.5; // % of worldCanvasHeight, identical for every pattern
+const INTERLOCK_HEIGHT_PCT = 14.7; // % of worldCanvasHeight, identical for every pattern
+const INTERLOCK_REACH_PCT = 12.5; // % of worldCanvasHeight; default physical reach of a tab into whatever pattern comes next
+
+// Receiving-side override: how far (as a percentage of THIS pattern's own
+// width, since a receiving-side limit is inherently about that one
+// pattern's own authored geometry, not the shared worldCanvasHeight
+// figure above) any neighbor's tab may travel into this pattern's canvas.
+// Keyed by index into COLUMN_PATTERNS. Patterns 1 and 2 (indices 0, 1)
+// have no entry -- their audited recess zones are clear at the full
+// standard reach, so they fall back to it untouched. Patterns 3 and 4
+// (indices 2, 3) each have one real authored tile (a site-plan drawing on
+// Pattern 3; two photos on Pattern 4) that the full reach would clip, so
+// an incoming tab is capped just short of it instead -- audit-confirmed
+// minimums, not new global interlock geometry.
+const INTERLOCK_MAX_RECEIVE_PCT = { 2: 7.5, 3: 7.5 };
+
+// Smallest possible reach across all four patterns, expressed as a
+// fraction of worldCanvasHeight so it's directly comparable to
+// INTERLOCK_REACH_PCT -- used only where a tab genuinely cannot know
+// which pattern it's connecting to yet (the very first column ever
+// placed; see createCenterSeedBatch), so it can still interlock safely
+// no matter which pattern actually ends up next to it.
+const INTERLOCK_SAFE_MIN_REACH_PCT = Math.min(
+  ...COLUMN_PATTERNS.map((pattern, index) =>
+    INTERLOCK_MAX_RECEIVE_PCT[index] != null
+      ? INTERLOCK_MAX_RECEIVE_PCT[index] * pattern.aspect
+      : INTERLOCK_REACH_PCT,
+  ),
+);
+
+// Dev sanity check (runs once at module load, pure verification -- never
+// changes behavior): confirms every non-tab tile in COLUMN_PATTERNS is
+// actually clear of its own pattern's recess zone (the same shared
+// INTERLOCK_TOP_PCT/HEIGHT_PCT band, inset from the left edge by whatever
+// this pattern's own INTERLOCK_MAX_RECEIVE_PCT cap -- or, absent one, the
+// default INTERLOCK_REACH_PCT converted through this pattern's own aspect
+// -- allows). Existing to catch a future COLUMN_PATTERNS edit that
+// silently reintroduces one of the conflicts the Stage A/B audit found
+// and resolved, not to catch anything expected to fire today.
+COLUMN_PATTERNS.forEach((pattern, patternIndex) => {
+  const capPct = INTERLOCK_MAX_RECEIVE_PCT[patternIndex];
+  const recessDepthPct =
+    capPct != null ? capPct : INTERLOCK_REACH_PCT / pattern.aspect;
+  const zoneTop = INTERLOCK_TOP_PCT;
+  const zoneBottom = INTERLOCK_TOP_PCT + INTERLOCK_HEIGHT_PCT;
+  pattern.tiles.forEach((tile, tileIndex) => {
+    if (tile.interlockTab) return;
+    const overlapsX = tile.left < recessDepthPct && tile.left + tile.w > 0;
+    const overlapsY = tile.top < zoneBottom && tile.top + tile.h > zoneTop;
+    if (overlapsX && overlapsY) {
+      console.warn(
+        `[DAPC interlock] pattern ${patternIndex} tile ${tileIndex} overlaps its own recess zone (left 0-${recessDepthPct.toFixed(2)}%, top ${zoneTop}-${zoneBottom}%).`,
+        tile,
+      );
+    }
+  });
+});
+
+// Physical px depth (in the shared worldCanvasHeight coordinate) that an
+// outgoing tab should reach past its own column's right edge and into
+// whichever pattern comes next -- that pattern's own
+// INTERLOCK_MAX_RECEIVE_PCT cap if it has one, otherwise the standard
+// INTERLOCK_REACH_PCT. nextPatternIndex/nextPattern may be null when the
+// next column genuinely isn't known yet (see createCenterSeedBatch), in
+// which case INTERLOCK_SAFE_MIN_REACH_PCT is used so the tab can never
+// overreach whatever pattern actually ends up next regardless.
+function getInterlockReachPx(nextPatternIndex, nextPattern, worldCanvasHeight) {
+  if (nextPatternIndex == null || !nextPattern) {
+    return (INTERLOCK_SAFE_MIN_REACH_PCT / 100) * worldCanvasHeight;
+  }
+  const maxReceivePct = INTERLOCK_MAX_RECEIVE_PCT[nextPatternIndex];
+  if (maxReceivePct != null) {
+    const receivingColumnWidthPx = nextPattern.aspect * worldCanvasHeight;
+    return (maxReceivePct / 100) * receivingColumnWidthPx;
+  }
+  return (INTERLOCK_REACH_PCT / 100) * worldCanvasHeight;
+}
+
 function createGalleryBatch(
   batchIndex,
   columnState,
@@ -667,13 +817,31 @@ function createGalleryBatch(
   let lastPatternIndex = columnState.lastPatternIndex;
   let pickerState = columnState.pickerState;
   let moduleIndex = columnState.moduleIndex;
+  // DAPC interlock one-ahead lookahead: the tab tile in each column needs
+  // to know which pattern comes immediately after it, so its reach can
+  // respect that pattern's own receiving-side cap (see
+  // getInterlockReachPx above). currentPatternIndex is therefore always
+  // decided one loop iteration before it's actually rendered -- either
+  // here (start of this call) or at the tail of the previous iteration --
+  // and the final, still-unplaced pick is carried forward as
+  // pendingPatternIndex in nextColumnState below, so the *next* call to
+  // createGalleryBatch (the next scroll-triggered extension) honors it
+  // instead of drawing an independent pattern that would no longer match
+  // what this call's last tab was already sized for.
+  let currentPatternIndex =
+    columnState.pendingPatternIndex ?? pickPatternIndex(lastPatternIndex);
 
   while (cursorX - batchStartX < targetBatchWidth) {
-    const patternIndex = pickPatternIndex(lastPatternIndex);
+    const patternIndex = currentPatternIndex;
     lastPatternIndex = patternIndex;
     const pattern = COLUMN_PATTERNS[patternIndex];
     const columnLeft = cursorX;
-    const columnWidthPx = pattern.aspect * worldCanvasHeight;
+    const canvasHeight = worldCanvasHeight;
+    const columnWidthPx = pattern.aspect * canvasHeight;
+    // The pattern immediately to this column's right -- known one step
+    // ahead of when it's actually placed; see currentPatternIndex above.
+    const nextPatternIndex = pickPatternIndex(patternIndex);
+    const nextPattern = COLUMN_PATTERNS[nextPatternIndex];
     // TEMPORARY DIAGNOSTIC (reversible) -- see createColumnState's
     // moduleIndex comment. Captured once per column/module, before the
     // cursor advances, so every tile in this column shares the same value.
@@ -688,14 +856,24 @@ function createGalleryBatch(
         imagePool,
       );
       pickerState = nextPickerState;
-      const width = (tile.w / 100) * columnWidthPx;
-      const height = (tile.h / 100) * worldCanvasHeight;
+      const baseWidth = (tile.w / 100) * columnWidthPx;
+      // DAPC interlock: this pattern's one designated tab tile
+      // (tile.interlockTab === true) extends past its own authored width,
+      // bridging the seam gap and reaching into whichever pattern comes
+      // next -- see getInterlockReachPx above. Every other tile is
+      // unaffected; width is otherwise exactly the authored w% of this
+      // column's own canvas, same as always.
+      const width = tile.interlockTab
+        ? baseWidth +
+          seamGapPx +
+          getInterlockReachPx(nextPatternIndex, nextPattern, worldCanvasHeight)
+        : baseWidth;
+      const height = (tile.h / 100) * canvasHeight;
       const left = columnLeft + (tile.left / 100) * columnWidthPx;
-      // World-origin relative -- no frame offset added. This tile's
-      // vertical position is purely "where within my own canvas," never
-      // "where on the page." Application Layout, not Archive, is
-      // responsible for where that canvas is placed on the page.
-      const top = (tile.top / 100) * worldCanvasHeight;
+      // World-origin relative -- purely "where within my own canvas,"
+      // never "where on the page." Application Layout, not Archive,
+      // remains responsible for where the canvas is placed on the page.
+      const top = (tile.top / 100) * canvasHeight;
 
       // Homepage -> Project navigation: an image only becomes clickable
       // (below, in the render) if it's also a mock Archive Item that
@@ -760,11 +938,18 @@ function createGalleryBatch(
 
     const expectedNextCursor = columnLeft + columnWidthPx + seamGapPx;
     cursorX = expectedNextCursor;
+    currentPatternIndex = nextPatternIndex;
   }
 
   return {
     items,
-    nextColumnState: { cursorX, lastPatternIndex, pickerState, moduleIndex },
+    nextColumnState: {
+      cursorX,
+      lastPatternIndex,
+      pickerState,
+      moduleIndex,
+      pendingPatternIndex: currentPatternIndex,
+    },
     // TEMPORARY VISUAL DEBUG MODE -- returned instead of written to a
     // window side-channel, since this function's caller now always has
     // these values in hand synchronously (createGalleryBatch no longer runs
@@ -827,7 +1012,9 @@ function createCenterSeedBatch(
 ) {
   const patternIndex = pickPatternIndex(columnState.lastPatternIndex);
   const pattern = COLUMN_PATTERNS[patternIndex];
-  const columnWidthPx = pattern.aspect * worldCanvasHeight;
+  const canvasHeight = worldCanvasHeight;
+  const columnWidthPx = pattern.aspect * canvasHeight;
+  const seamGapPx = (SEAM_GAP_PCT / 100) * worldCanvasHeight;
   const viewportWidth =
     typeof window === "undefined" ? 1200 : window.innerWidth;
   const viewportCenterX = viewportWidth / 2;
@@ -848,10 +1035,18 @@ function createCenterSeedBatch(
       imagePool,
     );
     pickerState = nextPickerState;
-    const width = (tile.w / 100) * columnWidthPx;
-    const height = (tile.h / 100) * worldCanvasHeight;
+    const baseWidth = (tile.w / 100) * columnWidthPx;
+    // DAPC interlock: this is the very first column ever placed, so its
+    // outgoing tab (if this pattern's tab tile falls here) cannot yet know
+    // which pattern the rightward pass will start with -- see
+    // getInterlockReachPx above, called here with a null "next pattern" so
+    // it falls back to the safe minimum reach instead.
+    const width = tile.interlockTab
+      ? baseWidth + seamGapPx + getInterlockReachPx(null, null, worldCanvasHeight)
+      : baseWidth;
+    const height = (tile.h / 100) * canvasHeight;
     const left = columnLeft + (tile.left / 100) * columnWidthPx;
-    const top = (tile.top / 100) * worldCanvasHeight;
+    const top = (tile.top / 100) * canvasHeight;
     const archiveItem = findArchiveItemBySrc(src);
 
     items.push({
@@ -941,10 +1136,21 @@ function createLeftwardGalleryBatch(
   let moduleIndex = columnState.moduleIndex;
 
   while (cursorX > -leftwardCompositionBudgetPx) {
+    // DAPC interlock: this pass places columns walking leftward (each new
+    // column to the left of the last one placed), but a tab always
+    // reaches toward increasing X (rightward) regardless of which
+    // function placed the column carrying it -- so the pattern
+    // immediately to THIS column's right is always already known here:
+    // either the previously-placed leftward column, or, on the very first
+    // iteration, the seed column the caller placed before calling this
+    // function at all, still sitting in lastPatternIndex at this point.
+    const rightNeighborPatternIndex = lastPatternIndex;
+    const rightNeighborPattern = COLUMN_PATTERNS[rightNeighborPatternIndex];
     const patternIndex = pickPatternIndex(lastPatternIndex);
     lastPatternIndex = patternIndex;
     const pattern = COLUMN_PATTERNS[patternIndex];
-    const columnWidthPx = pattern.aspect * worldCanvasHeight;
+    const canvasHeight = worldCanvasHeight;
+    const columnWidthPx = pattern.aspect * canvasHeight;
     // This column's RIGHT edge sits at the current cursor; the cursor
     // for the next (further-left) column becomes this column's LEFT
     // edge minus the seam gap.
@@ -960,10 +1166,19 @@ function createLeftwardGalleryBatch(
         imagePool,
       );
       pickerState = nextPickerState;
-      const width = (tile.w / 100) * columnWidthPx;
-      const height = (tile.h / 100) * worldCanvasHeight;
+      const baseWidth = (tile.w / 100) * columnWidthPx;
+      const width = tile.interlockTab
+        ? baseWidth +
+          seamGapPx +
+          getInterlockReachPx(
+            rightNeighborPatternIndex,
+            rightNeighborPattern,
+            worldCanvasHeight,
+          )
+        : baseWidth;
+      const height = (tile.h / 100) * canvasHeight;
       const left = columnLeft + (tile.left / 100) * columnWidthPx;
-      const top = (tile.top / 100) * worldCanvasHeight;
+      const top = (tile.top / 100) * canvasHeight;
       const archiveItem = findArchiveItemBySrc(src);
 
       items.push({

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import gsap from "gsap";
 import imageMetadata from "./image-metadata.json";
 import Header from "./Header";
@@ -1457,10 +1457,21 @@ function createGalleryRenderer({
     });
   };
 
-  const updateEntranceAnimations = (galleryItems) => {
-    galleryItems.forEach((item) => {
-      const wrapper = wrapperById.get(item.id);
-      if (!wrapper) return;
+  // Perf: iterate the currently-MOUNTED wrappers (wrapperById -- kept
+  // correct on every mount/unmount by each wrapper's own callback ref, see
+  // wrapperRegistryRef's own comment) instead of the full, unboundedly
+  // growing galleryItems array. Every item not currently mounted already
+  // failed the old `if (!wrapper) return` check and did no real work, so
+  // this visits exactly the same items and runs exactly the same
+  // computation for each -- it just stops paying an O(all-items-ever-
+  // created) traversal cost every animation frame to discover that. The
+  // caller now passes an id->item Map (galleryItemsById) instead of the
+  // items array, rebuilt only when galleryItems itself changes (once per
+  // gallery extension), not once per frame.
+  const updateEntranceAnimations = (itemsById) => {
+    wrapperById.forEach((wrapper, id) => {
+      const item = itemsById.get(id);
+      if (!item) return;
 
       const layoutLeft = Number.parseFloat(item.layout.left);
       const layoutWidth = Number.parseFloat(item.layout.width);
@@ -2851,6 +2862,15 @@ function App() {
 
     galleryRenderer.primeEntranceState(galleryItems);
 
+    // Perf: built once per effect setup (i.e. once per gallery extension,
+    // since this whole effect depends on [galleryItems]), not once per
+    // animation frame. Lets updateEntranceAnimations look up an item by id
+    // in O(1) while only ever visiting currently-mounted wrappers -- see
+    // updateEntranceAnimations's own comment.
+    const galleryItemsById = new Map(
+      galleryItems.map((item) => [item.id, item]),
+    );
+
     const extendGalleryIfNeeded = () => {
       const remainingTrack = track.scrollWidth - movement.distance;
       const extensionThreshold = window.innerWidth * 3;
@@ -3004,7 +3024,7 @@ function App() {
       galleryRenderer.applyTransform(movement.distance);
       extendGalleryIfNeeded();
       galleryRenderer.updateRenderWindow();
-      galleryRenderer.updateEntranceAnimations(galleryItems);
+      galleryRenderer.updateEntranceAnimations(galleryItemsById);
       if (movement.distance > browsingThreshold) {
         movement.hasBrowsed = true;
       }
@@ -3162,14 +3182,27 @@ function App() {
     }
   }, [galleryItems]);
 
+  // Perf: this used to be a plain `const` recomputed on every render of
+  // this component -- including renders triggered by state that has
+  // nothing to do with scroll position (hover, drawer, search, etc.) --
+  // re-filtering the full, unboundedly growing galleryItems array each
+  // time. Memoizing means the filter only re-runs when one of its actual
+  // inputs (galleryItems, renderWindow, focusedId) changes, which is what
+  // was already intended by "recomputed when the render window moves."
+  // Same inputs, same output, same isItemInRenderWindow logic -- just no
+  // longer redone on unrelated re-renders.
+  const renderedGalleryItems = useMemo(
+    () =>
+      focusedId === null
+        ? galleryItems.filter((item) => isItemInRenderWindow(item, renderWindow))
+        : galleryItems,
+    [galleryItems, renderWindow, focusedId],
+  );
+
   if (galleryItems.length === 0) {
     return <div className="app-shell" />;
   }
 
-  const renderedGalleryItems =
-    focusedId === null
-      ? galleryItems.filter((item) => isItemInRenderWindow(item, renderWindow))
-      : galleryItems;
   renderedGalleryItemsRef.current = renderedGalleryItems;
 
   // Relationship Mode Visibility Gate: evaluated once per render, not per

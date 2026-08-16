@@ -1571,16 +1571,58 @@ function createGalleryRenderer({
         wrapper.dataset.smoothY = String(nextY);
         wrapper.dataset.smoothScale = String(nextScale);
 
-        gsap.set(wrapper, {
-          opacity: item.opacity,
-          x: nextX,
-          y: nextY,
-          scale: nextScale,
-          zIndex:
-            nextRelationshipProgress > 0.02
-              ? item.layout.relationshipMotion?.zIndex || item.layout.zIndex
-              : item.layout.zIndex,
-        });
+        // Convergence-skip (timeout/white-screen investigation follow-up):
+        // once a tile's smoothed x/y/scale have essentially reached their
+        // target, re-issuing gsap.set with the same values every single
+        // frame is pure waste -- confirmed via direct instrumentation to
+        // run ~5,000 times/second, forever, even at complete idle, since
+        // this loop has no exit condition tied to motion. The epsilon
+        // values are on the PER-FRAME DELTA (nextX - smoothX), not the
+        // remaining distance to target directly, but since
+        // nextX - smoothX === (targetX - smoothX) * 0.14, a delta under
+        // 0.02 means the tile is already within ~0.14px of its target (and
+        // scale within ~0.0036% of its target) -- sub-pixel, well under
+        // anything perceptible, so there is no visible snap when the skip
+        // engages. Only the redundant gsap.set call is skipped; the
+        // smoothX/Y/Scale dataset bookkeeping above still runs every frame
+        // unconditionally, so nothing about the interpolation itself, its
+        // rate, or its target changes -- a tile that later needs to move
+        // again (target changed, e.g. from further scrolling) simply fails
+        // this check on that frame and gsap.set resumes exactly as before.
+        //
+        // Deliberately excludes any item with relationshipMotion outright,
+        // rather than trying to also converge-check zIndex: zIndex here is
+        // a step function of nextRelationshipProgress crossing 0.02, a
+        // second, independent threshold not captured by the x/y/scale
+        // epsilon above (relationshipMotion's own targetX/Y can be small
+        // enough in absolute pixels that x/y read as "converged" slightly
+        // before progress itself clears the 0.02 zIndex boundary). Since
+        // relationship-motion tiles are always a small minority of what's
+        // mounted, and their target also changes independently whenever
+        // movement.direction flips, excluding them entirely keeps this
+        // change narrowly scoped to the tiles it was actually measured
+        // against (plain, non-relationship tiles, whose target -- and
+        // hence zIndex, always item.layout.zIndex -- never changes on its
+        // own) instead of trying to prove a second, coupled threshold is
+        // also safe to skip.
+        const hasConverged =
+          !item.layout.relationshipMotion &&
+          Math.abs(nextX - smoothX) < 0.02 &&
+          Math.abs(nextY - smoothY) < 0.02 &&
+          Math.abs(nextScale - smoothScale) < 0.0005;
+
+        if (!hasConverged) {
+          gsap.set(wrapper, {
+            opacity: item.opacity,
+            x: nextX,
+            y: nextY,
+            scale: nextScale,
+            zIndex:
+              nextRelationshipProgress > 0.02
+                ? item.layout.relationshipMotion?.zIndex || item.layout.zIndex
+                : item.layout.zIndex,
+          });
+        }
       }
 
       if (isAwayFromViewport && animatedImages.has(item.id)) {

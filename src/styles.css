@@ -1749,6 +1749,21 @@ html.is-browsing .zoom-controls {
     pointer-events:auto;
 }
 
+  /* Mobile nav fix: .top-menu's own `top: 60px` above is a relative
+     offset -- it visually drops FILTER/SEARCH/MENU below the logo, but
+     (being `position: relative`) reserves no layout space for that
+     drop. .index-drawer's own desktop rule below pulls the drawer UP
+     with a small negative margin-top (meant to visually connect it to
+     row1) -- combined with the drop above, that pulls Theme/Project/Year
+     (and Menu's own row) up into direct overlap with the shifted
+     FILTER/SEARCH/MENU row instead of appearing beneath it. Reuses the
+     exact same 60px .top-menu is already shifted by, so the drawer
+     clears exactly that gap rather than a second, independently-tuned
+     number. */
+  .index-drawer.is-open {
+    margin-top: 60px;
+  }
+
   .top-menu__group {
     gap: 0.9rem;
   }

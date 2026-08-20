@@ -14,8 +14,8 @@ import { navigate } from "./navigation";
 // source of *what* images exist; this import only changes *how* one is
 // requested once render already has its URL.
 import {
-  getOptimizedImageSrc,
-  getOptimizedImageSrcSet,
+  getArchiveOptimizedImageSrc,
+  getArchiveOptimizedImageSrcSet,
   getImageDimensions,
 } from "./imageOptimization.js";
 // Content layer seam (Frontend <-> CMS handshake, Phase 1): App.jsx no
@@ -3468,16 +3468,16 @@ function App() {
                   <picture>
                     <source
                       type="image/webp"
-                      srcSet={getOptimizedImageSrcSet(item.src, "webp")}
+                      srcSet={getArchiveOptimizedImageSrcSet(item.src, "webp")}
                       sizes={getGalleryImageSizes(item.layout)}
                     />
                     <source
                       type="image/jpeg"
-                      srcSet={getOptimizedImageSrcSet(item.src, "jpg")}
+                      srcSet={getArchiveOptimizedImageSrcSet(item.src, "jpg")}
                       sizes={getGalleryImageSizes(item.layout)}
                     />
                     <img
-                      src={getOptimizedImageSrc(item.src)}
+                      src={getArchiveOptimizedImageSrc(item.src)}
                       alt={item.alt}
                       className={`gallery-image${
                         isDimmed ? " gallery-image--dimmed" : ""
@@ -3638,16 +3638,16 @@ function App() {
           <picture>
             <source
               type="image/webp"
-              srcSet={getOptimizedImageSrcSet(focusedImage.src, "webp")}
+              srcSet={getArchiveOptimizedImageSrcSet(focusedImage.src, "webp")}
               sizes="90vw"
             />
             <source
               type="image/jpeg"
-              srcSet={getOptimizedImageSrcSet(focusedImage.src, "jpg")}
+              srcSet={getArchiveOptimizedImageSrcSet(focusedImage.src, "jpg")}
               sizes="90vw"
             />
             <img
-              src={getOptimizedImageSrc(focusedImage.src, 1200)}
+              src={getArchiveOptimizedImageSrc(focusedImage.src, 1200)}
               alt={focusedImage.alt}
               width={dimensions.width}
               height={dimensions.height}
@@ -3681,16 +3681,16 @@ function App() {
             <picture>
               <source
                 type="image/webp"
-                srcSet={getOptimizedImageSrcSet(item.src, "webp")}
+                srcSet={getArchiveOptimizedImageSrcSet(item.src, "webp")}
                 sizes="30vw"
               />
               <source
                 type="image/jpeg"
-                srcSet={getOptimizedImageSrcSet(item.src, "jpg")}
+                srcSet={getArchiveOptimizedImageSrcSet(item.src, "jpg")}
                 sizes="30vw"
               />
               <img
-                src={getOptimizedImageSrc(item.src)}
+                src={getArchiveOptimizedImageSrc(item.src)}
                 alt={item.alt}
                 width={dimensions.width}
                 height={dimensions.height}

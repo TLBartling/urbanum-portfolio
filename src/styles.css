@@ -299,6 +299,12 @@ body {
   gap: 18px;
   transition: gap 1.6s cubic-bezier(0.65, 0, 0.35, 1);
 }
+/* Typography hierarchy (Josh review): FILTER/SEARCH/MENU are the header's
+   primary controls, so they load the real GT America Bold face -- the
+   actual @font-face declared at font-weight: 700 above (GT-America-
+   Standard-Bold.woff/ttf), not a synthesized/faux-bold of the Regular
+   file. font-weight: 700 on this same "GT America" family resolves to
+   that exact face; it isn't asking the browser to embolden anything. */
 .text-control {
   background: none;
   border: none;
@@ -307,7 +313,7 @@ body {
 
   font-family: "GT America", "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-size: 0.78rem;
-  font-weight: 400;
+  font-weight: 700;
   letter-spacing: 0.18em;
   text-transform: uppercase;
 
@@ -493,7 +499,16 @@ body {
   align-items: flex-start;
   justify-content: flex-start;
   gap: clamp(28px, 3.6vw, 56px);
-  padding-top: clamp(10px, 1.2vw, 15px);
+  /* Typography follow-up (Josh review): the heavier Medium weight on
+     .index-drawer__label-text (first tier -- Theme/Project/Year and
+     About/Journal/Contact both pass through this one row) reads as
+     slightly tight against the header controls above it, so this adds
+     +6px at both ends of the existing clamp -- same vw slope, same
+     mechanism, just more of it. Structural: lives on the row all first-
+     tier fields render inside, not on the labels themselves, so it holds
+     if items are renamed or new ones are added. gap (horizontal spacing
+     between Theme/Project/Year) and padding-bottom are untouched. */
+  padding-top: clamp(16px, calc(1.2vw + 6px), 21px);
   padding-bottom: clamp(14px, 1.8vw, 22px);
 }
 
@@ -541,7 +556,17 @@ body {
 .index-drawer__label-text {
   /* Now a real button (was a plain span) so it shares the "+" control's
      click target -- reset to look exactly as it did before, with no
-     added hover/visual treatment beyond what was already here. */
+     added hover/visual treatment beyond what was already here.
+     Typography hierarchy (Josh review): this is the drawer's first tier
+     -- Theme/Project/Year in the Filter row and About/Journal/Contact in
+     the Menu row both render through this one class (see the comment
+     below on .index-drawer__row--menu .index-drawer__label-text--active),
+     so styling it here applies to both drawers structurally and keeps
+     working if items are renamed or added later. Loads the real GT
+     America Medium face -- the @font-face declared at font-weight: 500
+     above (GT-America-Standard-Medium.woff/ttf) -- not a synthesized
+     weight. .index-drawer__option (the value lists this tier opens into)
+     is a separate class and is untouched. */
   background: none;
   border: none;
   padding: 0;
@@ -549,7 +574,7 @@ body {
   white-space: nowrap;
   font-family: "GT America", "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-size: 0.78rem;
-  font-weight: 400;
+  font-weight: 500;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: #111;
@@ -642,30 +667,25 @@ body {
    outer drawer, just a notch quicker since it's a smaller, secondary
    reveal. */
 .index-drawer__panel {
-  /* margin-left / width are set inline (Header.jsx) from the same measured
-     offset: margin-left moves the panel's reading origin beneath whichever
-     Context is active, and width shrinks by that same amount so the
-     panel's right edge stays anchored to the drawer's own right boundary
-     instead of overflowing past it. Both animate on the existing
-     grid-template-rows timing so switching Contexts reads as the same
-     reveal, not a new motion. */
+  /* Third-tier alignment (Josh review): this used to shift its own
+     margin-left/width inline (Header.jsx) to track whichever Context
+     field was active, which meant its left edge only matched FILTER
+     above when the leftmost field (Theme) happened to be open. It's a
+     plain full-width block now -- no inline position -- so it reads its
+     left edge from .index-drawer__inner the same shared padding
+     .index-drawer__row already reads its own left edge from, structurally
+     aligning it with Filter regardless of which field is active. */
   display: grid;
   grid-template-rows: 0fr;
   pointer-events: none;
-  transition:
-    grid-template-rows 200ms ease-out,
-    margin-left 200ms ease-out,
-    width 200ms ease-out;
+  transition: grid-template-rows 200ms ease-out;
   width: 100%;
 }
 
 .index-drawer__panel.is-open {
   grid-template-rows: 1fr;
   pointer-events: auto;
-  transition:
-    grid-template-rows 520ms var(--reveal-ease),
-    margin-left 520ms var(--reveal-ease),
-    width 520ms var(--reveal-ease);
+  transition: grid-template-rows 520ms var(--reveal-ease);
 }
 
 .index-drawer__panel-inner {
@@ -686,7 +706,16 @@ body {
   flex-wrap: wrap;
   align-items: flex-start;
   gap: clamp(8px, 0.9vw, 12px) clamp(16px, 2vw, 24px);
-  padding-top: 10px;
+  /* Vertical rhythm (Josh review): matched exactly to the Tier1->Tier2
+     gap above .index-drawer__row in the previous pass, but the FILTER
+     underline reads as part of Tier 1's own bottom edge, so equal
+     numeric spacing made the Tier1->Tier2 gap look tighter than the
+     Tier2->Tier3 gap even though both were the same value. Tightened
+     this gap specifically -- same clamp() mechanism as the row's own
+     padding-top above, just a smaller range -- so Tier2->Tier3 reads
+     visually balanced against Tier1->Tier2 instead of numerically
+     identical to it. */
+  padding-top: clamp(4px, calc(0.3vw + 2px), 6px);
   padding-bottom: clamp(12px, 1.6vw, 18px);
   opacity: 0;
   transition: opacity 140ms ease-out;

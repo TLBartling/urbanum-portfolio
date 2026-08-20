@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Logo from "./Logo";
 import {
   navigate,
@@ -214,13 +214,6 @@ export default function Header({
   // below. This ref exists purely to be observed; nothing here reads its
   // node for any other purpose.
   const drawerRef = useRef(null);
-  // One DOM node per Context field, collected as they render, so the
-  // Active Panel can measure where the currently selected Context sits
-  // without the Context row itself needing to know anything about it.
-  const fieldRefs = useRef(new Map());
-  // How far the Active Panel's reading origin sits from the row's own
-  // left edge -- i.e. where the active Context's own label begins.
-  const [activeOffset, setActiveOffset] = useState(0);
   // Whether the Active Panel is showing the active Context's full value
   // list rather than just its curated preview. Reset whenever the active
   // Context changes (see handleAddClick) -- the preview is always where a
@@ -690,30 +683,6 @@ export default function Header({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isDrawerOpen, isFilterOpen, activeEntry]);
 
-  // The Context row never moves -- THEME/PROJECT/YEAR stay exactly where
-  // they are. Instead, the single Active Panel shifts its own reading
-  // origin to sit beneath whichever Context is active, measured from the
-  // real rendered position of that Context's own label. useLayoutEffect
-  // (not useEffect) so this resolves before the browser paints -- even
-  // the very first time a Context other than the leftmost one is opened,
-  // the panel appears already aligned rather than flashing at the left
-  // edge for a frame. Re-measures on resize since the whole layout is
-  // fluid (clamp()-based), so a label's position can shift without
-  // activeEntry itself changing.
-  useLayoutEffect(() => {
-    if (!activeEntry) return undefined;
-
-    const updateOffset = () => {
-      const node = fieldRefs.current.get(activeEntry);
-      if (!node) return;
-      setActiveOffset(node.offsetLeft);
-    };
-
-    updateOffset();
-    window.addEventListener("resize", updateOffset);
-    return () => window.removeEventListener("resize", updateOffset);
-  }, [activeEntry]);
-
   // Layout Bug Fix -- Gallery Shift on Filter Open (Camera-based revision):
   // reports the drawer's own live rendered height (0 when closed, and
   // updating continuously through the grid-template-rows open/close
@@ -1006,12 +975,7 @@ export default function Header({
                   </div>
                 );
               })}
-              <div
-                className="index-drawer__field"
-                ref={(el) => {
-                  if (el) fieldRefs.current.set("contact", el);
-                }}
-              >
+              <div className="index-drawer__field">
                 <div className="index-drawer__field-row">
                   <button
                     type="button"
@@ -1043,9 +1007,6 @@ export default function Header({
                 <div
                   className="index-drawer__field"
                   key={key}
-                  ref={(el) => {
-                    if (el) fieldRefs.current.set(key, el);
-                  }}
                   // Filter UX consistency pass -- Category Clear: arms
                   // this row's own x on hover, exactly like
                   // .filter-control (the main Filter row's own wrapper)
@@ -1192,35 +1153,23 @@ export default function Header({
               tells this shared panel what to display. Its open state is
               "is any field active", and its content is whichever field's
               values that is (see entryValues/entryLabels above, which now
-              include "contact" alongside theme/project/year). The field
-              row above never moves -- instead this panel's own reading
-              origin (marginLeft) shifts to sit beneath whichever field is
-              active, using the offset measured by the useLayoutEffect
-              above. width is reduced by that same offset so the panel's
-              right edge stays anchored to the drawer's own right boundary
-              instead of overflowing past it, which keeps the horizontal
-              wrapping behavior correct at every offset. */}
+              include "contact" alongside theme/project/year).
+              Third-tier alignment (Josh review): this used to shift its own
+              left edge to sit beneath whichever field was active (measured
+              via a useLayoutEffect against each field's offsetLeft), so it
+              tracked THEME/PROJECT/YEAR individually instead of the
+              header's own shared left edge -- opening Project or Year
+              visibly misaligned it from FILTER above. It's a plain full-
+              width block now, with no inline position of its own, so it
+              reads its left edge from .index-drawer__inner the same way
+              .index-drawer__row (the field row itself) already does --
+              the same shared padding that lines Theme/Project/Year up
+              with Filter also lines this panel up with it, structurally,
+              regardless of which field is active or how many fields
+              exist. */}
           <div
             className={`index-drawer__panel${activeEntry ? " is-open" : ""}`}
             aria-hidden={!activeEntry}
-            style={
-              activeEntry === "contact"
-                ? /* Contact's field sits at the right end of a
-                     right-aligned row (index-drawer__row--menu), so it's
-                     already close to the row's right edge -- narrowing the
-                     panel by that same offset (the way Filter's left-
-                     aligned Theme/Project/Year do) would leave almost no
-                     room and wrap "Instagram Email Phone" onto separate
-                     lines. Same alignment philosophy as the row above it,
-                     mirrored for a right-aligned field: full width, right
-                     -justified content (see index-drawer__options-list--menu
-                     below), instead of a left-anchored, width-reduced panel. */
-                  { marginLeft: 0, width: "100%" }
-                : {
-                    marginLeft: activeOffset,
-                    width: `calc(100% - ${activeOffset}px)`,
-                  }
-            }
           >
             <div className="index-drawer__panel-inner">
               <div

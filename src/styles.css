@@ -176,13 +176,12 @@ body {
     box-shadow 200ms ease-out;
 }
 
-/* A barely-there shadow rather than a hard rule -- just enough
-   separation to read as two sheets of paper, not a bordered panel. The
-   frame materializes slowly (its own opening-direction transition here
-   overrides the base rule's brisker closing speed). */
+/* No shadow/divider beneath the header (Josh review) -- the frame still
+   materializes slowly via a real background surface once framed (its own
+   opening-direction transition here overrides the base rule's brisker
+   closing speed), just without a shadow line under it. */
 .site-header--framed {
   background: #faf9f5;
-  box-shadow: 0 3px 8px -6px rgba(17, 17, 17, 0.08);
   transition:
     opacity 1.6s cubic-bezier(0.65, 0, 0.35, 1),
     background-color 520ms var(--reveal-ease),
@@ -267,6 +266,25 @@ body {
   align-items: center;
   width: 100%;
   position: relative;
+  /* Button-row/logo bottom alignment (Josh review): .top-menu is normal
+     flow, so without this it sits flush under row1's own padding-top --
+     well above the logo, which is centered on row1's FULL box (see
+     .brand-button's top:50% below). This drops the row down by exactly
+     the gap between the logo's own bottom edge and .top-menu's natural
+     one, derived from the same terms that already define that geometry:
+     row1's own height/2 (.site-header__row1 above) plus half the logo's
+     rendered height (.brand's own width clamp below, scaled by the
+     wordmark SVG's fixed 101/917 intrinsic aspect ratio) minus row1's
+     padding-top and .top-menu's own ~16px line height. Horizontal
+     position, sizing, and interaction are untouched -- this is a top
+     offset only. Mobile keeps its own separate top: 60px override further
+     down (unchanged).*/
+  top: calc(
+    clamp(80px, 7vw, 102px) / 2 +
+    clamp(226px, 17.6vw, 296px) * 101 / 917 / 2 -
+    clamp(34px, 2.8vw, 42px) -
+    16px
+  );
   pointer-events: auto;
 }
 

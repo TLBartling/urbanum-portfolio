@@ -1,12 +1,11 @@
 import {defineField, defineType} from 'sanity'
 import {ArchiveNumberInput} from './components/ArchiveNumberInput'
-import {TagsInput} from './components/TagsInput'
 
 // Archive Item is the atomic unit of the Urbanum archive: one photograph
 // plus the minimum structured metadata needed to place it -- which
-// Project it belongs to, which Themes it speaks to, how it's tagged, and
-// where it falls in curated ordering. Everything past that is optional
-// context Josh can add if and when he has it.
+// Project it belongs to, which Themes it speaks to, and where it falls in
+// curated ordering. Everything past that is optional context Josh can add
+// if and when he has it.
 //
 // Field order below is intentional and mirrors the editing flow: the
 // image comes first ("Instagram for an architect" -- the photo is the
@@ -64,20 +63,6 @@ export const archiveItemType = defineType({
       description: 'Select one or more recurring ideas that connect this image to the rest of the archive.',
       type: 'array',
       of: [{type: 'reference', to: [{type: 'theme'}]}],
-      validation: (Rule) => Rule.required().min(1),
-    }),
-    defineField({
-      name: 'tags',
-      title: 'Tags',
-      description: 'Optional keywords to help organize and find this image later.',
-      type: 'array',
-      of: [{type: 'string'}],
-      options: {layout: 'tags'},
-      // Tag formatting pass: see TagsInput.jsx's own comment for why this
-      // is an effect-driven wrapper around the default input rather than
-      // a schema-level transform (Sanity's schema layer has no such
-      // hook -- validation can reject a value but never rewrite one).
-      components: {input: TagsInput},
       validation: (Rule) => Rule.required().min(1),
     }),
     defineField({

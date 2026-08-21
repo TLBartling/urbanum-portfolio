@@ -19,8 +19,8 @@ const noBrowserAutofillProps = {
 
 // AnnotationField -- Urbanum's own small combobox, built specifically for
 // one interaction: type, see what already exists, press Enter to attach it
-// or create it if it doesn't exist yet, watch it become a chip. Project,
-// Theme, and Tags all use this instead of Sanity's Autocomplete.
+// or create it if it doesn't exist yet, watch it become a chip. Project
+// and Theme both use this instead of Sanity's Autocomplete.
 //
 // That's a deliberate choice, not a stylistic one. Checked directly against
 // the installed @sanity/ui 6.7.0 source (not just its type declarations):
@@ -45,7 +45,7 @@ const noBrowserAutofillProps = {
 // onRemove callbacks -- this file has no schema knowledge and makes no
 // network calls of its own.
 //
-// Cardinality (Project = one chip, Theme/Tags = many) is the one place
+// Cardinality (Project = one chip, Theme = many) is the one place
 // callers differ, via `multiple`. Everything else -- the typing, the
 // suggestions, the keyboard flow, the chip look -- is identical on
 // purpose, since that sameness is the entire point of this component.
@@ -68,7 +68,7 @@ export function AnnotationField({
   const inputRef = useRef(null)
 
   // Project hides its input the moment it has a chip -- there's nowhere
-  // else for a second one to go. Theme and Tags keep it visible always, so
+  // else for a second one to go. Theme keeps its input visible always, so
   // the next entry is one keystroke away. Refocusing when the input
   // reappears (e.g. Project's chip just got removed) is what keeps "clear
   // it, type the replacement" feeling like one motion instead of two.

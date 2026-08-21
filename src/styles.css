@@ -9,11 +9,11 @@
    (Helvetica/Arial in most cases) -- these two roles are what "site-wide
    font" replaces here.
    Follow-up (Josh review): the Archive hover card's metadata --
-   .hover-overlay__number, .hover-overlay__themes, .hover-overlay__tags --
+   .hover-overlay__number, .hover-overlay__themes --
    was originally left on Courier New along with the rest of this file's
    typewriter/archival-index-card usages, but the client asked for that
    metadata to visually participate in the new site-wide GT America
-   system too, so those three rules were moved onto GT America in this
+   system too, so those rules were moved onto GT America in this
    follow-up (same "Helvetica Neue"/Helvetica/Arial/sans-serif fallback
    chain used by this file's other GT America roles). `"Courier New"`
    elsewhere -- .focus-theme-title only (the Focus/zoom-mode caption, a
@@ -1037,9 +1037,9 @@ body {
    center line -- the same 1rem, just measured more directly. */
 /* Safe area: equal 0.5rem on all four sides, the same value already used
    for the archive number's own padding and (previously) the left/right
-   inset on themes/tags -- reused here rather than a new value, now applied
+   inset on themes -- reused here rather than a new value, now applied
    once at the overlay level so top/bottom match left/right exactly, like
-   an evenly matted print. Themes/tags no longer set their own horizontal
+   an evenly matted print. Themes no longer set their own horizontal
    padding (see below); the container's padding is the single source of
    the safe-area inset on every side. */
 .hover-overlay {
@@ -1051,8 +1051,8 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  /* Metadata-block compression pass: Number/Themes/Tags are now composed as
-     one metadata block rather than three independently-spaced sections --
+  /* Metadata-block compression pass: Number/Themes are now composed as
+     one metadata block rather than independently-spaced sections --
      see .hover-overlay__number's own comment for the matching change on its
      side of this same gap. Was 1rem (16px); the outer safe-area padding
      directly above (0.5rem, unchanged) is what actually protects the
@@ -1135,9 +1135,8 @@ body {
    list-style: none alone doesn't zero it). max-height + overflow: hidden
    reserve this region's own layout budget -- exactly tall enough for all 4
    possible theme lines at the largest they ever render (0.78rem * 2.2 =
-   1.716rem per line x 4 = 6.864rem, rounded up slightly) and no taller, so
-   this region can never grow into the tags region below it. This bound
-   still holds under responsive sizing below, since 4 themes only ever show
+   1.716rem per line x 4 = 6.864rem, rounded up slightly) and no taller.
+   This bound still holds under responsive sizing below, since at most 3 themes now ever show
    on containers big enough that the responsive font-size has already
    saturated at its 0.78rem ceiling (see that rule's own comment) --
    shrinking below 0.78rem only ever happens where at most one theme shows.
@@ -1269,14 +1268,22 @@ body {
    threshold: the responsive font-size above already renders them,
    correctly sized, on its own.
 
-   Tiers 2-4 (below) are unchanged from before this pass: same fixed
-   120px width floor, same 87/114/142px height breakpoints, same
+   Tiers 2-3 (below) are unchanged from before this pass: same fixed
+   120px width floor, same 87/114px height breakpoints, same
    engineering-audited derivation (Number's real cost + gap + N complete
    theme lines at the ORIGINAL fixed 0.78rem + a flat 10px safety margin --
    see the git history for that derivation's own numbers). They still only
    ever trigger on containers comfortably larger than where the responsive
    font-size formula above has already saturated at its 0.78rem ceiling,
-   so nothing about how multiple themes render has changed. */
+   so nothing about how multiple themes render has changed. Display cap
+   (Theme limit pass): the maximum number of Themes ever revealed here is
+   now 3, not 4 -- the former Tier 4 (min-height: 142px,
+   `li:nth-child(4)`) has been removed outright rather than kept and
+   disabled, since `.hover-overlay__themes li` already defaults to
+   `display: none` (see above) and nothing else ever sets a 4th item's
+   display to anything else. Theme selection, ordering, and deduplication
+   (HoverOverlay.jsx/relationshipEngine.js) are untouched -- this is a
+   presentation-only cap. */
 @container hover-overlay (min-width: 79px) and (min-height: 42px) {
   .hover-overlay__themes {
     display: flex;
@@ -1299,65 +1306,8 @@ body {
   }
 }
 
-@container hover-overlay (min-width: 120px) and (min-height: 142px) {
-  .hover-overlay__themes li:nth-child(4) {
-    display: block;
-  }
-}
-
-/* Tags: priority 3, its own reserved region -- Tier 3 only. The first tag
-   breakpoint (165px, see Tier 3 below) is strictly above the largest theme
-   breakpoint (142px), so every theme is always fully shown before any tag
-   ever appears, and the two regions' reveal ranges never overlap. A smaller,
-   quieter visual hierarchy than themes: smaller font-size, tighter
-   line-height, and a muted ink (rgba, not the full #1a1a1a) rather than a
-   new color -- the overlay's own background color/opacity are untouched.
-   Rendered as one wrapped paragraph of inline spans (not one-per-line, per
-   spec), joined with a middle-dot separator inserted only before non-first
-   *structural* children -- since tags are always revealed as a
-   contiguous prefix from the first tag onward (never skipping one), this
-   never produces a dangling separator. Horizontal padding moved to the
-   overlay's own safe-area padding above, same as themes. max-height +
-   overflow: hidden reserve this region's own layout budget -- worst case
-   (each of the up to 4 tags needing a full line to itself, 0.68rem *
-   line-height 1.6 = 1.088rem per line x 4 = 4.352rem, rounded up
-   slightly) -- so this region can never grow into the themes region above
-   it, and vice versa. */
-.hover-overlay__tags {
-  display: none;
-  align-self: center;
-  margin: 0;
-  padding: 0;
-  max-width: 100%;
-  max-height: 4.4rem;
-  overflow: hidden;
-  font-family: "GT America", "Helvetica Neue", Helvetica, Arial, sans-serif;
-  font-weight: 300;
-  font-size: 0.68rem;
-  line-height: 1.6;
-  /* Calibrated down to 0.1em (was 0.18em, too pronounced on visual
-     review; originally 0.02em before the tracking follow-up). This
-     region wraps (not nowrap, see the comment above), so the wider
-     tracking only ever adds more line-wraps within the existing
-     max-height budget, not a width-clip risk like .hover-overlay__themes
-     above. */
-  letter-spacing: 0.1em;
-  text-align: center;
-  color: rgba(26, 26, 26, 0.62);
-}
-
-.hover-overlay__tag {
-  display: none;
-  /* Same interaction change as .hover-overlay__themes li above: tags are
-     individually hoverable to drive the Relationship Engine, gated only
-     on :not(.is-scrolling) (see the scoped rule below), with
-     .hover-overlay's own pointer-events: none otherwise unchanged. */
-  /* Same click affordance as .hover-overlay__themes li above. */
-  cursor: pointer;
-}
-
-/* The pointer-events opt-in for both themes and tags -- restored to
-   immediate/unconditional (no hover-intent dwell gate anymore) now that
+/* The pointer-events opt-in for themes -- restored to immediate/
+   unconditional (no hover-intent dwell gate anymore) now that
    Browsing/Exploration mode is what filters accidental activations. The
    only condition left is :not(.is-scrolling): this is what actually
    suspends the Relationship Engine while browsing -- with pointer-events
@@ -1365,100 +1315,23 @@ body {
    longer receive the mouseenter that would fire it, immediately, not just
    once the card has faded out. The instant scrolling settles, these are
    auto again and a hover fires the Relationship Engine right away. */
-.gallery-track:not(.is-scrolling) .hover-overlay__themes li,
-.gallery-track:not(.is-scrolling) .hover-overlay__tag {
+.gallery-track:not(.is-scrolling) .hover-overlay__themes li {
   pointer-events: auto;
 }
 
-/* Metadata hover polish: a small, purely visual signal that a theme/tag is
+/* Metadata hover polish: a small, purely visual signal that a theme is
    itself interactive, once the gallery has settled enough for it to
    receive pointer events at all -- :hover cannot apply to an element that
    isn't currently receiving pointer events, so this is already correctly
    inert during Browsing Mode with no extra condition needed here. Opacity
    only, nothing else: no movement, no scale, no color change. Archive
-   Number is not part of either selector below and is untouched. */
-.hover-overlay__themes li,
-.hover-overlay__tag {
+   Number is not part of the selector below and is untouched. */
+.hover-overlay__themes li {
   transition: opacity 120ms ease-out;
 }
 
-.hover-overlay__themes li:hover,
-.hover-overlay__tag:hover {
+.hover-overlay__themes li:hover {
   opacity: 0.75;
-}
-
-.hover-overlay__tag:not(:first-child)::before {
-  content: " \00B7 ";
-}
-
-/* Tier 3 (large): Archive Number + Themes + Tags together -- the only tier
-   that ever shows tags. Reveal tags one at a time, the same
-   cumulative-prefix pattern as themes above: each threshold conservatively
-   assumes the newly-revealed tag needs a full line to itself (ignoring any
-   wrapping benefit from shorter tags sharing a line), so these are a safe
-   upper bound on the space actually required, never an underestimate --
-   tags can never overflow the reserved region or appear partially.
-
-   Height thresholds recalculated (audit pass): Number's real cost (16.0px)
-   + gap (5.6px) + 4 complete theme lines (109.824px, already fully shown
-   by the time any tag appears) + a second gap before the tags region
-   (5.6px) + M tag lines (17.408px each) + the same flat 10px margin =
-   165 / 182 / 200 / 217px for M = 1, 2, 3, 4 -- replacing the previous
-   170/190/210/230 ladder, which the same audit found carried 3-5% more
-   margin than the measured requirement at every step.
-
-   Width DECOUPLED from tag count (audit pass): tags render as one wrapped
-   paragraph, not one-per-line -- a tag's width requirement is always just
-   "does this one word fit on its own line," which never grows with how
-   many tags are shown, exactly like themes above. The previous ladder
-   nonetheless escalated width from 170px to 230px in lockstep with height,
-   the same unjustified pattern themes moved away from earlier -- with no
-   basis in the actual content, since the widest real tag string in the
-   archive ("adaptive reuse") measures 94.4px at this typography, and the
-   raw content minimum (94.4px + the same 10px margin) is only 105px.
-
-   However, the width floor stays flat at 120px, not 105px: tags never
-   appear without every theme already shown above them (that is the whole
-   point of the priority order), and themes themselves require 120px
-   width. A flat 105px floor here would open a real edge case -- a
-   narrow-but-tall tile (105-119px wide, tall enough to clear every tag
-   height rung below) could satisfy the tag rule while failing the theme
-   rule, so tags would render above zero themes, inverting the priority
-   order. Checked against the real tile population across every canvas
-   height sampled throughout this investigation: that combination does
-   occur at several viewport heights. So 120px -- the theme floor itself --
-   is the width value used below, still fully decoupled from tag count (no
-   more 170/190/210/230 escalation), just clamped to the one value that
-   keeps "themes always precede tags" true by construction rather than by
-   coincidence. This was still the single largest source of unnecessary
-   conservatism the audit found -- the previous ladder was reserving up to
-   110px of width beyond this floor that no real tag content ever needed. */
-@container hover-overlay (min-width: 120px) and (min-height: 165px) {
-  .hover-overlay__tags {
-    display: block;
-  }
-
-  .hover-overlay__tag:nth-child(1) {
-    display: inline;
-  }
-}
-
-@container hover-overlay (min-width: 120px) and (min-height: 182px) {
-  .hover-overlay__tag:nth-child(2) {
-    display: inline;
-  }
-}
-
-@container hover-overlay (min-width: 120px) and (min-height: 200px) {
-  .hover-overlay__tag:nth-child(3) {
-    display: inline;
-  }
-}
-
-@container hover-overlay (min-width: 120px) and (min-height: 217px) {
-  .hover-overlay__tag:nth-child(4) {
-    display: inline;
-  }
 }
 
 .gallery-overlay {
@@ -2929,7 +2802,7 @@ html.is-browsing .zoom-controls {
 }
 
 /* Descriptive metadata group (Josh review, final polish pass, renamed
-   from .project-info-panel__image-meta): themes / description / tags,
+   from .project-info-panel__image-meta): themes / description,
    beneath a hairline divider (matching .project-info-panel__inner's own
    border-left treatment against the image, and .project-navigation's
    border-top below) -- no card, no background, no heading text, so the
@@ -2961,22 +2834,13 @@ html.is-browsing .zoom-controls {
    project.description -- see ProjectInfoPanel.jsx). Extra margin above
    its neighbors' shared 0.3rem gap gives it the "slightly more breathing
    room" its own paragraph-length text needs against the single-line
-   Themes/Tags rows it sits between. */
+   Themes row above it. */
 .project-info-panel__description {
   margin: 0.35rem 0;
   font-size: 0.85rem;
   font-weight: 400;
   line-height: 1.55;
   color: #5a5a5a;
-}
-
-/* Tags read one step down from Themes: smaller and lighter, as
-   supporting keywords rather than a second headline. */
-.project-info-panel__tags {
-  margin: 0;
-  font-size: 0.82rem;
-  font-weight: 400;
-  color: #6e6e6e;
 }
 
 /* Image-first redesign (Josh review): three-part grid -- Previous /

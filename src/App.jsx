@@ -480,7 +480,7 @@ const DEFAULT_IMAGE_POOL = { all: allImages, byOrientation: imagesByOrientation 
 // own constant so App's initial state and its reset can never drift into
 // two slightly different "empty" literals. `type` added alongside `year`
 // for the new Type Filter category, mirroring EMPTY_FILTER_SELECTION.
-const EMPTY_FILTER_QUERY = { theme: [], tag: [], project: [], year: [], type: [] };
+const EMPTY_FILTER_QUERY = { theme: [], project: [], year: [], type: [] };
 
 // Project Filter Alignment: Filter's Project category displays/selects
 // each Project's human-readable title -- the same way Theme/Year already
@@ -912,7 +912,7 @@ function createGalleryBatch(
         archiveNumber: archiveItem?.archiveNumber ?? null,
         project: archiveItem?.project ?? null,
         // Prototype Data Contract (Commit 2.5): carry the Archive Item's
-        // own theme/tags onto the gallery item alongside the
+        // own theme onto the gallery item alongside the
         // archiveNumber/project fields already carried above -- same
         // null-safe pattern, same source (mockArchiveItems.js via
         // archiveItem, looked up above by findArchiveItemBySrc). This adds
@@ -926,11 +926,10 @@ function createGalleryBatch(
         // but this function was only ever carrying the singular `theme`
         // through to the gallery item -- so `item.themes` was always
         // undefined here, no matter how rich the mock data got. Carried
-        // the same null-safe way as theme/tags; `theme` itself is
+        // the same null-safe way as theme; `theme` itself is
         // untouched, still the same value as before, for the JSX fallback
         // below and any other existing reader.
         themes: archiveItem?.themes ?? [],
-        tags: archiveItem?.tags ?? [],
         motion: getRandomImageMotion(),
       });
 
@@ -1072,7 +1071,6 @@ function createCenterSeedBatch(
       project: archiveItem?.project ?? null,
       theme: archiveItem?.theme ?? null,
       themes: archiveItem?.themes ?? [],
-      tags: archiveItem?.tags ?? [],
       motion: getRandomImageMotion(),
     });
 
@@ -1204,7 +1202,6 @@ function createLeftwardGalleryBatch(
         project: archiveItem?.project ?? null,
         theme: archiveItem?.theme ?? null,
         themes: archiveItem?.themes ?? [],
-        tags: archiveItem?.tags ?? [],
         motion: getRandomImageMotion(),
       });
 
@@ -1965,7 +1962,7 @@ function App() {
   // App-level bookkeeping regenerateGallery already does for
   // movement.distance and animatedImagesRef. HoverOverlay uses it (passed
   // down as `generation`) purely as an input to a deterministic per-item
-  // shuffle seed, so each item's randomized theme/tag order stays stable
+  // shuffle seed, so each item's randomized theme order stays stable
   // across re-renders, scrolling, and virtualization remounts, and only
   // changes when this counter changes -- i.e. only on a real regeneration.
   const galleryGenerationRef = useRef(0);
@@ -2003,7 +2000,7 @@ function App() {
   const [isIndexDrawerOpen, setIsIndexDrawerOpen] = useState(false);
   // Filter Query State: the single source of truth for Filter's half of
   // the combined Metadata Query, shaped to match queryArchive's query
-  // object exactly (theme/tag/project/year, every field an array). Header
+  // object exactly (theme/project/year, every field an array). Header
   // owns the Filter UI and reports every selection change here via
   // onFilterChange (now handleFilterChange, below, which is what actually
   // combines this with committedSearch and runs the query -- see
@@ -2034,7 +2031,7 @@ function App() {
   // string. Header still owns the Search UI and its own internal
   // committedSearch (what actually renders the chip) -- this is purely so
   // a Filter-only change (handleFilterChange below) can rebuild the full
-  // {search, theme, tag, project, year} query without Search having to
+  // {search, theme, project, year} query without Search having to
   // change at the same moment. null means "no active search," exactly the
   // value queryArchive's own matchesSearch already treats as "no
   // constraint" (see metadataQueryEngine.js) -- so this needs no special
@@ -2050,8 +2047,8 @@ function App() {
   // .gallery-image-wrapper is currently under the pointer, set by plain
   // onMouseEnter/onMouseLeave below; relatedArchiveNumbers is populated by
   // HoverOverlay's own onRelatedArchiveNumbersChange callback (see the call
-  // site below), fired only by that component's per-theme/per-tag hover
-  // handlers, and resets to [] the moment a theme/tag hover ends. Neither
+  // site below), fired only by that component's per-theme hover
+  // handlers, and resets to [] the moment a theme hover ends. Neither
   // the Relationship Engine nor HoverOverlay hold this state -- this is
   // purely where it's lifted to.
   //
@@ -2357,7 +2354,7 @@ function App() {
   // its neutral browsing state. Search (handleSearchSubmit/Clear), Filter
   // (handleFilterChange), and Metadata Click (handleMetadataFilterCommit,
   // below) are all just different ways of producing the same {search,
-  // theme, tag, project, year} query state that flows into
+  // theme, project, year} query state that flows into
   // applyMetadataQuery -- this simply resets that same state back to its
   // defaults, through the same setters/refs those paths already use.
   // There is no metadata-specific (or Search-specific, or Filter-specific)
@@ -2425,7 +2422,7 @@ function App() {
   }, [handleExitFocus, resetArchiveState]);
 
   // Metadata Query Wiring (final commit): the one place a {search, theme,
-  // tag, project, year} query object actually gets built and handed to
+  // project, year} query object actually gets built and handed to
   // queryArchive -- handleSearchSubmit/handleSearchClear and
   // handleFilterChange (all below) each build their own version of that
   // object (combining whichever of committedSearch/activeFilterQuery just
@@ -2548,13 +2545,6 @@ function App() {
   // a first-click/second-click distinction for Theme; isFilterModeActive
   // is gone rather than left unused.
   //
-  // Tag is unchanged: it still merges directly into activeFilterQuery
-  // via handleFilterChange, invisible to Header's own Filter selection,
-  // exactly as established two passes ago -- there is still no Tag
-  // category in Header (see INDEX_ENTRIES in Header.jsx) for a Tag click
-  // to sync into, and nothing in this pass's brief asks for that to
-  // change.
-  //
   // Theme does not call handleFilterChange itself at all -- it only ever
   // sends Header a one-shot request to toggle the value into its own
   // selection, through the exact same handleOptionToggle path a real
@@ -2571,12 +2561,12 @@ function App() {
   const handleMetadataFilterCommit = useCallback(
     (field, value) => {
       // Relationship Mode -- Commit Boundary: committing a metadata
-      // value (a Theme/Tag click) always exits Relationship Mode.
+      // value (a Theme click) always exits Relationship Mode.
       // relatedArchiveNumbers exists purely to preview relationships
       // against whatever gallery is currently on screen; the moment
       // this function runs, that gallery is being replaced, so a
       // relationship set computed against the old one has nothing left
-      // to describe. This is the one function every Theme and Tag
+      // to describe. This is the one function every Theme
       // commit already shares -- the single place a metadata
       // interaction stops being an ephemeral hover preview and becomes
       // a durable, applied change -- so clearing here, unconditionally,
@@ -3422,7 +3412,7 @@ function App() {
               // in relatedArchiveNumbers -- there is no "hovered item"
               // exclusion because the hovered image itself isn't
               // guaranteed to be the one currently reporting
-              // relatedArchiveNumbers (a theme/tag inside any card can be
+              // relatedArchiveNumbers (a theme inside any card can be
               // hovered), so membership in relatedArchiveNumbers is the
               // only test.
               const isDimmed =
@@ -3515,7 +3505,7 @@ function App() {
                   </picture>
                   {/* Hover Overlay -- presentation only. Metadata now comes
                       directly from the Archive Item itself (item.themes /
-                      item.theme / item.tags / item.archiveNumber, carried
+                      item.theme / item.archiveNumber, carried
                       through by createGalleryBatch above from
                       mockArchiveItems.js -- see the Prototype Data Contract
                       comment there); no hardcoded literals remain.
@@ -3530,17 +3520,17 @@ function App() {
                       record that only ever sets the singular field.
                       HoverOverlay itself is unchanged -- both paths hand it
                       the same array shape it always accepted. Items with no
-                      matching Archive Item simply pass null/[]/[];
+                      matching Archive Item simply pass null/[];
                       HoverOverlay's own existing empty-state checks already
                       handle that, same as before. Purely additive: an
                       absolutely-positioned child, so it cannot affect this
                       wrapper's own box, Masonry's
                       layout.width/height/left/top above, or any sibling
                       wrapper. itemId + generation are only a stable seed
-                      for HoverOverlay's own per-item theme/tag shuffle --
+                      for HoverOverlay's own per-item theme shuffle --
                       see galleryGenerationRef's comment above.
                       onRelatedArchiveNumbersChange: moved off image hover
-                      onto individual theme/tag hover in an earlier commit --
+                      onto individual theme hover in an earlier commit --
                       HoverOverlay itself decides when to call this, per
                       metadata item, and no longer needs to know whether
                       this specific image is hovered to do so (the
@@ -3556,8 +3546,8 @@ function App() {
                       isDimmed comment below for why. Plain image hover
                       here only ever reveals this card; it has no bearing
                       on dimming either way.
-                      onMetadataCommit (Hover/Click separation): a Theme or
-                      Tag click inside HoverOverlay calls this straight
+                      onMetadataCommit (Hover/Click separation): a Theme
+                      click inside HoverOverlay calls this straight
                       through to handleMetadataFilterCommit above, which
                       itself is a thin wrapper around the existing
                       handleFilterChange -- the exact same Metadata Query
@@ -3565,7 +3555,7 @@ function App() {
                       wrapper button's own onClick (navigate/focus, above)
                       never fires for these clicks: HoverOverlay calls
                       event.stopPropagation() before invoking this, since
-                      the theme/tag elements are DOM descendants of this
+                      the theme elements are DOM descendants of this
                       button. */}
                   <HoverOverlay
                     archiveNumber={item.archiveNumber}
@@ -3576,7 +3566,6 @@ function App() {
                           ? [item.theme]
                           : []
                     }
-                    tags={item.tags ?? []}
                     itemId={item.id}
                     generation={galleryGenerationRef.current}
                     onRelatedArchiveNumbersChange={setRelatedArchiveNumbers}

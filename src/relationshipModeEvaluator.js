@@ -9,7 +9,7 @@
 //     "Should the UI visualize those relationships right now?"
 //
 // This module answers only the second question, and it answers it the
-// same way regardless of what triggered it: a theme/tag hover today, or a
+// same way regardless of what triggered it: a theme hover today, or a
 // future Search, Filter, or Zoom Mode relationship -- none of that is this
 // file's concern. It is pure, framework-agnostic, and takes only plain
 // arrays of archive numbers; it does not import React, the DOM, GSAP,

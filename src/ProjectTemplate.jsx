@@ -90,7 +90,7 @@ import { navigate } from "./navigation";
 // files wasn't part of what was asked here.
 //
 // Data-completeness correction (Josh review): an earlier pass reasoned
-// that Themes/Tags/per-image fields belonged only to the Archive Item,
+// that Themes/per-image fields belonged only to the Archive Item,
 // not the Project, and left them out of the Project Information panel
 // entirely on that basis. That reasoning about WHERE the fields live was
 // correct (confirmed again against cms/queries.js's
@@ -103,7 +103,7 @@ import { navigate } from "./navigation";
 // (title, location, dates, description -- confirmed via mockProjects.js
 // and the locked Sanity Project schema to be the only ones that exist at
 // that level) and the current image's own populated fields (title,
-// themes, tags, date, caption). See ProjectInfoPanel.jsx's own comment
+// themes, date, caption). See ProjectInfoPanel.jsx's own comment
 // for the full data-flow trace and the one field (the image's own
 // `location`) deliberately still excluded, and why.
 export default function ProjectTemplate({ slug, imageId }) {

@@ -40,11 +40,11 @@
 // as one coordinated transition rather than two unrelated animations.
 //
 // Data-completeness correction (Josh review): a prior pass showed only
-// project.title/location/dates/description and reasoned that Themes/Tags
+// project.title/location/dates/description and reasoned that Themes
 // "belong to the Archive Item, not the Project, and aren't in this
 // panel's field list" -- true as far as it went (re-confirmed against
 // ARCHIVE_ITEMS_QUERY/normalizeArchiveItem in cms/queries.js: themes,
-// tags, title, date, and caption all live on the Archive Item, never on
+// title, date, and caption all live on the Archive Item, never on
 // Project), but wrong as a reason to omit them. This panel is the one
 // place on the page metadata can be seen at all, and the Archive Item
 // currently on screen is exactly as much "the actual metadata available
@@ -69,8 +69,8 @@
 // Typography hierarchy (Josh review, final polish pass): restructured
 // into two groups -- an identity block (title / location / year) and,
 // beneath a hairline divider, a descriptive-metadata block (themes /
-// description / tags). No visible field labels anywhere ("THEMES" /
-// "TAGS" / "DESCRIPTION") -- Urbanum's existing convention for this panel
+// description). No visible field labels anywhere ("THEMES" /
+// "DESCRIPTION") -- Urbanum's existing convention for this panel
 // has never used them, so hierarchy comes from typography, spacing, and
 // grouping alone, matching how the rest of this panel already works.
 //
@@ -85,9 +85,6 @@
 //   Colorful homes in a row. <- description: image.caption, falling back
 //                              to project.description when the current
 //                              image has none of its own
-//   Scale / Passive Cooling / Facade <- image.tags (existing __tags
-//                              treatment, small/quiet, unchanged
-//                              slash-separated presentation)
 //
 // The image's own `title` and `date` lines from the previous pass are
 // dropped here -- not part of the desired hierarchy above, and (per the
@@ -96,7 +93,7 @@
 // (title is the panel's own h2; the image's `date` duplicated
 // projectYear-style information the new `year` line now covers more
 // directly). Every field below keeps its own presence guard --
-// themes/tags/caption/description are frequently absent on non-Featured
+// themes/caption/description are frequently absent on non-Featured
 // items or projects with no description in the current dataset (see
 // mockArchiveItems.js/mockProjects.js) -- so an unpopulated field
 // disappears cleanly (no divider, no empty line, no stray gap) rather
@@ -140,15 +137,13 @@ export default function ProjectInfoPanel({ project, image, isOpen }) {
       : image?.theme
         ? [image.theme]
         : [];
-  const tagList = Array.isArray(image?.tags) ? image.tags : [];
   // The one consolidated "Description" line -- the current image's own
   // caption when it has one, otherwise the Project's own description.
   // Never both: the desired hierarchy has exactly one description-shaped
   // line, not a per-image one stacked on top of a per-project one.
   const description = image?.caption || project?.description;
 
-  const hasDescriptiveMeta =
-    themeList.length > 0 || Boolean(description) || tagList.length > 0;
+  const hasDescriptiveMeta = themeList.length > 0 || Boolean(description);
 
   return (
     <div
@@ -175,9 +170,6 @@ export default function ProjectInfoPanel({ project, image, isOpen }) {
               <p className="project-info-panel__description">
                 {description}
               </p>
-            )}
-            {tagList.length > 0 && (
-              <p className="project-info-panel__tags">{tagList.join(" / ")}</p>
             )}
           </div>
         )}

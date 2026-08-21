@@ -33,7 +33,6 @@
 //              -- see getYearFieldValues below, the one shared place both
 //              read an item's own year and its inherited Project year from.
 //   theme   -- structured field, string or array of strings.
-//   tag     -- structured field, string or array of strings.
 //   project -- structured field, string or array of strings.
 //   type    -- structured field, string or array of strings. Matches an
 //              item's parent Project's own Type (denormalized onto the
@@ -131,7 +130,6 @@ const STRUCTURED_FIELD_MATCHERS = {
   theme: (item, value) =>
     item.theme === value ||
     (Array.isArray(item.themes) && item.themes.includes(value)),
-  tag: (item, value) => Array.isArray(item.tags) && item.tags.includes(value),
   project: (item, value) => item.project === String(value),
   // Type Filter: item.projectType is the parent Project's own Type,
   // denormalized onto the item exactly the way project (immediately
@@ -177,12 +175,10 @@ function matchesStructuredField(item, field, rawValue) {
 }
 
 // Search: case-insensitive substring match (MVP -- no fuzzy matching, no
-// tokenization) against archiveNumber, project, theme, themes, tags, and
-// year. Joined with a separator character that can't appear inside any of
-// these values, so a search term can never "leak" across two adjacent
-// fields and false-positive match (e.g. searching "23t" should not match
-// an item whose date is "2023" followed by a tag starting with "t" --
-// without a separator, naive concatenation could do exactly that).
+// tokenization) against archiveNumber, project, theme, themes, and year.
+// Joined with a separator character that can't appear inside any of these
+// values, so a search term can never "leak" across two adjacent fields and
+// false-positive match.
 //
 // Search Year Inheritance: year is read via getYearFieldValues above, the
 // same function the Year filter's own matcher uses -- so a search for a
@@ -203,7 +199,6 @@ function matchesSearch(item, rawSearchTerm) {
     item.project,
     item.theme,
     ...(Array.isArray(item.themes) ? item.themes : []),
-    ...(Array.isArray(item.tags) ? item.tags : []),
     ...getYearFieldValues(item),
   ].filter((value) => typeof value === "string");
   const haystack = searchableValues.join(" ").toLowerCase();

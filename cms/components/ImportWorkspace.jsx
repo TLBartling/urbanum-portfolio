@@ -19,7 +19,6 @@ import {createImportDrafts} from '../createImportDrafts'
 import {patchImportDraft} from '../patchImportDraft'
 import {DEFAULT_ARCHIVE_TOOL_NAME} from '../archiveSections'
 import {AnnotationField} from './AnnotationField'
-import {normalizeTag} from '../normalizeTag'
 
 const API_VERSION = '2024-01-01'
 
@@ -207,7 +206,7 @@ const titleStyle = {fontWeight: 300, letterSpacing: '-0.01em', color: INK, lineH
 // Phase 3, Milestone 4: sized down slightly (no explicit fontSize before,
 // which meant these rendered at Text's own default size -- heavier than
 // intended once the photo is meant to be the loudest thing on screen).
-// This is the base weight Required's Project/Theme/Tag labels still use;
+// This is the base weight Required's Project/Theme labels still use;
 // Optional's labels layer quietFieldLabelStyle on top of this for an even
 // quieter second step, so the two remain visibly distinct, just both a
 // little lighter than before.
@@ -362,7 +361,7 @@ const noteFieldStyle = {
   fontSize: '0.85rem',
 }
 // A quieter variant of fieldLabelStyle for Optional's Story/Display
-// fields -- Required's Project/Theme/Tag labels stay at the original
+// fields -- Required's Project/Theme labels stay at the original
 // weight (they're still the heaviest metadata on the screen, just much
 // lighter than the photo itself); Optional's should read as "even
 // quieter," per the brief, not identical.
@@ -377,7 +376,7 @@ const hintTextStyle = {...mutedTextStyle, fontSize: '0.68rem'}
 // Required/Optional TextInput/TextArea below. This only tells the
 // browser/OS itself not to offer its own saved Contacts/addresses/
 // previously-typed values on these fields -- it has nothing to do
-// with, and doesn't touch, this workspace's own Project/Theme/Tag
+// with, and doesn't touch, this workspace's own Project/Theme
 // archive suggestions (AnnotationField's own React-rendered dropdown,
 // see that file), which keep working exactly as they do today. `off`
 // is the standards-track value and is reliably honored by Chrome/
@@ -522,8 +521,8 @@ const STEP_SEQUENCE = [
 // so keeping it as one object means those two moments are each a single
 // call, not several that could drift out of sync with each other.
 //
-// `recentThemeIds`/`recentTags` hold only bare identifiers (a Theme's
-// _id, a Tag's own string), never titles -- titles are looked up against
+// `recentThemeIds` holds only bare identifiers (a Theme's
+// _id), never titles -- titles are looked up against
 // availableThemes at the point this context gets applied to a new photo,
 // the same derivation AnnotationField's own `items`/`suggestions` props
 // already use elsewhere in this file. Storing anything more than the id
@@ -536,7 +535,6 @@ const RECENT_LIMIT = 6
 const EMPTY_SESSION_CONTEXT = {
   project: null,
   recentThemeIds: [],
-  recentTags: [],
   location: '',
   year: '',
   fullDate: '',
@@ -544,10 +542,8 @@ const EMPTY_SESSION_CONTEXT = {
   lastSortOrder: '',
 }
 
-// Shared by Theme's and Tag's recent-list updates -- both are just arrays
-// of string identifiers at this level (a Theme _id, a Tag's own text), so
-// one small pure function covers both rather than writing the same
-// dedupe-and-cap logic twice. `newest` wins position at the front; ties
+// Used by Theme's recent-list updates -- a plain array of string
+// identifiers at this level (a Theme _id). `newest` wins position at the front; ties
 // (something reappearing) keep only their frontmost occurrence, so using
 // the same Theme again doesn't push it further back or duplicate it.
 function dedupeRecentIds(newest, older, limit) {
@@ -563,7 +559,7 @@ function dedupeRecentIds(newest, older, limit) {
 }
 
 // UI polish pass ("Improve Location consistency"): Location has no
-// suggestion source of its own (unlike Project/Theme/Tags), so it's the
+// suggestion source of its own (unlike Project/Theme), so it's the
 // one metadata field that's only ever free text -- "Miami, FL" next to
 // "miami, florida" next to "Miami Florida" for the same place. A real
 // place-suggestion service (the brief's preferred option) would mean a
@@ -736,7 +732,6 @@ export function ImportWorkspace() {
   const [currentDraft, setCurrentDraft] = useState(null)
   const [requiredProject, setRequiredProject] = useState(null)
   const [requiredThemeIds, setRequiredThemeIds] = useState([])
-  const [requiredTags, setRequiredTags] = useState([])
   // Phase 5: a frozen-per-photo snapshot of "Recent in this batch" --
   // deliberately NOT derived live from sessionContext minus whatever's
   // currently attached. A live "minus attached" computation would mean
@@ -749,21 +744,16 @@ export function ImportWorkspace() {
   // next one -- the same "seeded once, stable until the next photo"
   // treatment every other per-draft field already gets.
   const [recentThemeSuggestions, setRecentThemeSuggestions] = useState([])
-  const [recentTagSuggestions, setRecentTagSuggestions] = useState([])
   // null = not fetched yet (AnnotationField has nothing to suggest from
   // until then); array (possibly empty) once each query resolves. Not
   // reset between photos in a batch (see goToNextDraftOrComplete) --
-  // Projects, Themes, and Tags are the same three suggestion sources for
-  // every Archive Item in this session, not per-draft data. Tags added
-  // here as part of Milestone 5 ("one interaction language"): previously
-  // Tags had no suggestion source at all, which was the one place the
-  // interaction still secretly differed from Project/Theme -- typing
-  // always meant "create," never "attach." Same fetch-once-per-session
-  // shape as the other two, just a distinct-values query instead of a
-  // document-type query (see the fetch effect below).
+  // Projects and Themes are the same two suggestion sources for
+  // every Archive Item in this session, not per-draft data. Same
+  // fetch-once-per-session shape as the other one, just a
+  // distinct-values query instead of a document-type query (see the
+  // fetch effect below).
   const [availableProjects, setAvailableProjects] = useState(null)
   const [availableThemes, setAvailableThemes] = useState(null)
-  const [availableTags, setAvailableTags] = useState(null)
   // Type CMS authoring pass: same null-until-fetched/array-once-resolved
   // shape as availableProjects/availableThemes immediately above -- see
   // the fetch effect below for where this is populated.
@@ -789,7 +779,6 @@ export function ImportWorkspace() {
   // distinct from requiredSaveError (a failed *save*). Surfaced so a
   // network hiccup doesn't leave Required silently stuck on an infinite
   // loading spinner with Continue permanently disabled and no explanation.
-  // Tags is deliberately NOT included here -- see the fetch effect below.
   const [requiredLoadError, setRequiredLoadError] = useState(null)
 
   // Milestone 5 ("one interaction language"): Project and Theme no longer
@@ -914,7 +903,6 @@ export function ImportWorkspace() {
     if (
       availableProjects !== null &&
       availableThemes !== null &&
-      availableTags !== null &&
       availableTypes !== null
     )
       return
@@ -964,8 +952,8 @@ export function ImportWorkspace() {
 
     // Type CMS authoring pass: same fetch-once-per-session shape and the
     // same blocking-on-failure treatment as Project/Theme immediately
-    // above, not Tags' quiet-degradation treatment below -- Type is a
-    // required field on a new Project (see projectType.js), so a failed
+    // above -- Type is a required field on a new Project (see
+    // projectType.js), so a failed
     // load here should surface the same way a failed Project/Theme load
     // does, rather than silently leaving Continue unsatisfiable with no
     // explanation.
@@ -992,34 +980,6 @@ export function ImportWorkspace() {
       },
     )
 
-    // Milestone 5: Tags' own suggestion source -- confirmed against the
-    // schema directly (archiveItemType.js) that `tags` is a plain array of
-    // strings and Journal Entry has no tags field at all, so this only
-    // needs to scan Archive Items. `array::unique` is a public, stable
-    // GROQ array function (confirmed against Sanity's current docs, not
-    // assumed) -- not a beta API, and not a second data-loading pattern:
-    // this is the exact same fetch-once-and-cache-in-state shape as
-    // Projects/Themes above, just applied to a derived list of strings
-    // instead of a document type. Sorted client-side afterward since
-    // array::unique doesn't guarantee order.
-    //
-    // Deliberately does NOT set requiredLoadError on failure, unlike
-    // Projects/Themes above. A missing Project or Theme list blocks
-    // Continue outright (both are required, and Continue can't be
-    // satisfied without something to pick or create against). Tags stay
-    // fully usable with zero suggestions -- that's exactly how Tags
-    // already behaved before this milestone -- so a failed suggestion
-    // fetch here is a quiet degradation, not a blocking error.
-    client.fetch('array::unique(*[_type == "archiveItem" && defined(tags)].tags[])').then(
-      (tags) => {
-        if (!cancelled) setAvailableTags((tags || []).slice().sort((a, b) => a.localeCompare(b)))
-      },
-      (error) => {
-        console.error('[ImportWorkspace] Failed to load Tag suggestions.', error)
-        if (!cancelled) setAvailableTags([])
-      },
-    )
-
     return () => {
       cancelled = true
     }
@@ -1029,7 +989,6 @@ export function ImportWorkspace() {
     client,
     availableProjects,
     availableThemes,
-    availableTags,
     availableTypes,
   ])
 
@@ -1184,8 +1143,8 @@ export function ImportWorkspace() {
   // tier, no confirmation step. Sort Order seeds as one more than the
   // last real value used, computed here rather than stored pre-computed,
   // so what the context remembers stays a plain fact ("this was the last
-  // value") rather than a derived one. Theme and Tag suggestions are
-  // deliberately NOT written into requiredThemeIds/requiredTags -- they
+  // value") rather than a derived one. Theme suggestions are
+  // deliberately NOT written into requiredThemeIds -- they
   // go into their own recent-suggestions state instead, never
   // auto-attached, always exactly one tap away from becoming real.
   const applySessionContext = useCallback(
@@ -1229,7 +1188,6 @@ export function ImportWorkspace() {
           })
           .filter(Boolean),
       )
-      setRecentTagSuggestions(context.recentTags.map((tag) => ({id: tag, label: tag})))
     },
     [availableThemes, availableProjects],
   )
@@ -1507,7 +1465,6 @@ export function ImportWorkspace() {
       await patchImportDraft(client, currentDraft.id, {
         project: {_type: 'reference', _ref: requiredProject._id},
         themes: requiredThemeIds.map((id) => ({_type: 'reference', _ref: id})),
-        tags: requiredTags,
       })
       setStep('optional')
     } catch (error) {
@@ -1516,7 +1473,7 @@ export function ImportWorkspace() {
     } finally {
       setIsSavingRequired(false)
     }
-  }, [client, currentDraft, requiredProject, requiredThemeIds, requiredTags])
+  }, [client, currentDraft, requiredProject, requiredThemeIds])
 
   // Shared by goToNextDraftOrComplete (advancing within a batch) and
   // handleStartOver (ending or cancelling one) -- every per-draft field
@@ -1527,16 +1484,14 @@ export function ImportWorkspace() {
   const resetDraftFields = useCallback(() => {
     setRequiredProject(null)
     setRequiredThemeIds([])
-    setRequiredTags([])
     setRecentThemeSuggestions([])
-    setRecentTagSuggestions([])
     setIsSavingNewProject(false)
     setNewProjectError(null)
     setIsNewProject(false)
     setNewProjectLocation('')
     setNewProjectDate('')
     // Type resets to blank on the same schedule as every other per-draft
-    // Required field (Project/Theme/Tags above) -- it's no longer scoped
+    // Required field (Project/Theme above) -- it's no longer scoped
     // to isNewProject the way newProjectLocation/newProjectDate still are
     // (see requiredType's own declaration comment for why), but photo
     // 2+ within a batch on the same Project gets it correctly re-seeded
@@ -1577,8 +1532,8 @@ export function ImportWorkspace() {
     // rather than round-tripped through setSessionContext and read back --
     // a state update isn't visible again until the next render, and
     // applySessionContext below needs the value now, in this same tick.
-    // Theme/Tag ids are reversed before merging: requiredThemeIds/
-    // requiredTags accumulate in attach order (oldest first), but "Recent"
+    // Theme ids are reversed before merging: requiredThemeIds
+    // accumulates in attach order (oldest first), but "Recent"
     // means most-recently-used first, so whatever was attached last on
     // this photo belongs at the front, ahead of anything already in
     // sessionContext from earlier photos.
@@ -1587,11 +1542,6 @@ export function ImportWorkspace() {
       recentThemeIds: dedupeRecentIds(
         [...requiredThemeIds].reverse(),
         sessionContext.recentThemeIds,
-        RECENT_LIMIT,
-      ),
-      recentTags: dedupeRecentIds(
-        [...requiredTags].reverse(),
-        sessionContext.recentTags,
         RECENT_LIMIT,
       ),
       location: optionalLocation,
@@ -1629,7 +1579,6 @@ export function ImportWorkspace() {
     resetDraftFields,
     requiredProject,
     requiredThemeIds,
-    requiredTags,
     optionalLocation,
     optionalYear,
     optionalFullDate,
@@ -1833,7 +1782,7 @@ export function ImportWorkspace() {
     // Phase 5: the batch's memory is destroyed exactly when the batch
     // itself ends -- every path back to Upload (now just "Upload More")
     // reduces to this same reset, so a new batch never inherits an old
-    // one's Project, Recent Themes/Tags, Location, or Date.
+    // one's Project, Recent Themes, Location, or Date.
     setSessionContext(EMPTY_SESSION_CONTEXT)
     resetDraftFields()
     // Projects/Themes are cached for the life of a session (see the
@@ -1845,7 +1794,6 @@ export function ImportWorkspace() {
     // low-cost point, without adding a whole cache-invalidation mechanism.
     setAvailableProjects(null)
     setAvailableThemes(null)
-    setAvailableTags(null)
     setRequiredLoadError(null)
     // Re-derives "what's left to finish" immediately rather than waiting
     // for a full remount to notice it -- otherwise a batch that just
@@ -1966,14 +1914,14 @@ export function ImportWorkspace() {
 
   // Phase 4: the same condition Continue's disabled state already checked,
   // now named and reused to also decide what's even on screen -- Theme
-  // only exists once a Project is attached, Tags only once a Theme does,
+  // only exists once a Project is attached,
   // and Continue itself only appears once every field is satisfied. Not a
   // new rule, just the existing one read in one more place.
   // Required-Information surfacing fix: Type is now always visible and
   // selectable once a Project is attached (existing or brand new -- see
   // the Type block's own comment in the JSX below), so this gate no
   // longer special-cases isNewProject the way it briefly did -- Type is
-  // simply required, the same unconditional way Project/Theme/Tags
+  // simply required, the same unconditional way Project/Theme
   // already are. An existing Project that already has a Type gets
   // requiredType seeded automatically (see applySessionContext and the
   // Project field's own onAttach/handleCreateProject above), so this
@@ -1983,7 +1931,6 @@ export function ImportWorkspace() {
   const requiredComplete =
     Boolean(requiredProject) &&
     requiredThemeIds.length > 0 &&
-    requiredTags.length > 0 &&
     Boolean(requiredType)
 
   return (
@@ -2072,8 +2019,8 @@ export function ImportWorkspace() {
            width/style (1px solid, from quietFieldStyle's inline
            borderBottom) is untouched; only its color is overridden here,
            transparent at rest, revealed on hover, and darkened to match
-           .urbanum-field's own focus treatment. Required's Tag input and
-           the Project/Theme "create new" inputs stay on plain
+           .urbanum-field's own focus treatment. The Project/Theme
+           "create new" inputs stay on plain
            .urbanum-field (always-visible hairline) -- they gate Continue,
            so they keep a constant, findable presence rather than needing
            a hover to locate. */
@@ -2558,7 +2505,7 @@ export function ImportWorkspace() {
           {/* CENTER content for the Required/Optional steps -- visual-
               polish pass ("Move the metadata into the right sidebar"):
               this is now deliberately minimal. It used to also render
-              the entire Project/Theme/Tags/Location/Date/Caption field
+              the entire Project/Theme/Location/Date/Caption field
               stack directly beneath ImagePanel; that content moved,
               unchanged, into the RIGHT SIDEBAR below (search this file
               for "Move the metadata into the right sidebar" to find it)
@@ -2866,21 +2813,20 @@ export function ImportWorkspace() {
                       {requiredLoadError && <Text size={1} style={errorTextStyle}>{requiredLoadError}</Text>}
 
                       {/* Milestone 5 ("one interaction language, not
-                          one control"): Project, Theme, and Tags below
-                          all now render through the same
+                          one control"): Project and Theme below
+                          both now render through the same
                           AnnotationField (components/AnnotationField.jsx)
                           -- type, see suggestions, Enter attaches an
                           existing one or creates it if there isn't one,
                           everything becomes a chip, removing is always
                           a chip click or Backspace. Their schemas stay
                           exactly what they were (Project a single
-                          reference, Theme a reference array, Tags a
-                          plain string array) -- only `multiple` differs
-                          between the three call sites below. The old
-                          separate "+ New Project"/"+ New Theme"
-                          mini-forms are gone entirely, not hidden --
+                          reference, Theme a reference array) -- only
+                          `multiple` differs between the two call sites
+                          below. The old separate "+ New Project"/"+ New
+                          Theme" mini-forms are gone entirely, not hidden --
                           AnnotationField's own trailing "Create" row
-                          does that job now, for all three fields, the
+                          does that job now, for both fields, the
                           same way. handleCreateProject/handleCreateTheme
                           still do the actual client.create() calls and
                           the same existing-title dedupe they always
@@ -2898,8 +2844,8 @@ export function ImportWorkspace() {
                           form. They can't disappear the same way
                           Description's did (no label at all) -- a bare
                           row of chips doesn't say on its own whether
-                          it's a Theme or a Tag; the label is still the
-                          only thing telling three similarly-shaped
+                          it's a Project or a Theme; the label is still the
+                          only thing telling the similarly-shaped
                           chip groups apart. */}
                       <Stack space={2}>
                         <FieldLabel>Project</FieldLabel>
@@ -3194,104 +3140,6 @@ export function ImportWorkspace() {
                       </Stack>
                       )}
 
-                      {/* Same reasoning as Theme above: Tags don't
-                          appear until at least one Theme is attached.
-                          "Once at least one Theme exists: Reveal
-                          Tagged / Tags," per the brief. */}
-                      {requiredThemeIds.length > 0 && (
-                      <Stack space={2} style={{animation: 'urbanumStepIn 280ms ease-out'}}>
-                        <FieldLabel>Tags</FieldLabel>
-                        {/* Same "Recent in this batch" treatment as
-                            Theme above (no heading, selected-tone swap
-                            only), using the same case-insensitive
-                            comparison Tag's own onAttach/onCreate
-                            already use, so a Recent pill and the typed
-                            path agree on what counts as a duplicate. */}
-                        {recentTagSuggestions.length > 0 && (
-                          <Flex wrap="wrap" gap={2}>
-                            {recentTagSuggestions.map((suggestion) => {
-                              const isAttached = requiredTags.some(
-                                (tag) => tag.toLowerCase() === suggestion.label.toLowerCase(),
-                              )
-                              return (
-                                <Button
-                                  key={suggestion.id}
-                                  text={suggestion.label}
-                                  mode="bleed"
-                                  tone="default"
-                                  style={{fontWeight: 400, ...(isAttached ? selectedChipStyle : {})}}
-                                  onClick={() =>
-                                    setRequiredTags((prev) =>
-                                      prev.some(
-                                        (tag) =>
-                                          tag.toLowerCase() === suggestion.label.toLowerCase(),
-                                      )
-                                        ? prev
-                                        : [...prev, suggestion.label],
-                                    )
-                                  }
-                                />
-                              )
-                            })}
-                          </Flex>
-                        )}
-                        <AnnotationField
-                          id="required-tags"
-                          label="Tags"
-                          placeholder="Type a tag…"
-                          items={requiredTags.map((tag) => ({id: tag, label: tag}))}
-                          suggestions={(availableTags || []).map((tag) => ({
-                            id: tag,
-                            label: tag,
-                          }))}
-                          multiple
-                          // Tag creation is a synchronous local append,
-                          // never a network call -- see onCreate below
-                          // -- so there's nothing to show a "creating"
-                          // state for, unlike Project/Theme.
-                          creating={false}
-                          // Case-insensitive dedupe on both paths,
-                          // matching Project/Theme's own existing-title
-                          // check -- today's Tag field compared exact
-                          // strings only, so "concrete" and "Concrete"
-                          // could both end up attached as visually
-                          // near-identical chips.
-                          //
-                          // Tag formatting pass: both paths now run
-                          // through normalizeTag.js (the same rule
-                          // TagsInput.jsx applies in the native Studio
-                          // editor) before the dedupe check and before
-                          // being stored, rather than reusing whatever
-                          // casing the user typed or an existing
-                          // suggestion happened to carry -- so a tag
-                          // attached here always matches the same
-                          // "Light"/"Modern Architecture" form it would
-                          // end up in either way.
-                          onAttach={(item) => {
-                            const normalized = normalizeTag(item.label)
-                            setRequiredTags((prev) =>
-                              prev.some((tag) => tag.toLowerCase() === normalized.toLowerCase())
-                                ? prev
-                                : [...prev, normalized],
-                            )
-                          }}
-                          onCreate={(text) => {
-                            const normalized = normalizeTag(text)
-                            setRequiredTags((prev) =>
-                              prev.some((tag) => tag.toLowerCase() === normalized.toLowerCase())
-                                ? prev
-                                : [...prev, normalized],
-                            )
-                          }}
-                          onRemove={(item) =>
-                            setRequiredTags((prev) => prev.filter((tag) => tag !== item.id))
-                          }
-                          className="urbanum-field"
-                          style={quietFieldStyle}
-                        />
-                      </Stack>
-                      )}
-
                       {/* Phase 4: the subtle divider still reveals once
                           every required field is satisfied -- Continue
                           itself lives at the bottom of this column (see
@@ -3418,8 +3266,8 @@ export function ImportWorkspace() {
                           action elsewhere in this file. Collapses
                           again automatically on the next photo (see
                           resetDraftFields) -- every photo starts this
-                          chapter closed, the same way Theme and Tags
-                          above start unrevealed on every photo. */}
+                          chapter closed, the same way Theme
+                          above starts unrevealed on every photo. */}
                       {showAdministrative ? (
                         <>
                           <Flex gap={6} wrap="wrap" style={{animation: 'urbanumStepIn 280ms ease-out'}}>

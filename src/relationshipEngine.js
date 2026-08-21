@@ -10,18 +10,15 @@
 // -- it only ever reads the frontend data contract's fields (see
 // mockArchiveItems.js's own header comment for that contract's shape).
 //
-// v1 supports exact matching only, across four relationship types: theme,
-// tag, project, year. No fuzzy search, no scoring, no weighting, no
+// v1 supports exact matching only, across three relationship types: theme,
+// project, year. No fuzzy search, no scoring, no weighting, no
 // synonyms, no ranking -- simple exact comparisons only.
 //
 // Nothing in the UI calls this yet. It is infrastructure only, created and
 // exported so a later commit can wire it up.
 
 // theme/project/year each match a single scalar field on the Archive Item
-// directly. tag is the one exception -- it matches membership in the
-// Archive Item's `tags` array (an Archive Item can have several tags, so
-// this can't be a straight scalar equality) -- and is handled separately
-// below rather than in this map.
+// directly.
 //
 // Note on `year`: the frontend data contract (mockArchiveItems.js) has no
 // separate `year` field -- it has `date`, and at v1 every record that sets
@@ -41,7 +38,7 @@ const RELATIONSHIP_FIELDS = {
  *
  * Pure function. No UI references, no rendering, no side effects.
  *
- * @param {"theme"|"tag"|"project"|"year"} relationshipType
+ * @param {"theme"|"project"|"year"} relationshipType
  * @param {string} relationshipValue
  * @param {Array<object>} archiveItems - Archive Item records, the same
  *   shape ARCHIVE_ITEMS in mockArchiveItems.js exports.
@@ -56,15 +53,6 @@ export function findRelatedArchiveItems(
 ) {
   if (!Array.isArray(archiveItems) || relationshipValue == null) {
     return [];
-  }
-
-  if (relationshipType === "tag") {
-    return archiveItems
-      .filter(
-        (item) =>
-          Array.isArray(item.tags) && item.tags.includes(relationshipValue),
-      )
-      .map((item) => item.archiveNumber);
   }
 
   const field = RELATIONSHIP_FIELDS[relationshipType];

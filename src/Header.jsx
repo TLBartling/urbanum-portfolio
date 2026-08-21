@@ -56,9 +56,9 @@ const INDEX_ENTRIES = [
 // reused as both selection's own initial state and the value
 // handleFilterClearAll resets straight back to -- so there is exactly one
 // place that defines what "cleared" looks like, not two literals that
-// could drift apart later (e.g. if a real Tag category is added). `type`
+// could drift apart later. `type`
 // added alongside `year` for the new Type Filter category, same reasoning.
-const EMPTY_FILTER_SELECTION = { theme: [], tag: [], project: [], year: [], type: [] };
+const EMPTY_FILTER_SELECTION = { theme: [], project: [], year: [], type: [] };
 
 // Menu is the same drawer showing different content: no categories or
 // selection state, just a small set of top-level destinations.
@@ -191,13 +191,11 @@ export default function Header({
   //
   // Filter Query State (state management only -- no gallery/queryArchive
   // wiring yet): this is also the active filter query itself, shaped to
-  // match the Metadata Query Engine's query object exactly -- theme/tag/
+  // match the Metadata Query Engine's query object exactly -- theme/
   // project/year, every field an array so a later commit's OR-within-field
   // behavior (queryArchive's own contract -- see metadataQueryEngine.js)
   // works the moment it's wired up, without this shape needing to change.
-  // `tag` is included for that same reason even though nothing in this
-  // Filter UI can populate it yet (there is no Tag category here today --
-  // see INDEX_ENTRIES below); it simply always stays []. Every update still
+  // Every update still
   // flows to App.jsx via onFilterChange (see handleOptionToggle below),
   // exactly as it already did -- what's new is only that App.jsx now
   // actually keeps what it's handed (see activeFilterQuery in App()),
@@ -378,9 +376,8 @@ export default function Header({
   // View All control should appear for it at all.
   const visibleValues = isExpanded ? activeValues : previewValues;
   const hasHiddenValues = !isExpanded && activeValues.length > previewValues.length;
-  // Filter UX -- Clear All: total selections across every category,
-  // tag included (future-safe, even though nothing can populate it yet --
-  // see selection's own comment above). This is the closed Filter
+  // Filter UX -- Clear All: total selections across every category.
+  // This is the closed Filter
   // control's own count, entirely separate from the per-category (n)
   // shown inside the open drawer next to Theme/Project/Year/Type
   // (values[key] above) -- that per-category count is untouched by this
@@ -388,7 +385,6 @@ export default function Header({
   // Type Filter category.
   const totalFilterCount =
     selection.theme.length +
-    selection.tag.length +
     selection.project.length +
     selection.year.length +
     selection.type.length;
@@ -555,8 +551,7 @@ export default function Header({
   // Filter UX refinement (Metadata Filter Sync): the one place
   // pendingThemeFilterCommit is consumed. App.jsx sends this only when a
   // Theme is clicked from HoverOverlay while Filter mode is already
-  // active -- never for Tag (there is no Tag category here to sync
-  // into -- see INDEX_ENTRIES above) and never while Filter mode is
+  // active, and never while Filter mode is
   // inactive (that stays pure relationship exploration, untouched by
   // this effect, per the brief this implements).
   //

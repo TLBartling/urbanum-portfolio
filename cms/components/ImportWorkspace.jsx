@@ -764,6 +764,10 @@ export function ImportWorkspace() {
   const [availableProjects, setAvailableProjects] = useState(null)
   const [availableThemes, setAvailableThemes] = useState(null)
   const [availableTags, setAvailableTags] = useState(null)
+  // Type CMS authoring pass: same null-until-fetched/array-once-resolved
+  // shape as availableProjects/availableThemes immediately above -- see
+  // the fetch effect below for where this is populated.
+  const [availableTypes, setAvailableTypes] = useState(null)
   const [isSavingRequired, setIsSavingRequired] = useState(false)
   // Cancel Import Cleanup: true only while handleCancelImport's own
   // draft-delete transaction is in flight -- see that callback below.
@@ -801,6 +805,12 @@ export function ImportWorkspace() {
   const [newProjectError, setNewProjectError] = useState(null)
   const [isSavingNewTheme, setIsSavingNewTheme] = useState(false)
   const [newThemeError, setNewThemeError] = useState(null)
+  // Type CMS authoring pass: same shape as isSavingNewTheme/newThemeError
+  // immediately above -- handleCreateType below is the Type-flavored twin
+  // of handleCreateTheme, triggered the same way, through AnnotationField's
+  // own onCreate callback rather than a separate mini-form.
+  const [isSavingNewType, setIsSavingNewType] = useState(false)
+  const [newTypeError, setNewTypeError] = useState(null)
 
   // UX pass ("New Project workflow"): true only for the "just created a
   // brand-new Project document" branch of handleCreateProject below --
@@ -816,6 +826,27 @@ export function ImportWorkspace() {
   const [isNewProject, setIsNewProject] = useState(false)
   const [newProjectLocation, setNewProjectLocation] = useState('')
   const [newProjectDate, setNewProjectDate] = useState('')
+  // Type lives on Project (cms/schemaTypes/projectType.js's own
+  // `projectType` field), not on the Archive Item draft -- but unlike
+  // Location/Year immediately above (genuinely creation-only, per
+  // isNewProject's own comment), Type is surfaced and editable in
+  // Required Information for every Project, new or existing (see the
+  // Type field's own comment in the JSX below for why: it originally
+  // rendered only inside the isNewProject section, which is what made it
+  // invisible for the common case of attaching an existing Project --
+  // this was fixed by giving it its own always-visible block). So
+  // `requiredType` is reset on the same schedule as every other per-draft
+  // Required field (see resetDraftFields), but is no longer scoped to
+  // isNewProject the way newProjectLocation/newProjectDate still are --
+  // it's re-seeded from whatever the attached Project already has by the
+  // Project field's own onAttach, handleCreateProject's existing-title
+  // match, and applySessionContext (all below), so it correctly reflects
+  // an existing Project's current Type rather than always starting
+  // blank. Holds a plain {id, label} object (AnnotationField's own
+  // shape), single-selected like Project itself -- never an array --
+  // matching Type's own single-reference cardinality on the Project
+  // schema.
+  const [requiredType, setRequiredType] = useState(null)
 
   // Plain local state, each seeded with a sensible blank/default (Display
   // Role's default mirrors the schema's own `initialValue`). Reset to
@@ -880,10 +911,24 @@ export function ImportWorkspace() {
   // -- Projects/Themes are session-wide, not per-draft.
   useEffect(() => {
     if (step !== 'required' || currentDraft?.type !== 'archiveItem') return
-    if (availableProjects !== null && availableThemes !== null && availableTags !== null) return
+    if (
+      availableProjects !== null &&
+      availableThemes !== null &&
+      availableTags !== null &&
+      availableTypes !== null
+    )
+      return
     let cancelled = false
 
-    client.fetch('*[_type == "project"]{_id, title} | order(title asc)').then(
+    // Required-Information surfacing fix: also selects each Project's own
+    // current `projectType` reference, dereferenced to `{_id, title}` --
+    // needed so the Type control (see the JSX below) can show what a
+    // Project *already* has the moment it's attached, existing or brand
+    // new, the same way Theme's own suggestions already carry enough to
+    // render a chip. Without this, `availableProjects` entries would
+    // carry no Type information at all, and Type would always render as
+    // "unselected" even for a Project that already has one set.
+    client.fetch('*[_type == "project"]{_id, title, "projectType": projectType->{_id, title}} | order(title asc)').then(
       (docs) => {
         if (!cancelled) setAvailableProjects(docs)
       },
@@ -912,6 +957,36 @@ export function ImportWorkspace() {
           setAvailableThemes([])
           setRequiredLoadError(
             'Could not load Themes -- check your connection and reopen this tool.',
+          )
+        }
+      },
+    )
+
+    // Type CMS authoring pass: same fetch-once-per-session shape and the
+    // same blocking-on-failure treatment as Project/Theme immediately
+    // above, not Tags' quiet-degradation treatment below -- Type is a
+    // required field on a new Project (see projectType.js), so a failed
+    // load here should surface the same way a failed Project/Theme load
+    // does, rather than silently leaving Continue unsatisfiable with no
+    // explanation.
+    //
+    // Naming correction: document type is `projectType`, not the bare
+    // `type` this originally queried -- Sanity rejects `type` as a
+    // document schema name outright (see typeType.js's own comment),
+    // so this fetch never actually succeeded until this rename. Local
+    // state/handler names (availableTypes, setRequiredType, etc.) are
+    // untouched -- they're plain JS identifiers with no Sanity meaning,
+    // not schema terminology.
+    client.fetch('*[_type == "projectType"]{_id, title} | order(title asc)').then(
+      (docs) => {
+        if (!cancelled) setAvailableTypes(docs)
+      },
+      (error) => {
+        console.error('[ImportWorkspace] Failed to load Types for Required step.', error)
+        if (!cancelled) {
+          setAvailableTypes([])
+          setRequiredLoadError(
+            'Could not load Types -- check your connection and reopen this tool.',
           )
         }
       },
@@ -948,7 +1023,15 @@ export function ImportWorkspace() {
     return () => {
       cancelled = true
     }
-  }, [step, currentDraft, client, availableProjects, availableThemes, availableTags])
+  }, [
+    step,
+    currentDraft,
+    client,
+    availableProjects,
+    availableThemes,
+    availableTags,
+    availableTypes,
+  ])
 
   // Pulls "what's left to finish" fresh from Sanity -- the same
   // re-derive-from-source approach resolveDocumentActions.js's own
@@ -1108,6 +1191,24 @@ export function ImportWorkspace() {
   const applySessionContext = useCallback(
     (context) => {
       setRequiredProject(context.project)
+      // Required-Information surfacing fix: re-derives Type from
+      // availableProjects by id rather than trusting whatever shape
+      // context.project already carries -- it may or may not include
+      // `.projectType` depending on which of the three attach paths
+      // produced it (see the Project AnnotationField's onAttach and
+      // handleCreateProject's own existing-title match above), so a
+      // fresh, consistent lookup here is what keeps Type correctly
+      // populated for photo 2+ within a batch on the same Project, the
+      // same way recentThemeSuggestions below re-derives from
+      // availableThemes rather than trusting anything carried in context.
+      const matchedProject = context.project
+        ? (availableProjects || []).find((project) => project._id === context.project._id)
+        : null
+      setRequiredType(
+        matchedProject?.projectType
+          ? {_id: matchedProject.projectType._id, title: matchedProject.projectType.title}
+          : null,
+      )
       setOptionalLocation(context.location)
       setOptionalYear(context.year)
       setOptionalFullDate(context.fullDate)
@@ -1130,7 +1231,7 @@ export function ImportWorkspace() {
       )
       setRecentTagSuggestions(context.recentTags.map((tag) => ({id: tag, label: tag})))
     },
-    [availableThemes],
+    [availableThemes, availableProjects],
   )
 
   // Choosing a type creates one draft per uploaded (not still-uploading,
@@ -1258,6 +1359,15 @@ export function ImportWorkspace() {
     if (existing) {
       setRequiredProject(existing)
       setIsNewProject(false)
+      // Required-Information surfacing fix: `existing` already carries
+      // its own `projectType` (the fetch effect above now selects it),
+      // so this seeds Type directly, no extra lookup needed -- same
+      // reasoning as the Project AnnotationField's own onAttach above.
+      setRequiredType(
+        existing.projectType
+          ? {_id: existing.projectType._id, title: existing.projectType.title}
+          : null,
+      )
       return
     }
 
@@ -1344,6 +1454,48 @@ export function ImportWorkspace() {
     }
   }, [client, isSavingNewTheme, availableThemes])
 
+  // Type CMS authoring pass: same dedupe-then-create shape as
+  // handleCreateProject/handleCreateTheme above, but single-select like
+  // handleCreateProject (setRequiredType, not append-to-array) -- a
+  // Project has exactly one Type, the same cardinality Theme's own
+  // `projectType` field on projectType.js now carries as a single
+  // reference. No slug/sortOrder bookkeeping (typeType.js has only
+  // `title`, the same reason handleCreateTheme above needs none either).
+  //
+  // Naming correction: creates a `projectType` document, not the bare
+  // `type` this originally created -- Sanity rejects `type` as a document
+  // schema name outright (see typeType.js's own comment), so this create
+  // call never actually succeeded until this rename.
+  const handleCreateType = useCallback(async (rawTitle) => {
+    const title = (rawTitle || '').trim()
+    if (!title || isSavingNewType) return
+    setNewTypeError(null)
+
+    const existing = (availableTypes || []).find(
+      (type) => type.title.trim().toLowerCase() === title.toLowerCase(),
+    )
+    if (existing) {
+      setRequiredType(existing)
+      return
+    }
+
+    setIsSavingNewType(true)
+    try {
+      const created = await client.create({_type: 'projectType', title})
+      setAvailableTypes((prev) =>
+        [...(prev || []), {_id: created._id, title: created.title}].sort((a, b) =>
+          a.title.localeCompare(b.title),
+        ),
+      )
+      setRequiredType({_id: created._id, title: created.title})
+    } catch (error) {
+      console.error('[ImportWorkspace] Failed to create new Type.', error)
+      setNewTypeError('Could not create Type -- try again.')
+    } finally {
+      setIsSavingNewType(false)
+    }
+  }, [client, isSavingNewType, availableTypes])
+
   // Writes the Required fields onto currentDraft via patchImportDraft.js
   // and, on success, advances to Optional. Only ever called for an Archive
   // Item draft now -- Journal Entry bypasses Required entirely.
@@ -1383,6 +1535,16 @@ export function ImportWorkspace() {
     setIsNewProject(false)
     setNewProjectLocation('')
     setNewProjectDate('')
+    // Type resets to blank on the same schedule as every other per-draft
+    // Required field (Project/Theme/Tags above) -- it's no longer scoped
+    // to isNewProject the way newProjectLocation/newProjectDate still are
+    // (see requiredType's own declaration comment for why), but photo
+    // 2+ within a batch on the same Project gets it correctly re-seeded
+    // straight back by applySessionContext, called immediately after
+    // this same reset.
+    setRequiredType(null)
+    setIsSavingNewType(false)
+    setNewTypeError(null)
     setIsSavingNewTheme(false)
     setNewThemeError(null)
     setOptionalLocation('')
@@ -1588,6 +1750,31 @@ export function ImportWorkspace() {
         await client.patch(requiredProject._id).set(newProjectFields).commit()
       }
 
+      // Required-Information surfacing fix: Type's own write, kept as a
+      // separate patch from the isNewProject-only block immediately
+      // above rather than folded into it -- Location/Year genuinely are
+      // only ever set at Project-creation time (an existing, previously-
+      // published Project's Location/Year is never touched by this
+      // screen, a rule this fix leaves completely alone), but Type is now
+      // surfaced and editable for every Project, new or existing (see the
+      // Type field's own comment in the JSX below), so its write can't be
+      // gated the same way. Only ever a `set` -- if requiredType is empty
+      // (Type field cleared without a replacement picked), nothing is
+      // patched, so this can extend an existing Project with a Type it's
+      // missing or change it to a different one, but never unset a
+      // Project's existing Type by omission; same conservative,
+      // additive-only posture the isNewProject block above already has
+      // for Location/Year, just applied to a field that's no longer
+      // creation-only. Reference target is `projectType` (see
+      // projectType.js's own field), matching the naming correction
+      // already applied elsewhere in this file.
+      if (requiredProject?._id && requiredType?._id) {
+        await client
+          .patch(requiredProject._id)
+          .set({projectType: {_type: 'reference', _ref: requiredType._id}})
+          .commit()
+      }
+
       await patchImportDraft(client, currentDraft.id, fields)
       handlePublish()
     } catch (error) {
@@ -1611,6 +1798,7 @@ export function ImportWorkspace() {
     requiredProject,
     newProjectLocation,
     newProjectDate,
+    requiredType,
     handlePublish,
   ])
 
@@ -1781,8 +1969,22 @@ export function ImportWorkspace() {
   // only exists once a Project is attached, Tags only once a Theme does,
   // and Continue itself only appears once every field is satisfied. Not a
   // new rule, just the existing one read in one more place.
+  // Required-Information surfacing fix: Type is now always visible and
+  // selectable once a Project is attached (existing or brand new -- see
+  // the Type block's own comment in the JSX below), so this gate no
+  // longer special-cases isNewProject the way it briefly did -- Type is
+  // simply required, the same unconditional way Project/Theme/Tags
+  // already are. An existing Project that already has a Type gets
+  // requiredType seeded automatically (see applySessionContext and the
+  // Project field's own onAttach/handleCreateProject above), so this
+  // only actually blocks Continue for a Project -- new or legacy -- that
+  // genuinely has no Type set yet, which is the correct behavior for a
+  // schema-required field.
   const requiredComplete =
-    Boolean(requiredProject) && requiredThemeIds.length > 0 && requiredTags.length > 0
+    Boolean(requiredProject) &&
+    requiredThemeIds.length > 0 &&
+    requiredTags.length > 0 &&
+    Boolean(requiredType)
 
   return (
     // Container's `width` prop isn't a loose cap -- @sanity/ui's own
@@ -2724,6 +2926,25 @@ export function ImportWorkspace() {
                             // is kept in sync.
                             setRequiredProject({_id: item.id, title: item.label})
                             setIsNewProject(false)
+                            // Required-Information surfacing fix: seeds
+                            // Type from whatever this Project already has
+                            // (see the fetch effect above, which now
+                            // selects it) -- `item` itself only carries
+                            // {id, label} (AnnotationField's own
+                            // normalized shape), not the full Project
+                            // record, so this looks the match back up in
+                            // availableProjects. Same lookup as
+                            // handleCreateProject's existing-title match
+                            // and applySessionContext below, kept
+                            // consistent across all three attach paths.
+                            const matchedProject = (availableProjects || []).find(
+                              (project) => project._id === item.id,
+                            )
+                            setRequiredType(
+                              matchedProject?.projectType
+                                ? {_id: matchedProject.projectType._id, title: matchedProject.projectType.title}
+                                : null,
+                            )
                           }}
                           onCreate={handleCreateProject}
                           onRemove={() => {
@@ -2731,6 +2952,12 @@ export function ImportWorkspace() {
                             setIsNewProject(false)
                             setNewProjectLocation('')
                             setNewProjectDate('')
+                            // Type CMS authoring pass: resets alongside
+                            // the rest of the New Project workflow's own
+                            // state above, for the same reason -- see
+                            // requiredType's own declaration comment.
+                            setRequiredType(null)
+                            setNewTypeError(null)
                           }}
                           className="urbanum-field"
                           style={quietFieldStyle}
@@ -2747,6 +2974,69 @@ export function ImportWorkspace() {
                         )}
                       </Stack>
 
+                      {/* Required-Information surfacing fix: Type used to
+                          live entirely inside the isNewProject-gated "New
+                          Project workflow" block below, which meant it
+                          only ever rendered for a Project just created in
+                          this exact session -- attaching an EXISTING
+                          Project (the overwhelming common case) hid the
+                          control completely, which is the reported bug
+                          this fix addresses. Type is a Project-level
+                          field (like Location/Year below), but unlike
+                          them it needs to be visible and usable for every
+                          Project, new or existing -- so it gets its own
+                          block here, gated the same way Theme's own block
+                          below is (`{requiredProject && (...)}`, no
+                          isNewProject condition), positioned right after
+                          Project since it's a property of the Project
+                          just attached. Existing-Project selection/
+                          creation is wired the same way it always was
+                          (same AnnotationField, same handleCreateType) --
+                          only the render condition changed. What's
+                          selected here is seeded from whatever the
+                          attached Project already has (see the Project
+                          AnnotationField's own onAttach, handleCreateProject's
+                          existing-title match, and applySessionContext,
+                          all above) and persisted by its own dedicated
+                          patch in handleSaveOptional below, independent of
+                          the isNewProject-only Location/Year patch --
+                          preserving the internal distinction that Type
+                          lives on Project, not on the Archive Item draft,
+                          while no longer hiding the control behind
+                          "brand-new Project" state. */}
+                      {requiredProject && (
+                        <Stack space={2} style={{animation: 'urbanumStepIn 280ms ease-out'}}>
+                          <FieldLabel>Type</FieldLabel>
+                          <AnnotationField
+                            id="required-type"
+                            label="Type"
+                            placeholder="Type a project type…"
+                            items={requiredType ? [{id: requiredType._id, label: requiredType.title}] : []}
+                            suggestions={(availableTypes || []).map((type) => ({
+                              id: type._id,
+                              label: type.title,
+                            }))}
+                            multiple={false}
+                            creating={isSavingNewType}
+                            onAttach={(item) => setRequiredType({_id: item.id, title: item.label})}
+                            onCreate={handleCreateType}
+                            onRemove={() => setRequiredType(null)}
+                            className="urbanum-field"
+                            style={quietFieldStyle}
+                          />
+                          {newTypeError && (
+                            <Text size={1} style={errorTextStyle}>
+                              {newTypeError}
+                            </Text>
+                          )}
+                          {availableTypes !== null && availableTypes.length === 0 && (
+                            <Text size={1} style={hintTextStyle}>
+                              No Types exist yet — type a name above to create one.
+                            </Text>
+                          )}
+                        </Stack>
+                      )}
+
                       {/* UX pass ("New Project workflow"): reveals only
                           once handleCreateProject has just created a
                           brand-new Project document for this Archive
@@ -2759,7 +3049,13 @@ export function ImportWorkspace() {
                           Year fields below, so it reads as the same
                           uploader, not a new form bolted on. Values here
                           are plain local state -- see handleSaveOptional
-                          for where and when they're actually written. */}
+                          for where and when they're actually written.
+                          Type used to be rendered inside this section too
+                          -- it now has its own always-visible block above
+                          (see that block's own comment for why); only
+                          Location/Project Date remain here, since those
+                          two genuinely are only ever set at Project-
+                          creation time. */}
                       {requiredProject && isNewProject && (
                         <Stack space={2} style={{animation: 'urbanumStepIn 280ms ease-out'}}>
                           <SectionHeading>New Project</SectionHeading>

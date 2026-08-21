@@ -35,6 +35,15 @@
 //   theme   -- structured field, string or array of strings.
 //   tag     -- structured field, string or array of strings.
 //   project -- structured field, string or array of strings.
+//   type    -- structured field, string or array of strings. Matches an
+//              item's parent Project's own Type (denormalized onto the
+//              item as `projectType` -- see cms/queries.js's
+//              normalizeArchiveItem), the same denormalize-and-match
+//              shape `project` immediately above already uses for
+//              Project itself. No item-level override the way `year` has
+//              (Type lives only on Project, never on Archive Item -- see
+//              cms/schemaTypes/projectType.js), so this is a single,
+//              direct equality check, not an either-one-counts pair.
 //   year    -- structured field, string/array of strings, PLUS one special
 //              value shape: `{ before: <number> }`, matching any item whose
 //              year is strictly earlier than that number. An explicit-year
@@ -124,6 +133,11 @@ const STRUCTURED_FIELD_MATCHERS = {
     (Array.isArray(item.themes) && item.themes.includes(value)),
   tag: (item, value) => Array.isArray(item.tags) && item.tags.includes(value),
   project: (item, value) => item.project === String(value),
+  // Type Filter: item.projectType is the parent Project's own Type,
+  // denormalized onto the item exactly the way project (immediately
+  // above) and projectYear (see year, below) already are -- see this
+  // file's own module-comment entry for `type` above.
+  type: (item, value) => item.projectType === String(value),
   year: (item, value) => {
     const [ownYear, projectYear] = getYearFieldValues(item);
     // "Earlier" Bucket: a `{ before: N }` value (see this file's own

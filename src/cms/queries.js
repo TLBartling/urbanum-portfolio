@@ -40,12 +40,44 @@ import { urlFor } from "./imageUrl.js";
 // which is what lets the Metadata Query Engine's Year predicate check it
 // (see metadataQueryEngine.js's own comment on STRUCTURED_FIELD_MATCHERS.
 // year for why that's the one and only place this new field is read).
+//
+// Type Filter Inheritance: `"projectType": project->projectType->title`
+// follows the exact same pattern as `projectYear` immediately above --
+// Type lives on Project, not on Archive Item itself (see
+// cms/schemaTypes/projectType.js), so it has to be denormalized onto the
+// item the same way for the Metadata Query Engine's Type predicate to have
+// anything to check (see metadataQueryEngine.js's STRUCTURED_FIELD_MATCHERS.
+// type). Output key here is `projectType` -- this is the frontend's own
+// contract name for "the parent Project's Type, carried onto the item,"
+// unrelated to and unchanged by anything below.
+//
+// CMS authoring pass (second `->` hop, added): Project's own Type field
+// changed from a plain closed-list string to a reference to a document
+// (see projectType.js's own comment on that field for the full why).
+// Without the second hop this would resolve to the raw reference object
+// ({_type: 'reference', _ref: '...'}) instead of a string, breaking every
+// existing plain-string consumer downstream (the Type matcher in
+// metadataQueryEngine.js, Header's Filter options). The extra `->title`
+// hop is what keeps `projectType` exactly the plain string it already was
+// -- normalizeArchiveItem below needs no change at all.
+//
+// Naming correction: both hops of this path (`project->projectType`, the
+// field on Project; `->title`, the field on the document it references)
+// were briefly `project->type` -- the document schema that field pointed
+// at was originally (and incorrectly) named `type`, which Sanity rejects
+// as a document schema name ("reserved name"); Project's own field was
+// renamed alongside it, from `type` to `projectType`, for internal
+// naming consistency (see typeType.js's and projectType.js's own comments
+// for the full reasoning). Only the Sanity-side path segments changed --
+// the output key this query produces (`projectType`) and the user-facing
+// "Type" label are both exactly what they already were.
 export const ARCHIVE_ITEMS_QUERY = `
   *[_type == "archiveItem" && !(_id in path("drafts.**"))] | order(sortOrder asc) {
     archiveNumber,
     image,
     "project": project->slug.current,
     "projectYear": project->year,
+    "projectType": project->projectType->title,
     "themes": themes[]->title,
     tags,
     displayRole,
@@ -104,6 +136,15 @@ export function normalizeArchiveItem(raw, imageUrl) {
     // the parent Project has no Year set, same "absent means absent"
     // convention `date` above already uses.
     projectYear: raw.projectYear != null ? String(raw.projectYear) : undefined,
+    // Type Filter Inheritance: same shape as projectYear immediately
+    // above -- the parent Project's own Type, carried through as its own
+    // field. No String(...) coercion (unlike projectYear): Type is
+    // already a plain string in the schema, and the Type matcher in
+    // metadataQueryEngine.js compares it directly, with no numeric/
+    // "before" special case the way Year has. undefined (not null) when
+    // the parent Project has no Type set, same "absent means absent"
+    // convention every other inherited/optional field here already uses.
+    projectType: raw.projectType ?? undefined,
     displayRole: raw.displayRole ?? "Default",
     sortOrder: raw.sortOrder ?? 0,
   };
@@ -137,12 +178,22 @@ export async function fetchArchiveItems() {
 // `p.slug === slug` checks, ProjectNavigation's URLs) expect a bare
 // string, never a raw Sanity slug object.
 // -----------------------------------------------------------------------
+// `"type": projectType->title` -- aliased on purpose. The Sanity-side
+// field this dereferences is named `projectType` (see
+// cms/schemaTypes/projectType.js's own field, and its naming-correction
+// comment for why); the output key stays `type`, exactly what it already
+// was, so normalizeProject and every existing frontend reader of
+// Project.type (App.jsx's PROJECT_TYPES, most directly) need no change at
+// all. Internal Sanity naming and the frontend contract are deliberately
+// decoupled here, the same way Studio's own `name` vs. `title` already
+// decouples the internal identifier from what Josh sees.
 export const PROJECTS_QUERY = `
   *[_type == "project" && !(_id in path("drafts.**"))] | order(sortOrder asc) {
     title,
     "slug": slug.current,
     location,
     year,
+    "type": projectType->title,
     description,
     sortOrder
   }
@@ -170,6 +221,22 @@ export const PROJECTS_QUERY = `
 // `year`) so this stays a faithful reflection of what the schema actually
 // stores; `year` is the real field now, `dates` remains unread by every
 // current caller.
+//
+// `type` (Type Filter): the mandatory field from
+// cms/schemaTypes/projectType.js, mapped straight through with no rename
+// or coercion -- same treatment as title/slug/location/year above. An
+// existing Project published before this field existed simply has
+// raw.type === undefined here, same "absent means absent" convention the
+// rest of this function already uses (see `dates` above); nothing invents
+// a value for it.
+//
+// CMS authoring pass: the Project schema's own Type field is now a
+// reference to a `projectType` document rather than a plain string (see
+// projectType.js's own comment), but PROJECTS_QUERY above already
+// dereferences it (aliased back to the `type` output key it always used),
+// so `raw.type` arrives here as the same plain string it always was --
+// this mapping itself needs no change, through the naming correction or
+// before it.
 export function normalizeProject(raw) {
   return {
     title: raw.title,
@@ -177,6 +244,7 @@ export function normalizeProject(raw) {
     description: raw.description,
     location: raw.location,
     year: raw.year,
+    type: raw.type,
     dates: undefined,
     sortOrder: raw.sortOrder,
   };

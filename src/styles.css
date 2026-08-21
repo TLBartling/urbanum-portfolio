@@ -1820,6 +1820,27 @@ html.is-browsing .zoom-controls {
     gap: 0.9rem;
   }
 
+  /* Type Filter (Josh review): .index-drawer__row's own `flex-wrap: nowrap`
+     (see its base rule) was sized for the three columns it always had --
+     Theme/Project/Year (or About/Journal/Contact on Menu's row, same
+     class). Adding a fourth column (Type) to the Filter row overflows
+     that fixed single line at these narrow widths -- Type was rendering
+     entirely off-screen, invisible and unreachable, confirmed via direct
+     measurement (row.scrollWidth exceeding row.clientWidth) before this
+     rule was added. `wrap` (not a narrower gap or smaller type) keeps
+     every column's own width/spacing exactly as it already was; the row
+     simply continues onto a second line once it runs out of room, the
+     same graceful degradation flex-wrap already provides everywhere else
+     in this codebase. Menu's row (same base class, still only three
+     columns: About/Journal/Contact) already fits on one line at every
+     width tested and is unaffected -- this only ever activates when a
+     row's own content is too wide for it. Scoped to this existing
+     640px mobile breakpoint only; desktop (where all four columns already
+     fit on one line -- confirmed via direct measurement) is untouched. */
+  .index-drawer__row {
+    flex-wrap: wrap;
+  }
+
   .text-control {
     font-size: clamp(0.72rem, 2.8vw, 0.88rem);
     letter-spacing: 0.16em;

@@ -9,10 +9,11 @@ import {
 import { resolveHiddenSearchCommand } from "./hiddenSearchCommands";
 
 // Mock catalog values for the index drawer. These are the seam a developer
-// swaps for real CMS data later: point `themes` / `projects` / `years` at
-// CMS-driven arrays via props (e.g. <Header themes={cmsThemes} .../> from
-// App), and everything below -- markup, interaction, animation -- keeps
-// working unchanged. Nothing in this file assumes these arrays are static.
+// swaps for real CMS data later: point `themes` / `projects` / `years` /
+// `types` at CMS-driven arrays via props (e.g. <Header themes={cmsThemes}
+// .../> from App), and everything below -- markup, interaction, animation
+// -- keeps working unchanged. Nothing in this file assumes these arrays
+// are static.
 const MOCK_THEMES = [
   "Residential",
   "Commercial",
@@ -34,20 +35,30 @@ const MOCK_PROJECTS = [
 
 const MOCK_YEARS = ["2026", "2025", "2024", "2023", "Earlier"];
 
+// Type Filter: mirrors MOCK_THEMES/MOCK_PROJECTS/MOCK_YEARS immediately
+// above -- the same swap-for-CMS-data seam, just for Type (see the
+// `types` prop below and cms/schemaTypes/projectType.js for the live
+// values this stands in for).
+const MOCK_TYPES = ["Residential", "Urban", "Commercial"];
+
 // Each entry is one column of the index drawer's category row. "key" maps
-// into both the value arrays above and the selection state below.
+// into both the value arrays above and the selection state below. Type is
+// a peer of Theme/Project/Year here -- same key/label shape, same row,
+// same everything below that maps over this array.
 const INDEX_ENTRIES = [
   { key: "theme", label: "Theme" },
   { key: "project", label: "Project" },
   { key: "year", label: "Year" },
+  { key: "type", label: "Type" },
 ];
 
 // Filter UX -- Clear All: the one shape "no active filters" means,
 // reused as both selection's own initial state and the value
 // handleFilterClearAll resets straight back to -- so there is exactly one
 // place that defines what "cleared" looks like, not two literals that
-// could drift apart later (e.g. if a real Tag category is added).
-const EMPTY_FILTER_SELECTION = { theme: [], tag: [], project: [], year: [] };
+// could drift apart later (e.g. if a real Tag category is added). `type`
+// added alongside `year` for the new Type Filter category, same reasoning.
+const EMPTY_FILTER_SELECTION = { theme: [], tag: [], project: [], year: [], type: [] };
 
 // Menu is the same drawer showing different content: no categories or
 // selection state, just a small set of top-level destinations.
@@ -85,6 +96,7 @@ export default function Header({
   themes = MOCK_THEMES,
   projects = MOCK_PROJECTS,
   years = MOCK_YEARS,
+  types = MOCK_TYPES,
   onFilterOpenChange,
   onFilterChange,
   onDrawerHeightChange,
@@ -348,12 +360,14 @@ export default function Header({
     theme: themes,
     project: projects,
     year: years,
+    type: types,
     contact: MENU_CONTACT_ITEMS,
   };
   const entryLabels = {
     theme: "Theme",
     project: "Project",
     year: "Year",
+    type: "Type",
     contact: "Contact",
   };
   const activeValues = activeEntry ? entryValues[activeEntry] : [];
@@ -368,13 +382,16 @@ export default function Header({
   // tag included (future-safe, even though nothing can populate it yet --
   // see selection's own comment above). This is the closed Filter
   // control's own count, entirely separate from the per-category (n)
-  // shown inside the open drawer next to Theme/Project/Year (values[key]
-  // above) -- that per-category count is untouched by this commit.
+  // shown inside the open drawer next to Theme/Project/Year/Type
+  // (values[key] above) -- that per-category count is untouched by this
+  // commit. `selection.type.length` added alongside the rest for the new
+  // Type Filter category.
   const totalFilterCount =
     selection.theme.length +
     selection.tag.length +
     selection.project.length +
-    selection.year.length;
+    selection.year.length +
+    selection.type.length;
 
   // onFilterOpenChange is specifically about Filter's own open state, so it
   // only fires when Filter itself transitions -- an explicit toggle, or

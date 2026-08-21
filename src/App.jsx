@@ -478,8 +478,9 @@ const DEFAULT_IMAGE_POOL = { all: allImages, byOrientation: imagesByOrientation 
 // single-source-of-truth idiom Header.jsx's own EMPTY_FILTER_SELECTION
 // already establishes for the same reason (see Header.jsx). Kept as its
 // own constant so App's initial state and its reset can never drift into
-// two slightly different "empty" literals.
-const EMPTY_FILTER_QUERY = { theme: [], tag: [], project: [], year: [] };
+// two slightly different "empty" literals. `type` added alongside `year`
+// for the new Type Filter category, mirroring EMPTY_FILTER_SELECTION.
+const EMPTY_FILTER_QUERY = { theme: [], tag: [], project: [], year: [], type: [] };
 
 // Project Filter Alignment: Filter's Project category displays/selects
 // each Project's human-readable title -- the same way Theme/Year already
@@ -1683,6 +1684,26 @@ function App() {
   const PROJECT_SLUG_BY_TITLE = new Map(
     getProjects().map((project) => [project.title, project.slug]),
   );
+
+  // Type Filter: same reasoning and placement as PROJECT_TITLES
+  // immediately above -- computed here, at render time, from
+  // getProjects() (Type lives on Project, not Archive Item -- see
+  // cms/schemaTypes/projectType.js). Unlike PROJECT_TITLES, Type isn't
+  // already a one-per-Project unique value -- several Projects can share
+  // a Type -- so this dedupes via Set the same way ARCHIVE_YEARS_NUMERIC
+  // below dedupes Year, then sorts alphabetically (Type has no inherent
+  // order the way Year's numeric-descending does, so this follows
+  // THEME_NAMES/getThemes()'s own "order title asc" convention instead).
+  // `.filter(Boolean)` drops any existing Project published before this
+  // field existed and not yet given a Type (see cms/queries.js's
+  // normalizeProject: `type: raw.type` is undefined for those) -- an
+  // absent Type contributes no option to the Filter rather than a blank
+  // one. Passed straight through to Header's new `types` prop below,
+  // mirroring exactly how THEME_NAMES/PROJECT_TITLES/YEAR_OPTIONS already
+  // stop Header from ever falling back to its own MOCK_TYPES default.
+  const PROJECT_TYPES = Array.from(
+    new Set(getProjects().map((project) => project.type).filter(Boolean)),
+  ).sort();
 
   // Phase 4 (Connect Themes): same reasoning and placement as
   // PROJECT_TITLES immediately above -- computed here, at render time,
@@ -3290,6 +3311,7 @@ function App() {
         projects={PROJECT_TITLES}
         themes={THEME_NAMES}
         years={YEAR_OPTIONS}
+        types={PROJECT_TYPES}
         onFilterOpenChange={setIsIndexDrawerOpen}
         onFilterChange={handleFilterChange}
         onDrawerHeightChange={handleDrawerHeightChange}

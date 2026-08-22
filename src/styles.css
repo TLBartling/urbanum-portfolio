@@ -2419,6 +2419,43 @@ html.is-browsing .zoom-controls {
   object-fit: cover;
 }
 
+/* Column-grammar refinement (client mockup rhythm): a stacked column is a
+   second, narrower flex row participating as one column-width unit in
+   .project-filter-row__track, exactly like a single .project-filter-row__tile
+   does -- flex-shrink: 0 and height: 100% here mean it never shrinks and
+   always fills the row's fixed height, same as every other column.
+   flex-direction: column + gap (set inline by ProjectFilterRow.jsx, the
+   same ROW_GUTTER_CSS value the track itself already uses) splits that
+   fixed height into two image regions plus one gutter between them --
+   the two regions' heights plus the gap sum to exactly the column's
+   height, so a stacked pair never grows taller than its single-image
+   neighbors. See ProjectFilterRow.jsx's resolveStackWidth for how the
+   shared column width is chosen from both images' real aspect ratios. */
+.project-filter-row__stack {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  height: 100%;
+}
+
+/* Each half of a stacked column. Reuses every base .project-filter-row__tile
+   rule (position/overflow/border/padding/cursor/background) via the class
+   list -- height: auto + flex: 1 1 0 + min-height: 0 is what lets the two
+   stacked tiles split .project-filter-row__stack's fixed height in half
+   (rather than each trying to render at the tile's usual 100% height,
+   which would double the column's total height) while still letting
+   .project-filter-row__img's own height: 100% + object-fit: cover fill
+   whatever half-height each one resolves to. width: 100% fills the
+   stack's own inline-styled width, matching the single-tile pattern
+   where width also always comes from an ancestor/inline value rather
+   than an intrinsic one. */
+.project-filter-row__tile--stacked {
+  width: 100%;
+  height: auto;
+  flex: 1 1 0;
+  min-height: 0;
+}
+
 /* --- Splash screen -------------------------------------------------------
    A temporary full-screen overlay, mounted once above Router in main.jsx.
    Static, traditional entry screen (Josh review, Commit 1; refined per

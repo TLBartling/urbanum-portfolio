@@ -46,7 +46,30 @@ const STRUCTURE_BY_SECTION_NAME = {
 
 export default defineConfig({
   name: 'default',
-  title: 'Urbanum Studio',
+  // Studio branding pass (client-requested): the Studio's own `title` --
+  // `WorkspaceOptions.title`, fully public in the installed 6.9.0 source
+  // (not @hidden/@beta, unlike several other fields in this config) -- is
+  // the documented Sanity API for the Studio/browser-tab title. Renamed
+  // from 'Urbanum Studio' to 'Urbānum Archive' (macron preserved, matching
+  // the frontend's own existing "urbānum" wordmark -- see Logo.jsx's alt
+  // text) verbatim, nothing else about this field's role changed.
+  //
+  // One real caveat worth recording here, not left for someone to
+  // rediscover later: Studio's own StudioLayoutComponent (installed
+  // source, sanity/lib/index.js) composes the browser tab title as
+  // `${activeTool.title || activeTool.name} | ${title}` whenever a tool
+  // is active -- e.g. "Urbanum Import | Urbānum Archive" while the
+  // uploader is open, not "Urbānum Archive" alone. This `title` field is
+  // still the one correct, documented lever for the Studio's own name in
+  // that composition (and for the exact-match title on Studio's own
+  // "no tool active" root state) -- there is no public per-tool way to
+  // suppress the "{tool} | " prefix without either a project-wide
+  // `document.title` side effect (a workaround, not a config change) or
+  // replacing `studio.components.layout` outright (the same heavy,
+  // already-rejected rebuild this config's own `layout` comment below
+  // describes for an unrelated reason). Left as Sanity's own standard
+  // behavior rather than worked around -- see this milestone's report.
+  title: 'Urbānum Archive',
   icon: StudioIcon,
 
   projectId: 'zxmuvik1',

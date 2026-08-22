@@ -48,6 +48,13 @@ import { queryArchive, extractYearNumber } from "./metadataQueryEngine";
 // relationshipModeEvaluator.js for the full rationale; see
 // isRelationshipModeActive below for the one call site.
 import { shouldActivateRelationshipMode } from "./relationshipModeEvaluator";
+// Project Filter Composition (client-requested): the single-row
+// horizontal alternative to the normal DAPC composition, rendered only
+// while the archive is filtered by Project -- see isProjectFilterActive
+// below for the render branch, and ProjectFilterRow.jsx's own header
+// comment for why this is a separate, isolated component rather than an
+// extension of buildGalleryItems/createGalleryBatch/pickImage.
+import ProjectFilterRow from "./ProjectFilterRow";
 
 export const allImages = [
   "/img/pexels-adrien-olichon-1257089-3137038.jpg",
@@ -491,6 +498,12 @@ const DEFAULT_IMAGE_POOL = { all: allImages, byOrientation: imagesByOrientation 
 // two slightly different "empty" literals. `type` added alongside `year`
 // for the new Type Filter category, mirroring EMPTY_FILTER_SELECTION.
 const EMPTY_FILTER_QUERY = { theme: [], project: [], year: [], type: [] };
+// Project Filter Composition: a single stable empty-array reference for
+// projectFilterItems' non-Project-filter branch (see that useMemo in
+// App()), so a render where Project isn't active never hands
+// ProjectFilterRow (which isn't even mounted then) a freshly allocated
+// array for no reason.
+const EMPTY_ARRAY = [];
 
 // Project Filter Alignment: Filter's Project category displays/selects
 // each Project's human-readable title -- the same way Theme/Year already
@@ -2064,6 +2077,46 @@ function App() {
   // constraint" (see metadataQueryEngine.js) -- so this needs no special
   // casing anywhere below.
   const [committedSearch, setCommittedSearch] = useState(null);
+
+  // Project Filter Composition (client-requested): true whenever Project
+  // is part of the active Filter query, regardless of whether Type/Theme/
+  // Year are also selected alongside it -- the one condition the client's
+  // brief cares about ("ONLY when...filtered by Project," explicitly NOT
+  // for Type/Theme/Year/no-filter). Deliberately derived straight from
+  // activeFilterQuery -- the same state applyMetadataQuery already reads
+  // -- rather than a new piece of state of its own, so there is exactly
+  // one place "is Project selected" can ever disagree with itself.
+  const isProjectFilterActive = activeFilterQuery.project.length > 0;
+  // Mirrors isProjectFilterActive into a ref for the wheel/touch effect
+  // below (see its own comment) to read without needing to be in that
+  // effect's dependency array -- that effect's cleanup/re-subscribe cost
+  // (removing and re-adding three window-level listeners) is keyed on
+  // [galleryItems] today and this deliberately doesn't add a second reason
+  // for it to re-run.
+  const isProjectFilterActiveRef = useRef(isProjectFilterActive);
+  useEffect(() => {
+    isProjectFilterActiveRef.current = isProjectFilterActive;
+  }, [isProjectFilterActive]);
+  // The Project-filtered row's own image set: queryArchive is a pure,
+  // side-effect-free function (see metadataQueryEngine.js's own contract
+  // comment) run here a second time against the exact same combined query
+  // applyMetadataQuery already runs internally -- not a new matching rule,
+  // just reading the same result independently so this row can render
+  // without applyMetadataQuery needing to know this composition exists.
+  // Results arrive in getArchiveItems()'s own order (queryArchive never
+  // reorders), i.e. this Project's own CMS-authored sortOrder -- the same
+  // "preserve source order, never hand-pick" rule JournalPage.jsx's own
+  // buildJustifiedRows follows for the exact same reason.
+  const projectFilterItems = useMemo(
+    () =>
+      isProjectFilterActive
+        ? queryArchive(
+            { search: committedSearch, ...activeFilterQuery },
+            getArchiveItems(),
+          )
+        : EMPTY_ARRAY,
+    [isProjectFilterActive, committedSearch, activeFilterQuery],
+  );
   // Drives a brief opacity dip on the gallery track during a logo-triggered
   // regeneration (see handleLogoClick below and the matching .is-regenerating
   // rule in styles.css) -- mount and resize are untouched and stay instant.
@@ -2095,6 +2148,23 @@ function App() {
       }
     };
   }, []);
+
+  // Project Filter Composition: ProjectFilterRow's own click-to-enter,
+  // reusing the exact same fade-then-navigate mechanism the normal
+  // archive's project-linked tiles already use immediately below in this
+  // file (isEnteringProject/enterProjectTimeoutRef/GALLERY_FADE_MS/
+  // navigate) -- not a second, competing "enter a project" behavior, just
+  // that same one extracted so this isolated row can call it too.
+  const handleProjectRowImageClick = useCallback(
+    (item) => {
+      if (!item.project || isEnteringProject) return;
+      setIsEnteringProject(true);
+      enterProjectTimeoutRef.current = window.setTimeout(() => {
+        navigate(`/projects/${item.project}?image=${item.archiveNumber}`);
+      }, GALLERY_FADE_MS);
+    },
+    [isEnteringProject],
+  );
   // Relationship Highlight Pipeline (Commit 3): Gallery (this component) is
   // the single owner of relatedArchiveNumbers, the shared state that drives
   // highlighting below. hoveredGalleryItemId tracks which
@@ -3235,6 +3305,17 @@ function App() {
     };
 
     const handleWheel = (event) => {
+      // Project Filter Composition: while the archive is showing
+      // ProjectFilterRow instead of the normal composition, this global
+      // window-level handler steps aside entirely -- no preventDefault,
+      // no camera velocity -- so ProjectFilterRow's own small, locally-
+      // scoped wheel handler (see its useWheelToHorizontalScroll) is the
+      // only thing that responds to the gesture, rather than the two
+      // fighting over the same wheel event. Reads a ref, not state, so
+      // this effect's own dependency array ([galleryItems], unchanged)
+      // never needs Project-filter state added to it.
+      if (isProjectFilterActiveRef.current) return;
+
       // preventDefault unconditionally, before branching -- this is what
       // stops the browser's own native page-zoom, which Chrome/Firefox/
       // Safari all trigger from a ctrlKey wheel event (see below) exactly
@@ -3270,6 +3351,13 @@ function App() {
     };
 
     const handleTouchMove = (event) => {
+      // Project Filter Composition: same reasoning as handleWheel's own
+      // guard immediately above -- native touch scrolling on
+      // ProjectFilterRow's own overflow-x container already works with no
+      // JS needed, so this global handler must not preventDefault/consume
+      // the gesture out from under it.
+      if (isProjectFilterActiveRef.current) return;
+
       const touch = event.touches[0];
       if (!touch || !touchPoint) return;
 
@@ -3437,9 +3525,22 @@ function App() {
                 isGalleryTransitioning ? " is-regenerating" : ""
               }${isScrolling ? " is-scrolling" : ""}`}
               ref={trackRef}
-              style={{ width: `${getGalleryTrackWidth(galleryItems)}px` }}
+              style={{
+                width: `${getGalleryTrackWidth(galleryItems)}px`,
+                // Project Filter Composition: hidden (never unmounted) while
+                // ProjectFilterRow is what's showing instead -- trackRef
+                // must stay pointed at the same, permanently-mounted DOM
+                // node the Camera/GSAP quickSetter machinery above was
+                // created against (see createGalleryRenderer's own
+                // gsap.quickSetter(track, ...) calls); unmounting this div
+                // here and remounting a fresh one later would silently
+                // leave that machinery writing to a detached node forever.
+                // display:none removes it from .opening-viewport's flex
+                // layout and from view with no risk to that stability.
+                display: isProjectFilterActive ? "none" : undefined,
+              }}
             >
-              {hasNoSearchResults ? (
+              {!isProjectFilterActive && (hasNoSearchResults ? (
                 // Metadata Query Wiring: the only UI this commit adds
                 // beyond the existing Search field/chip and Filter drawer.
                 // Deliberately plain -- no redesign, no animation -- just a
@@ -3680,8 +3781,43 @@ function App() {
                 </button>
               );
             })
-              )}
+              ))}
             </div>
+
+            {/* Project Filter Composition: mounted only while the archive
+                is filtered by Project -- see isProjectFilterActive above.
+                A sibling of .gallery-track, never a child of it, so the
+                Camera/GSAP machinery targeting trackRef (see the comment
+                on .gallery-track's own style above) never touches this
+                element, and this element's own isolated wheel/scroll
+                handling never fights with that machinery's global window
+                listeners (see the handleWheel/handleTouchMove guards
+                above). Reuses the same "no results" placeholder as the
+                normal composition's own hasNoSearchResults branch above,
+                for the edge case where Project is combined with another
+                filter/search term that leaves nothing matching. */}
+            {isProjectFilterActive &&
+              (hasNoSearchResults ? (
+                <p
+                  className="archive-empty-state"
+                  style={{
+                    width: "100%",
+                    textAlign: "center",
+                    padding: "6rem 1.5rem",
+                    color: "#9d9d9d",
+                    fontSize: "0.85rem",
+                    letterSpacing: "0.04em",
+                  }}
+                >
+                  No archive items match your search.
+                </p>
+              ) : (
+                <ProjectFilterRow
+                  items={projectFilterItems}
+                  openingHeight={openingGeometry.height}
+                  onSelectImage={handleProjectRowImageClick}
+                />
+              ))}
           </div>
         </div>
       </div>

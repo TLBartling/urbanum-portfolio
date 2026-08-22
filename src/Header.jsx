@@ -45,11 +45,18 @@ const MOCK_TYPES = ["Residential", "Urban", "Commercial"];
 // into both the value arrays above and the selection state below. Type is
 // a peer of Theme/Project/Year here -- same key/label shape, same row,
 // same everything below that maps over this array.
+//
+// Terminology/order pass (client-requested): only this array's own order
+// changed -- Type moved to the first column, Theme took its former slot,
+// Year and Project stayed put. Each entry's key/label, the values it
+// reads (entryValues/entryLabels below), and the filter behavior itself
+// are untouched; INDEX_ENTRIES.map() below renders whatever order this
+// array is in, so reordering the array is the entire change.
 const INDEX_ENTRIES = [
-  { key: "theme", label: "Theme" },
-  { key: "project", label: "Project" },
-  { key: "year", label: "Year" },
   { key: "type", label: "Type" },
+  { key: "theme", label: "Theme" },
+  { key: "year", label: "Year" },
+  { key: "project", label: "Project" },
 ];
 
 // Filter UX -- Clear All: the one shape "no active filters" means,
@@ -69,13 +76,33 @@ const EMPTY_FILTER_SELECTION = { theme: [], project: [], year: [], type: [] };
 // with its own active-field state (MENU_CONTACT_ITEMS and every
 // `activeEntry === "contact"` branch that used to render it are gone;
 // see entryValues/entryLabels and the Active Panel further down).
-const MENU_LINKS = ["About", "Journal", "Contact"];
+//
+// Navigation terminology pass (client-requested): Archive joins this list
+// as a fourth real link -- the exact "a fourth page later is one more
+// entry here" case MENU_LINK_PATHS' own comment below already
+// anticipated -- and "About" is renamed to "Practice" here. Both are
+// label/entry-list changes only: MENU_LINKS.map() below already renders
+// whatever labels this array holds uniformly (active-state check, click
+// handler, styling), so nothing else in this file needed to change for
+// either. See MENU_LINK_PATHS immediately below for what each label
+// actually routes to.
+const MENU_LINKS = ["Archive", "Practice", "Journal", "Contact"];
 
-// All three links are wired up to real routes; kept as a lookup rather
-// than growing the ternary below, since a fourth page later is one more
-// entry here instead of a longer condition.
+// All links are wired up to real routes; kept as a lookup rather than
+// growing the ternary below, since another page later is one more entry
+// here instead of a longer condition.
+//
+// Archive intentionally points at "/" -- the existing archive/home
+// landing page Router.jsx already serves there (via <App />) -- rather
+// than a new "/archive" route, per the "no duplicate page" requirement.
+// Practice intentionally still points at "/about": this is a label-only
+// rename of the public-facing link text, not a rename of the page --
+// AboutPage.jsx, its route, and its CMS content are all untouched, so the
+// existing About page keeps serving from the same path under its new
+// nav label.
 const MENU_LINK_PATHS = {
-  About: "/about",
+  Archive: "/",
+  Practice: "/about",
   Journal: "/journal",
   Contact: "/contact",
 };
@@ -708,8 +735,9 @@ export default function Header({
   // closing, Menu closing, or switching directly from one to the other.
   // It does NOT fire on every click within a section (e.g. Theme ->
   // Project), since drawerSection itself doesn't change there -- only
-  // handleAddClick does. Menu's own fields (About/Journal/Contact) are all
-  // plain navigation links now, with no active-field state of their own
+  // handleAddClick does. Menu's own fields (Archive/Practice/Journal/
+  // Contact) are all plain navigation links now, with no active-field
+  // state of their own
   // (see MENU_LINKS' own comment) -- this cleanup effect still runs when
   // Menu closes, it just never has anything Menu-owned left to clear.
   useEffect(() => {
@@ -999,7 +1027,8 @@ export default function Header({
                unified (no per-field stagger) reveal CSS -- just a different
                content row. Contact drawer -> Contact page milestone: Contact
                is now a plain navigation link, exactly like About/Journal --
-               MENU_LINKS.map() below renders all three uniformly, so the
+               MENU_LINKS.map() below renders all four uniformly (Archive
+               and the Practice label added later, same mechanism), so the
                separate hardcoded Contact field (its own handleAddClick("contact")
                button, opening the shared Active Panel as a static options
                list) is gone. */
@@ -1011,9 +1040,10 @@ export default function Header({
                   #9d9d9d, see index-drawer__label-text--active below),
                   nothing added to the DOM. `path` (from useCurrentPath(),
                   already read above for isChildPage/isProjectPage) tells
-                  About/Journal/Contact whether each one IS the current
-                  page -- all three are real routes now, so this is a plain,
-                  uniform `path === MENU_LINK_PATHS[label]` check for every
+                  Archive/Practice/Journal/Contact whether each one IS the
+                  current page -- all four are real routes now, so this is
+                  a plain, uniform `path === MENU_LINK_PATHS[label]` check
+                  for every
                   entry, nothing label-specific. An inactive label is
                   completely unchanged: plain uppercase text, no color
                   change. */}

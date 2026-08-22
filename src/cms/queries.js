@@ -71,6 +71,18 @@ import { urlFor } from "./imageUrl.js";
 // for the full reasoning). Only the Sanity-side path segments changed --
 // the output key this query produces (`projectType`) and the user-facing
 // "Type" label are both exactly what they already were.
+// Project Filter Composition (client-requested): "aspectRatio" is the
+// exact same GROQ expression the Journal query already established for
+// exactly this need (see JOURNAL_ENTRIES_QUERY's own comment) -- Sanity's
+// own asset metadata, not something specific to Journal Entries as a
+// document type. Added here so the Project-filtered archive row
+// (App.jsx's ProjectFilterRow, see its own comment) can size each image
+// from its own real aspect ratio, the same "real data drives the
+// landscape/portrait rhythm, not an invented pattern" rule the Journal
+// grid already follows -- an Archive Item's own `image` field was the
+// only thing missing this, and adding it doesn't touch the normal
+// archive/DAPC composition or displayRole/sortOrder/etc, which are the
+// only fields it previously supplied.
 export const ARCHIVE_ITEMS_QUERY = `
   *[_type == "archiveItem" && !(_id in path("drafts.**"))] | order(sortOrder asc) {
     archiveNumber,
@@ -85,7 +97,8 @@ export const ARCHIVE_ITEMS_QUERY = `
     fullDate,
     title,
     location,
-    "caption": description
+    "caption": description,
+    "aspectRatio": image.asset->metadata.dimensions.aspectRatio
   }
 `;
 
@@ -145,6 +158,14 @@ export function normalizeArchiveItem(raw, imageUrl) {
     projectType: raw.projectType ?? undefined,
     displayRole: raw.displayRole ?? "Default",
     sortOrder: raw.sortOrder ?? 0,
+    // Project Filter Composition: same "a real number, or null" contract
+    // as normalizeJournalEntry's own `aspectRatio` field immediately
+    // above in this file -- null (not undefined, not a guessed default)
+    // when Sanity has no dimensions metadata for this image yet, so a
+    // consumer can tell "unknown" apart from "really is this ratio" and
+    // apply its own fallback the same way ProjectFilterRow.jsx does.
+    aspectRatio:
+      typeof raw.aspectRatio === "number" ? raw.aspectRatio : null,
   };
 }
 

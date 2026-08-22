@@ -2307,6 +2307,86 @@ html.is-browsing .zoom-controls {
   object-fit: cover;
 }
 
+/* --- Project Filter Composition (client-requested) ------------------------
+   Single horizontally-scrolling row, rendered only while the archive is
+   filtered by Project (App.jsx's isProjectFilterActive) as a sibling of
+   .gallery-track inside .opening-viewport -- never a child of it, and
+   entirely isolated both from the normal archive/DAPC composition above
+   and from the Journal grid immediately above this comment. See
+   ProjectFilterRow.jsx's own header comment for the full rationale.
+
+   .project-filter-row is the real, native horizontal-scroll container
+   (overflow-x: auto) -- deliberately NOT the archive's own camera/world-
+   transform system (App.jsx's window-level wheel/touch handlers already
+   step aside while this is mounted, see their own comments) and NOT
+   JournalPage.jsx's ResizeObserver-driven multi-row packing. Native
+   scrollbar hidden since the row already reads as scrollable through its
+   own content overflowing the viewport, the same way the normal archive
+   never shows one either.
+
+   .project-filter-row__track is one flex row; its height and inter-image
+   gap are both set inline per mount by ProjectFilterRow.jsx (the row's
+   fixed height, solved from the same openingHeight the normal archive
+   already renders inside -- see that file's own resolveRowHeight).
+
+   .project-filter-row__tile's width is set inline per image (solved from
+   that same fixed height and the image's own real aspect ratio) -- the
+   single-row version of the exact rule JournalPage.jsx's own
+   buildJustifiedRows uses for its multi-row grid, just inverted (there, a
+   row's height is solved to fit a fixed container width; here, a fixed
+   height decides each image's own width instead). */
+.project-filter-row {
+  width: 100%;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  display: flex;
+  align-items: center;
+  scrollbar-width: none;
+  /* .sticky-wrapper (an ancestor of .opening-viewport, and therefore of
+     this element) sets pointer-events: none by default -- the same
+     "disabled unless a specific element opts back in" pattern
+     .gallery-image-wrapper already re-enables for itself for the exact
+     same reason. Without this, the row would be genuinely inert to a
+     real visitor's hover/wheel/click (force-dispatched clicks in
+     automated testing can bypass this, which is what made this gap easy
+     to miss during verification) even though it renders and its own
+     bounding box looks correct. */
+  pointer-events: auto;
+}
+
+.project-filter-row::-webkit-scrollbar {
+  display: none;
+}
+
+.project-filter-row__track {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  /* Matches .sticky-wrapper's own 0 15px side padding, so the row's
+     first/last image lines up with the normal archive's own left/right
+     breathing room instead of starting flush against the viewport edge. */
+  padding: 0 15px;
+}
+
+.project-filter-row__tile {
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+  height: 100%;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  background: #cdc8c1;
+}
+
+.project-filter-row__img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
 /* --- Splash screen -------------------------------------------------------
    A temporary full-screen overlay, mounted once above Router in main.jsx.
    Static, traditional entry screen (Josh review, Commit 1; refined per

@@ -63,3 +63,12 @@ export const photoJournalStructure = (S) => sectionStructure(S, 'photoJournal')
 // section, this resolver is just the one that isn't `sectionStructure`.
 export const aboutPageStructure = (S) =>
   S.document().schemaType('aboutPage').documentId('aboutPage')
+
+// Contact Page (Contact drawer -> Contact page milestone): the exact same
+// singleton pattern as aboutPageStructure directly above -- one fixed
+// document, addressed by its own fixed `documentId` rather than a
+// generated one, opened straight into its editor with no list pane. See
+// aboutPageStructure's own comment for the full reasoning; nothing about
+// it differs here beyond the schema type and document id.
+export const contactPageStructure = (S) =>
+  S.document().schemaType('contactPage').documentId('contactPage')

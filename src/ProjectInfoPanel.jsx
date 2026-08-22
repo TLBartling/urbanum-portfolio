@@ -2,42 +2,66 @@
 // redesign explicitly separates out. Two pieces live in this one file
 // since they're two halves of a single toggle, but they render in two
 // different places on the page (see ProjectTemplate.jsx): ProjectInfoTrigger
-// is the minimal icon-only control that sits inside the image's own
-// top-right corner (passed into ImageViewer's `overlay` slot), and
-// ProjectInfoPanel is the actual metadata content that opens beside the
-// image as a right-hand column. Neither knows anything about Image
-// Navigation, the Archive Number, or Project Navigation; both are driven
-// entirely by the isOpen/onToggle state ProjectTemplate owns.
+// is the minimal icon-only control, and ProjectInfoPanel is the actual
+// metadata content. Neither knows anything about Image Navigation, the
+// Archive Number, or Project Navigation; both are driven entirely by the
+// isOpen/onToggle state ProjectTemplate owns.
 //
-// No text label ("PROJECT INFORMATION"/"INFO"/"DETAILS") anywhere on the
-// trigger, per explicit instruction (Josh review, revised across several
-// passes: a circled-i was rejected as "too visually explicit... generic
-// information UI element"; a follow-up circular hover/focus backdrop
-// button was then also rejected -- "no circular backgrounds... no filled
-// or translucent button background"). The trigger reuses Urbanum's own
-// existing plus-glyph control -- the bare "+" Header.jsx already uses for
-// "add"/"expand" (see .index-drawer__add, the Filter drawer's own
-// category-expand button) -- with NO background/border/pill of any kind,
-// still just a bare character, and invisible by default: it only renders
-// visible on hover (or keyboard focus) of the photo itself, via CSS on
-// .project-image-frame (see styles.css). Once the panel is open, the icon
-// stays visible regardless of hover, so the close control is never hidden
-// while a visitor is interacting with the open panel.
+// Interaction refinement (info-symbol + opaque-overlay pass): previously
+// the trigger sat inside the image's own top-right corner, invisible
+// until the photo was hovered, and the panel opened as a right-hand
+// column beside the image (narrowing it). Per explicit instruction this
+// is now a persistent, always-visible control -- discoverable without
+// hovering the image at all -- and the panel is now an OPAQUE overlay
+// that fully covers the image while open, rather than a side column that
+// shares space with it (see .project-info-panel in styles.css). Nothing
+// about what data this shows, or how it's derived, changed -- only how
+// it's triggered and how it's presented once open.
 //
-// Legibility (Josh review): a flat glyph color was sometimes unreadable
-// depending on the photograph underneath it. Rather than add any new
-// background/shadow/glow, the glyph uses an adaptive CSS treatment --
-// white text with mix-blend-mode: difference (see styles.css) -- which
-// inverts per-pixel against whatever's behind it, staying visible over
-// bright sky, dark foliage, or mid-tone surfaces alike, without
-// introducing any new permanent UI color.
+// Icon + position refinement (Josh review, second pass): two more changes
+// on top of the above, both purely presentational -- the toggle/close
+// LOGIC below (isOpen/onToggle, aria-expanded/aria-label) is completely
+// unchanged.
 //
-// Open/close is communicated with one glyph, never swapped for a
-// different icon: the "+" rotates 45° via CSS transform when the panel
-// opens, which visually turns its symmetrical vertical/horizontal bars
-// into a diagonal cross -- an "×" -- and rotates back to "+" on close,
-// timed to land alongside the panel's own opening motion so the two read
-// as one coordinated transition rather than two unrelated animations.
+//   Glyph: the bare "+"/rotate-to-"×" glyph (history below) is replaced
+//   with an explicit information mark -- a lowercase "i" centered inside
+//   a thin circle (border only, no fill -- see .project-info-trigger__glyph
+//   in styles.css), so the control reads unambiguously as "information,"
+//   not as a generic "add/expand" control borrowed from elsewhere. Open
+//   state is now communicated by swapping the glyph's own character to
+//   "×" (still the exact same button, still the one and only close
+//   control -- no second, differently-designed close element anywhere)
+//   rather than rotating "i" 45°, since rotating a letterform doesn't
+//   read as an "×" the way rotating the old symmetrical "+" did.
+//
+//   Position: no longer `position: fixed` to the viewport's own edge.
+//   Per explicit instruction this control now lives inline in the same
+//   row as the Archive Number and Image Navigation counter
+//   (.project-image-nav-row in ProjectTemplate.jsx/styles.css), at that
+//   row's own far-left column -- occupying the same horizontal baseline
+//   as "[026]" and "‹ 5 / 7 ›" rather than floating independently against
+//   the image. ProjectTemplate.jsx renders this component directly inside
+//   that row now (no longer passed through ImageViewer's old `overlay`
+//   slot -- see ImageViewer.jsx's own comment for why that slot is gone).
+//
+// History (superseded by the above, kept for context): originally a
+// circled-i was rejected as "too visually explicit... generic information
+// UI element," then a plus-glyph with a circular hover/focus backdrop was
+// also rejected -- "no circular backgrounds... no filled or translucent
+// button background" -- landing on a bare "+" reusing Header.jsx's own
+// .index-drawer__add glyph. That "no filled background" reasoning still
+// holds today (the new circle is a thin outline only, never a filled or
+// translucent pill), but the glyph itself has since been asked for
+// explicitly as a circled "i" -- an unambiguous information mark, not
+// Urbanum's own "add/expand" character repurposed to mean something else.
+//
+// Legibility (superseded twice over, kept for history): the glyph
+// originally sat over variable photograph content and needed an adaptive
+// mix-blend-mode treatment to stay legible against any photo. Once it
+// moved to the viewport's own edge over the page's plain background (the
+// first interaction refinement above), and now that it lives inline in
+// the metadata row (this pass), it's simply a flat, ordinary color -- see
+// styles.css.
 //
 // Data-completeness correction (Josh review): a prior pass showed only
 // project.title/location/dates/description and reasoned that Themes
@@ -117,11 +141,13 @@ export function ProjectInfoTrigger({ isOpen, onToggle }) {
       aria-expanded={isOpen}
       aria-label={isOpen ? "Close project information" : "Project information"}
     >
-      {/* Always the same "+" character -- .project-info-trigger--open
-          (see styles.css) rotates it 45deg via CSS transform rather than
-          swapping in a different glyph. */}
+      {/* Character swaps "i" <-> "×" based on isOpen -- the thin circle
+          around it (styles.css) never changes, only the glyph inside it,
+          so this reads as one control toggling state rather than two
+          different icons. See this file's own top comment for why this
+          replaced the old rotate-the-"+" treatment. */}
       <span className="project-info-trigger__glyph" aria-hidden="true">
-        +
+        {isOpen ? "×" : "i"}
       </span>
     </button>
   );

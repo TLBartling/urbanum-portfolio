@@ -1,7 +1,7 @@
 import {defineConfig} from 'sanity'
 import {structureTool} from 'sanity/structure'
 import {schemaTypes} from './schemaTypes'
-import {archiveItemsStructure, projectsStructure, themesStructure, photoJournalStructure, aboutPageStructure} from './structure'
+import {archiveItemsStructure, projectsStructure, themesStructure, photoJournalStructure, aboutPageStructure, contactPageStructure} from './structure'
 import {ARCHIVE_SECTIONS} from './archiveSections'
 import {StudioIcon} from './components/StudioIcon'
 import {importWorkspaceTool} from './importWorkspaceTool'
@@ -31,12 +31,17 @@ import {UrbanumArchiveLayout} from './components/UrbanumArchiveLayout'
 // mapped to structure.js's own `aboutPageStructure` (the singleton
 // resolver, not `sectionStructure`'s document-list one) -- everything
 // else about how this map is built and used is unchanged.
+//
+// Contact drawer -> Contact page milestone: `contactPage` joins as a
+// sixth entry the same way, mapped to `contactPageStructure` -- the
+// same singleton shape, no other change to this map.
 const STRUCTURE_BY_SECTION_NAME = {
   archiveItems: archiveItemsStructure,
   projects: projectsStructure,
   themes: themesStructure,
   photoJournal: photoJournalStructure,
   aboutPage: aboutPageStructure,
+  contactPage: contactPageStructure,
 }
 
 export default defineConfig({

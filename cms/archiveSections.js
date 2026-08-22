@@ -160,6 +160,23 @@ export const ARCHIVE_SECTIONS = [
     icon: DocumentTextIcon,
     group: 'Journal',
   },
+  {
+    // Contact drawer -> Contact page milestone: a sixth ARCHIVE_SECTIONS
+    // entry, filed directly after About Page (same `group: 'Journal'`,
+    // same singleton shape, same reasoning as that entry's own comment
+    // above -- Contact is "supporting page content" exactly like About
+    // is, so it belongs in the same rail group, in the same order the
+    // site's own Menu now lists them: About, Contact). Reuses
+    // DocumentTextIcon rather than importing a new icon, since both are
+    // the same kind of thing (a singleton editorial page) and a
+    // dedicated Contact icon would be a one-off distinction this array
+    // doesn't otherwise draw between its entries.
+    name: 'contactPage',
+    title: 'Contact Page',
+    schemaType: 'contactPage',
+    icon: DocumentTextIcon,
+    group: 'Journal',
+  },
 ]
 
 // The section Josh lands on the moment he clicks "Archive" in the top nav,

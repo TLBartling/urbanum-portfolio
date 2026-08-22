@@ -424,3 +424,37 @@ export async function fetchAboutPage() {
   const raw = await client.fetch(ABOUT_PAGE_QUERY);
   return normalizeAboutPage(raw);
 }
+
+// -----------------------------------------------------------------------
+// Contact Page (Contact drawer -> Contact page milestone)
+//
+// Exactly the same shape as ABOUT_PAGE_QUERY/normalizeAboutPage/
+// fetchAboutPage directly above -- same three fields, same singleton
+// `[0]` lookup, same draft-exclusion filter -- just against `contactPage`
+// instead of `aboutPage`. See cms/schemaTypes/contactPageType.js for why
+// Contact reuses this exact field shape rather than a new one.
+// -----------------------------------------------------------------------
+export const CONTACT_PAGE_QUERY = `
+  *[_type == "contactPage" && !(_id in path("drafts.**"))][0] {
+    title,
+    subtitle,
+    body
+  }
+`;
+
+export function normalizeContactPage(raw) {
+  if (!raw) return null;
+
+  return {
+    title: raw.title,
+    subtitle: raw.subtitle,
+    body: raw.body,
+  };
+}
+
+// Mirrors fetchAboutPage() exactly -- see src/content/contactPage.js for
+// where this gets called from.
+export async function fetchContactPage() {
+  const raw = await client.fetch(CONTACT_PAGE_QUERY);
+  return normalizeContactPage(raw);
+}

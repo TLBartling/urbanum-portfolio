@@ -1,5 +1,6 @@
 import App from "./App";
 import AboutPage from "./AboutPage";
+import ContactPage from "./ContactPage";
 import ProjectsPage from "./ProjectsPage";
 import JournalPage from "./JournalPage";
 import ProjectTemplate from "./ProjectTemplate";
@@ -12,17 +13,23 @@ import { useCurrentPath } from "./navigation";
 const PROJECT_ROUTE = /^\/projects\/([^/]+)$/;
 
 // The entire routing surface this site needs right now: the gallery at
-// "/", the About page at "/about", the Projects index at "/projects", the
-// dynamic Project Template at "/projects/:slug", and the Journal at
-// "/journal". Not a general-purpose router -- just enough to pick one of a
-// small number of top-level pages (or one dynamic template) based on the
-// current path. Another static page later is one more path check here,
-// not a new dependency.
+// "/", the About page at "/about", the Contact page at "/contact", the
+// Projects index at "/projects", the dynamic Project Template at
+// "/projects/:slug", and the Journal at "/journal". Not a general-purpose
+// router -- just enough to pick one of a small number of top-level pages
+// (or one dynamic template) based on the current path. Another static
+// page later is one more path check here, not a new dependency -- Contact
+// (Contact drawer -> Contact page milestone) is exactly that: one more
+// check, mirroring About's own.
 export default function Router() {
   const path = useCurrentPath();
 
   if (path === "/about") {
     return <AboutPage />;
+  }
+
+  if (path === "/contact") {
+    return <ContactPage />;
   }
 
   if (path === "/projects") {

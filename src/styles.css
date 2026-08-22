@@ -195,9 +195,26 @@ body {
    one component present on every page) so no other page component needs
    to know this exists. Matches the page's own background exactly, so
    fading in/out reads as the archive settling into view rather than a new
-   visual layer announcing itself. 520ms/var(--reveal-ease) matches
-   .site-header--framed's own transition above -- same motion vocabulary,
-   not a new one. */
+   visual layer announcing itself.
+
+   Site-wide interface fade, tuned again (Josh review, fourth pass): was
+   520ms, matching .site-header--framed's own transition -- shortened to
+   180ms in the previous pass (still var(--reveal-ease) at that point)
+   because 520ms read as a noticeable white pause during navigation, long
+   enough to feel like a stall rather than a deliberate fade. Still read as
+   too slow/too much white interruption at 180ms, so this pass changes two
+   things together: shortened further to 120ms, AND the curve itself moved
+   off var(--reveal-ease) onto a plain ease-out. var(--reveal-ease) is a
+   slow-settling deceleration curve built for 500ms+ "material arriving"
+   motions (the info overlay, .site-header--framed's own framing
+   transition) -- its gentle tail stayed disproportionately noticeable even
+   at a much shorter duration, which is very likely why duration alone
+   wasn't enough last pass. ease-out has no lingering tail, so this reads
+   as a quick, controlled interface change rather than a settling/loading
+   motion. Must stay in sync with Header.jsx's VEIL_DURATION_MS.
+   .site-header--framed's own 520ms/var(--reveal-ease) is untouched --
+   that's a separate transition (the drawer's own framing surface), not
+   part of this veil. */
 .page-transition-veil {
   position: fixed;
   inset: 0;
@@ -205,7 +222,7 @@ body {
   background: #faf9f5;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 520ms var(--reveal-ease);
+  transition: opacity 120ms ease-out;
 }
 
 .page-transition-veil.is-opaque {
@@ -726,15 +743,6 @@ body {
   transition: opacity 480ms var(--reveal-ease) 160ms;
 }
 
-/* Contact's panel is full-width rather than offset/narrowed (see the
-   style prop in Header.jsx), so its content needs its own justification
-   to land on the right -- mirroring index-drawer__row--menu above it,
-   the same "right-aligned row -> right-aligned reveal" philosophy applied
-   one level down. */
-.index-drawer__options-list--menu {
-  justify-content: flex-end;
-}
-
 .index-drawer__option {
   background: none;
   border: none;
@@ -757,19 +765,6 @@ body {
 
 .index-drawer__option--selected {
   color: #111;
-}
-
-/* Contact's revealed items are plain, non-interactive typography (a <span>,
-   not a <button>) -- this just neutralizes the base .index-drawer__option's
-   pointer cursor and hover-dim so they don't visually promise a click that
-   isn't there, while keeping the exact same type, color, and spacing as
-   every other archive term in the row. */
-.index-drawer__option--static {
-  cursor: default;
-}
-
-.index-drawer__option--static:hover {
-  opacity: 1;
 }
 
 /* Selected values read as indexed archive references -- bracketed
@@ -836,6 +831,24 @@ body {
   margin-left: 4px;
 }
 
+/* Weight correction: .filter-count has no font of its own -- it's a
+   <span> nested inside whichever bold/medium label renders it (the top
+   Filter button is .text-control at font-weight: 700; each Theme/
+   Project/Year row is .index-drawer__label-text at font-weight: 500),
+   so its "[" (.index-drawer__option-bracket) and the count digit right
+   after it were silently inheriting that label's own weight instead of
+   loading GT America Regular. The closing "]" and the × next to it
+   already come from the separate Clear button (.index-drawer__option,
+   font-weight: 400 -- untouched here), which is why only one side of
+   "[2]" read heavier. One declaration on the shared wrapper -- not on
+   the bracket span or the bare number text node individually -- fixes
+   both at once and keeps holding if the count's markup ever changes,
+   the same "style the container, not each glyph" approach already used
+   for this element's color/opacity/letter-spacing just above. */
+.filter-count {
+  font-weight: 400;
+}
+
 /* GSAP ScrollTrigger Horizontal Gallery */
 
 .scroll-container {
@@ -881,7 +894,14 @@ body {
   z-index: 2;
   height: 100%;
   will-change: transform, filter, opacity;
-  transition: opacity 520ms var(--reveal-ease);
+  /* Site-wide interface fade, tuned again (Josh review, fourth pass): was
+     520ms, then 180ms in the previous pass -- see .page-transition-veil's
+     own comment for the full reasoning. This pass shortens further to
+     120ms and swaps var(--reveal-ease) for a plain ease-out, same as that
+     rule, so both fades stay one shared, matching motion. Must stay in
+     sync with App.jsx's GALLERY_FADE_MS (the timeout that removes
+     .is-regenerating again once the content swap underneath is done). */
+  transition: opacity 120ms ease-out;
   /* Required for the Gallery Renderer's scaleX/scaleY writes (see
      applyTransform in App.jsx) to scale the track from its own world-space
      origin rather than its visual center -- otherwise projectWorldToScreen's
@@ -2036,39 +2056,105 @@ html.is-browsing .zoom-controls {
   font-size: clamp(1.3rem, 1.7vw, 1.6rem);
 }
 
+/* Second composition pass (Josh review: title/subtitle move below the
+   image, grouped with the text box): the image now leads -- it's the
+   very first thing in .about-layout -- and the title/subtitle no
+   longer stand alone above it. They're nested inside .about-layout__copy
+   itself (see that rule and .about-layout__intro below) so they read as
+   the opening of the same text block the CMS body copy belongs to,
+   rather than a separate element that merely happens to sit near it.
+   .about-layout now has exactly two direct children -- image, then
+   copy -- in plain flex-column document flow: no position: absolute,
+   no negative margin, no z-index anywhere in this section, so the two
+   can never overlap. */
 .about-layout {
   display: flex;
-  align-items: flex-start;
-  gap: clamp(48px, 6vw, 96px);
-}
-
-/* Dominance pass ("small text | LARGE IMAGE"): narrowed from `flex: 1 1
-   320px; max-width: 420px;`. The min-height pass just before this one
-   only stopped the image column from collapsing SHORTER than a normal
-   image already rendered -- it never made the column any WIDER, so in
-   the ordinary case (a normal-ish Featured image) it looked unchanged,
-   which is exactly the "didn't materially change what I'm seeing"
-   feedback. Width dominance is controlled here, not on the image side:
-   .about-layout__image below has always absorbed effectively 100% of
-   any extra row width once this column hits its own `max-width` (see
-   its own comment for the flex-grow math), so narrowing THIS column's
-   cap is what actually hands more width to the image -- bumping the
-   image's own flex-grow number alone would not have, since text was
-   already the binding constraint. */
-.about-layout__text {
-  flex: 1 1 260px;
-  min-width: 0;
-  max-width: 320px;
-  display: flex;
   flex-direction: column;
+  align-items: stretch;
+  gap: clamp(28px, 3.2vw, 44px);
 }
 
+/* The image field (IMAGE CONTAINER requirement): a large, defined,
+   static box -- not the page's full-bleed background -- inset from the
+   page edges by .about-content's own existing padding (reused as-is,
+   no separate container/max-width introduced here, consistent with the
+   Project Page's own "padding is the only thing narrowing the page"
+   choice, see .project-content's comment above).
+   Height is viewport-relative (min-height only would not be enough on
+   its own here -- see .about-layout__img below for why an explicit
+   height is what actually makes the box stable) so the field's size
+   responds to the viewport rather than a single hardcoded pixel value,
+   per explicit instruction. 66vh is a deliberate proportion, not the
+   previous row layout's 58vh carried over unchanged. Now that the image
+   is the first element in .about-layout (title/subtitle moved below
+   it, see .about-layout__intro's own comment), only the page's header
+   clearance sits above this box -- roughly 90-115px at ordinary desktop
+   widths -- so this remains a large field occupying most of the first
+   viewport, its bottom crossing into the next screenful on most
+   ordinary viewport heights, which is what implies "there is more
+   below" without a scroll arrow or any other decorative device.
+   Floor/ceiling (480px/860px) keep the field from collapsing on a very
+   short viewport or ballooning past a sane size on a very tall one. */
+.about-layout__image {
+  width: 100%;
+  height: clamp(480px, 66vh, 860px);
+}
+
+/* Stable-geometry departure (documented deliberately, since it reverses
+   the Project Page's own "never crop" choice referenced above): the
+   Project Page's image is free to render at its own natural height
+   because nothing there depends on that height being predictable. Here
+   the whole point of the field is a defined, stable container that
+   reads the same "occupies most of the initial viewport" regardless of
+   which Featured image selectFeaturedImage() happens to land on -- a
+   tall portrait pick would otherwise blow past the fold on its own and
+   a short/wide pick would leave the field looking unfinished. object-fit:
+   cover on a fixed-height box is not a new pattern invented for this --
+   it is the same treatment the old .about-tile__image already used
+   above for exactly this reason (a defined frame, not organic flow). */
+.about-layout__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* The text box, centered as its own block below the image field --
+   "centered" here means the column itself is centered on the page
+   (margin-inline: auto against a fixed text measure), with everything
+   inside it -- title, subtitle, and body paragraphs alike -- left-
+   aligned, since centering every line of prose (headline included)
+   would hurt readability rather than express hierarchy. The larger
+   margin-top (vs. .about-layout's own tighter inter-section gap) is the
+   "intentional whitespace" pause between the image field and this box
+   -- visually subordinate to the image above it, not a hero
+   sub-headline directly under it.
+   Title/subtitle now live inside this same box (see .about-layout__intro
+   below) rather than as a separate element above the image -- "grouped
+   with the text box" means literally the same flex column, sharing this
+   rule's own centering and 56ch measure, not a visually adjacent but
+   structurally separate block. */
 .about-layout__copy {
   display: flex;
   flex-direction: column;
   gap: 0.9em;
-  margin-top: clamp(28px, 3.2vw, 44px);
-  max-width: 42ch;
+  margin: clamp(48px, 6vw, 88px) auto 0;
+  max-width: 56ch;
+  text-align: left;
+}
+
+/* Title/subtitle, now the opening of .about-layout__copy rather than a
+   standalone block above the image (see that rule's own comment). No
+   max-width of its own any more -- it takes the same 56ch measure as
+   the paragraphs below it, so heading and body read as one column, not
+   two different widths stacked together. The small margin-bottom is
+   the one addition beyond .about-layout__copy's own flex `gap`: enough
+   extra separation to read as "heading, then body" rather than just
+   another paragraph in the list -- the same 0.4rem .about-hero__location
+   already uses for its own margin-top above, reused rather than
+   invented. */
+.about-layout__intro {
+  margin-bottom: 0.4rem;
 }
 
 /* Same typography the previous intro column already used
@@ -2082,77 +2168,75 @@ html.is-browsing .zoom-controls {
   color: #333;
 }
 
-/* Dominance pass ("small text | LARGE IMAGE," second refinement): this is
-   the "large image stage" -- both the WIDTH lever and the HEIGHT lever
-   for that are set here.
-   Width: flex-basis raised 420px -> 560px and flex-grow raised 1.8 -> 2.6.
-   The basis increase matters most at moderate two-column widths (just
-   above the 900px stacking breakpoint), where there isn't much leftover
-   row width for grow ratios to distribute in the first place -- a bigger
-   starting basis claims more of the row before any growth math even
-   happens. The grow bump matters at wide viewports, though it's now
-   largely academic: .about-layout__text's own max-width (320px, see that
-   rule's own comment) is reached quickly, after which -- per the flex
-   "resolve flexible lengths" algorithm -- literally all remaining free
-   row width flows to this column regardless of the exact grow number, so
-   this column ends up controlling somewhere around 75-80% of the row's
-   width at ordinary desktop widths.
-   Height: `min-height` raised from the previous pass's clamp(320px, 30vw,
-   480px) to a substantially taller clamp(480px, 58vh, 760px) -- and
-   switched from a vw-driven to a vh-driven middle term. That switch is
-   deliberate, not cosmetic: 30vw was calibrated to roughly match a normal
-   landscape image's OWN natural rendered height in this column, so it
-   only ever bound for an unusually wide/short pick, and even then only
-   floored it back up to "normal" -- which is exactly why the previous
-   pass "didn't materially change what I'm seeing" for anything but an
-   extreme image. 58vh instead ties the floor to how much of the actual
-   viewport the image stage occupies, independent of the column's own
-   width or the current image's own ratio, so this reads as a genuinely
-   large, dominant visual area for every Featured image, not a
-   collapse-guard that rarely engages. It remains a FLOOR only, exactly as
-   before -- a short image still doesn't fill it (unfilled space is
-   ordinary page background, no cropping/letterboxing), and a portrait
-   image that naturally renders taller than this floor is completely
-   unconstrained, rendering at its own full natural size. */
-.about-layout__image {
-  flex: 2.6 1 560px;
-  min-width: 0;
-  min-height: clamp(480px, 58vh, 760px);
-}
-
-/* Sizing philosophy matches the Project Page's own image (see
-   .project-image-frame__img above): natural aspect ratio only, no
-   object-fit: cover, no forced/cropped height -- this image renders at
-   whatever height its own intrinsic ratio produces at this column's
-   width, never stretched or cropped to fill a fixed box. This is a
-   deliberate departure from the old collage's own .studio-image__img
-   (object-fit: cover, fixed row heights), in favor of the more current,
-   more deliberately-reasoned "never crop" philosophy already established
-   for the Project Page's own image. */
-.about-layout__img {
-  display: block;
-  width: 100%;
-  height: auto;
-}
-
+/* Reuses the same 900px stacking breakpoint .about-columns/.about-layout
+   already used before this pass (see the old collage's own @media rule
+   above) rather than inventing a new one, per explicit instruction to
+   check existing conventions first. The composition is already a single
+   column above and below 900px -- there is no direction to stack here
+   -- so this tier only tightens the image field's own proportions for
+   tablet/mobile: a shorter vh coefficient and lower ceiling, since a
+   narrower viewport already gives the image less width to be "large"
+   with in the first place, and the 66vh desktop figure would otherwise
+   push the CMS copy uncomfortably far down on a short tablet/phone
+   viewport. Padding, title/subtitle sizing, and copy centering all
+   still come from the shared rules above -- unchanged. */
 @media (max-width: 900px) {
-  .about-layout {
-    flex-direction: column;
-    gap: clamp(28px, 5vw, 48px);
-  }
-
-  .about-layout__text {
-    max-width: none;
-  }
-
   .about-layout__image {
-    width: 100%;
+    height: clamp(360px, 56vh, 620px);
   }
+
+  .about-layout__copy {
+    margin-top: clamp(36px, 9vw, 56px);
+  }
+}
+
+/* --- Contact page ---------------------------------------------------------
+   Contact drawer -> Contact page milestone: reuses .about-page/
+   .about-content for the page shell (background, header clearance, side
+   padding -- same shell Projects/Journal/Project Template already share)
+   and .about-hero__title/.about-hero__location for the title/subtitle
+   typography, exactly the same shared base classes About itself uses --
+   see src/ContactPage.jsx's own comment. This is deliberately NOT
+   .about-content--redesign/.about-layout (About's own large-image
+   composition) -- Contact has no image field and no spatial composition
+   to speak of; per the brief it should read as quiet, left-aligned,
+   typographically-driven text, so it gets its own small, plain vertical
+   stack instead. No cards, borders, animation, or decorative treatment
+   anywhere in this section -- the content is the whole page. */
+.contact-layout {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: 46ch;
+}
+
+.contact-layout__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1em;
+  margin-top: clamp(28px, 3.2vw, 44px);
+}
+
+/* Same restrained editorial type scale .about-layout__paragraph already
+   uses for About's own body copy -- reused verbatim rather than a second
+   near-identical rule. white-space: pre-line is the one addition: the
+   CMS body field lets Josh put more than one line inside a single
+   paragraph (e.g. a name/address/phone block, each on its own line,
+   still one blank-line-delimited "paragraph" -- see
+   contactPageType.js's own field description), and this is what makes
+   those single newlines render as real line breaks instead of being
+   collapsed the way plain text normally is. */
+.contact-layout__paragraph {
+  margin: 0;
+  font-size: clamp(0.9rem, 1.05vw, 1rem);
+  line-height: 1.6;
+  color: #333;
+  white-space: pre-line;
 }
 
 /* --- Journal page -------------------------------------------------------
    A plain image archive -- reuses .about-page/.about-content for the page
-   shell and outer margins (same as About/Projects). Image-only field
+   shell and outer margins (same as About/Projects/Contact). Image-only field
    (Josh review): no captions anywhere, hover or otherwise -- the earlier
    hover-caption treatment was removed entirely.
 
@@ -2298,13 +2382,15 @@ html.is-browsing .zoom-controls {
 
 /* --- Project Template ------------------------------------------------
    Reuses .about-page/.about-content for the page shell (same restrained
-   editorial scale as About/Projects/Journal). Everything below is the
-   Project Page's own: the large image frame, its image-navigation
-   control, the Archive/Image Index, the Project Information trigger +
-   panel, and the Previous/current/Next Project row. (Zoom was removed
-   from this page -- see ImageViewer.jsx -- so .zoom-controls/.zoom-control
-   are no longer used here, but are left in place since the homepage
-   gallery still owns them.)
+   editorial scale as About/Projects/Journal/Contact). Everything below is
+   the Project Page's own: the large image frame, its image-navigation
+   control, the Archive/Image Index, and the Project Information trigger +
+   overlay. (Zoom was removed from this page -- see ImageViewer.jsx -- so
+   .zoom-controls/.zoom-control are no longer used here, but are left in
+   place since the homepage gallery still owns them. The bottom Previous/
+   current/Next Project row, .project-navigation, is likewise gone --
+   see that rule's own former location, just above .project-not-found,
+   for the removal reasoning.)
 
    Presentation-only pass for the prototype review: this reverts the
    nested .project-column wrapper/experiment (image, index, and nav are
@@ -2316,16 +2402,17 @@ html.is-browsing .zoom-controls {
    Image-first redesign (Josh review): the title/location block
    (.about-hero__title/__location via ProjectHeader.jsx) that used to be
    the first child here is gone -- see ProjectTemplate.jsx's own comment
-   for where that data moved instead (the Project Information panel and
-   the bottom Project Navigation's center block). .project-content's flex
-   layout itself is unchanged; it simply has one fewer child now. */
+   for where that data moved instead (the Project Information panel,
+   now an overlay -- see that rule's own comment further down).
+   .project-content's flex layout itself is unchanged; it simply has one
+   fewer child now. */
 .project-content {
   display: flex;
   flex-direction: column;
   gap: clamp(20px, 2.4vw, 32px);
   /* Project-Page-only spacing, scoped via longhand overrides rather than
      touching .about-content itself (still shared by About/Projects/
-     Journal): equal specificity + later source order lets these three
+     Journal/Contact): equal specificity + later source order lets these three
      properties win over .about-content's shorthand `padding`, while
      padding-bottom continues to inherit that shared value unchanged. */
   /* Reuses .site-header__row1's own `7vw` term (height: clamp(80px, 7vw,
@@ -2359,6 +2446,30 @@ html.is-browsing .zoom-controls {
 .project-viewer {
   display: flex;
   align-items: flex-start;
+  /* Interaction refinement (info-symbol + opaque-overlay pass): the one
+     addition this rule needed. Establishes the containing block the
+     Project Information overlay's own position: absolute + inset: 0
+     resolves against (see .project-info-panel below), so the overlay
+     covers exactly this element's own box -- the image's rendered
+     area -- rather than the nearest OTHER positioned ancestor up the
+     tree. */
+  position: relative;
+  /* Image top padding refinement: a small, constant separation between
+     the header/top interface area and the project image, scoped to this
+     element specifically (the image's own direct containing box) rather
+     than to .project-content's shared padding-top formula above it --
+     that formula is tuned to track the header's real rendered height
+     exactly (see its own comment) and is shared with every other child
+     page, so it's left untouched. A flat 10px, not a viewport-relative
+     clamp(): the ask was "approximately 10px" of breathing room, not a
+     scaling gap, and 10px reads the same (a small, deliberate gap, never
+     excessive) at any viewport width on its own. Purely vertical --
+     doesn't touch this element's horizontal position, and doesn't touch
+     .project-image-frame's own fixed-height formula or
+     .project-image-frame__img's sizing/object-fit (there is none) at
+     all, so the image's own size/crop behavior is completely
+     unaffected. */
+  margin-top: 10px;
 }
 
 /* Josh review, final correction pass: .project-image-block (the old
@@ -2366,11 +2477,14 @@ html.is-browsing .zoom-controls {
    image-nested Archive Number/Image Navigation row) are both retired --
    ImageViewer.jsx no longer renders either. Image Navigation and the
    Archive Number are now a page-level row, .project-image-nav-row (see
-   below, defined near .project-navigation, which it now shares a width
-   contract with), rendered by ProjectTemplate.jsx as a structural sibling
+   below), rendered by ProjectTemplate.jsx as a structural sibling
    of .project-viewer rather than nested inside .project-image-column.
    .project-image-column below is now just the image's own containing
-   column, nothing more. */
+   column, nothing more. (Its own width contract used to be shared with
+   .project-navigation, the bottom Previous/current/Next row directly
+   beneath it -- removed outright per the Interaction refinement's
+   bottom-nav removal, so .project-image-nav-row now simply spans
+   .project-content's own full content width on its own terms.) */
 .project-image-column {
   flex: 1 1 auto;
   min-width: 0;
@@ -2405,15 +2519,15 @@ html.is-browsing .zoom-controls {
   display: flex;
   align-items: center;
   justify-content: center;
-  /* overflow: hidden removed (Josh review, hover-icon pass): the +/X
-     trigger now sits OUTSIDE .project-image-frame__inner's own box (see
-     .project-info-trigger below), and for an image whose rendered height
-     reaches this frame's own height cap, .project-image-frame__inner's
-     top edge coincides exactly with this frame's top edge -- clipping
-     here would cut the trigger off in that exact case. Nothing else in
-     this frame ever exceeds its bounds (the image is capped by its own
+  /* overflow: hidden removed (Josh review, hover-icon pass; still
+     correct now that the +/X trigger has moved out to
+     .project-image-nav-row -- see ProjectInfoPanel.jsx's own comment):
+     for an image whose rendered height reaches this frame's own height
+     cap, .project-image-frame__inner's top edge coincides exactly with
+     this frame's top edge. Nothing here ever actually exceeds this
+     frame's own bounds (each image is capped by its own
      max-width/max-height, see .project-image-frame__img below), so
-     removing this is safe. */
+     leaving this off remains safe. */
   /* Image-first redesign (Josh review): the taupe "darker neutral"
      background (#cdc8c1, the same palette-normalized warm-gray used at
      .about-tile/.studio-image/.journal-tile) is removed entirely -- the
@@ -2422,30 +2536,28 @@ html.is-browsing .zoom-controls {
      colored "image box." */
 }
 
-/* Anchor for the +/X control, WITHOUT imposing any size of its own (Josh
-   review, final correction pass -- cropping fix): an earlier version of
-   this wrapper was sized via an inline CSS `aspect-ratio` computed from
-   this image's PRECOMPUTED intrinsic dimensions (image-metadata.json).
-   That's a real risk of mismatch -- the build script that generates that
-   metadata reads it via sharp's plain `.metadata()` call BEFORE its own
-   EXIF-aware `.rotate()` step, so a source photo with an EXIF orientation
-   flag could have a transposed width/height recorded relative to what
-   actually renders -- and forcing this wrapper into a WRONG ratio meant
-   the photo it contains got stretched to fill it: real cropping/
-   distortion risk, not a hypothetical one. Fixed by removing every
-   precomputed-dimension dependency: this wrapper carries NO width,
-   height, max-width, max-height, or aspect-ratio of its own at all. As a
-   flex item of .project-image-frame (a row-direction flex container with
-   align-items: center, i.e. NOT stretch), it simply shrink-wraps to
-   whatever size its own content -- the <img> below, which sizes itself
-   entirely on its own terms -- ends up rendering at. The relationship is
-   strictly IMAGE determines its own rendered dimensions -> this wrapper
-   conforms to IMAGE -> .project-info-trigger (an absolutely positioned
-   descendant) anchors to this wrapper, the nearest positioned ancestor --
-   never the reverse. This is also what fixes the trigger "floating above
-   the photograph": before this wrapper existed at all, the trigger
-   anchored directly to .project-image-frame, whose CONSTANT reserved
-   height (see above) is taller than most images' own rendered height. */
+/* WITHOUT imposing any size of its own (Josh review, final correction
+   pass -- cropping fix): an earlier version of this wrapper was sized via
+   an inline CSS `aspect-ratio` computed from this image's PRECOMPUTED
+   intrinsic dimensions (image-metadata.json). That's a real risk of
+   mismatch -- the build script that generates that metadata reads it via
+   sharp's plain `.metadata()` call BEFORE its own EXIF-aware `.rotate()`
+   step, so a source photo with an EXIF orientation flag could have a
+   transposed width/height recorded relative to what actually renders --
+   and forcing this wrapper into a WRONG ratio meant the photo it
+   contains got stretched to fill it: real cropping/distortion risk, not
+   a hypothetical one. Fixed by removing every precomputed-dimension
+   dependency: this wrapper carries NO width, height, max-width,
+   max-height, or aspect-ratio of its own at all. As a flex item of
+   .project-image-frame (a row-direction flex container with align-items:
+   center, i.e. NOT stretch), it simply shrink-wraps to whatever size its
+   own content -- the <img> below, which sizes itself entirely on its own
+   terms -- ends up rendering at. The relationship is strictly IMAGE
+   determines its own rendered dimensions -> this wrapper conforms to
+   IMAGE. (This used to also be what the +/X trigger anchored to; it now
+   lives in .project-image-nav-row instead -- see
+   ProjectInfoPanel.jsx's own comment -- so this wrapper's only remaining
+   job is sizing the image layer.) */
 .project-image-frame__inner {
   position: relative;
 }
@@ -2479,26 +2591,114 @@ html.is-browsing .zoom-controls {
   max-height: max(340px, calc(100vh - 300px));
   width: auto;
   height: auto;
-  transition: transform 320ms ease-out;
+  /* OUTGOING_FADE_MS/ease-in below -- must stay in sync with
+     ImageViewer.jsx's own OUTGOING_FADE_MS constant. See the
+     .project-image-frame__img--hidden comment just below for the timing
+     history and why ease-in (not ease-in-out) is used for THIS
+     direction specifically. */
+  transition: transform 320ms ease-out, opacity 450ms ease-in;
+}
+
+/* Image-to-image transition, SEQUENTIAL fade with a CONTROLLED tail
+   overlap (Josh review, timing-refinement pass): see ImageViewer.jsx's
+   own top comment for the full mechanism -- this element (the base
+   layer) fades out under its own steam, confirmed via a real
+   transitionend to a genuine 0%, exactly as the no-overlap pass already
+   had it; a separate, short-lived .project-image-frame__incoming overlay
+   (below) is mounted only for the FINAL stretch of that fade, so the
+   base is the only thing on screen for the majority of the transition.
+   --hidden here still drives the base to 0%; --no-transition is a
+   one-commit-only escape hatch used exclusively for the instant,
+   non-animated reveal once the overlay has already done the visible
+   fade-in work on the base's behalf (see suppressBaseTransition in
+   ImageViewer.jsx) -- it deliberately does NOT apply to the fade-OUT
+   above, which always animates normally.
+
+   Duration + easing history: originally a single 180ms/var(--reveal-ease)
+   overlap (too quick, and riding the site-wide fade's slow-settling
+   "material arriving" curve), then 300ms/ease-out after measuring the
+   supplied Thomas Phifer reference recording frame-by-frame (~250-280ms
+   measured there); Josh's own review of THIS site at 300ms/ease-out
+   still read too much like a swap/cut, not a visible dissolve. Widened
+   to 400ms/ease-in-out (the original two-layer crossfade, both photos
+   visibly composited for the whole overlap). Replaced with a strictly
+   SEQUENTIAL, single-element, zero-overlap fade (two 200ms halves,
+   400ms total) to fix a real "two full-strength photos stacked" problem
+   across very-different-aspect-ratio pairs -- but Josh's review of THAT
+   version found it read as too fast/abrupt, closer to a hard cut than a
+   dissolve. This pass: slowed down AND given a small, tightly bounded
+   overlap back, but only in the outgoing fade's own final 100-150ms, and
+   only ever at low combined strength (the outgoing photo has already
+   spent most of its 450ms fade by the time the incoming one appears at
+   all) -- see ImageViewer.jsx's own OUTGOING_FADE_MS/OVERLAP_LEAD_MS/
+   INCOMING_FADE_MS constants, which this must stay in sync with. ease-in
+   for the outgoing fade keeps it clearly visible through most of its own
+   duration before accelerating down to 0 near the end, the opposite
+   shape from the incoming overlay's own ease-in-out curve below --
+   deliberately different curves for a photo dissolving away versus one
+   resolving in. Still independent of Header.jsx's VEIL_DURATION_MS /
+   App.jsx's GALLERY_FADE_MS ("its own short image transition," a
+   separate motion from the site-wide interface fade). */
+.project-image-frame__img--hidden {
+  opacity: 0;
+}
+
+.project-image-frame__img--no-transition {
+  transition: none;
+}
+
+/* The short-lived incoming-photo overlay itself (ImageViewer.jsx's
+   IncomingOverlay) -- position: absolute + inset: 0 against
+   .project-image-frame (already position: relative, see above) so it
+   spans the exact same reserved box the base layer centers within,
+   regardless of which two images are involved. Starts fully transparent
+   and non-interactive; --visible (added once the overlay's own <img> has
+   both loaded AND been armed -- see IncomingOverlay's own "two-gate
+   reveal" comment, readiness pass) fades it in over INCOMING_FADE_MS.
+   Readiness pass (blank-frame fix): the overlay element itself is now
+   mounted immediately when the base's fade-out begins, not just for the
+   final stretch -- but it stays at opacity: 0 here, same as always,
+   until both gates are satisfied, so this rule's visible behavior is
+   unchanged; only when the underlying <img> starts loading moved
+   earlier. Timing pass 2: widened from 175ms to INCOMING_FADE_MS
+   (300ms, measured ~685-705ms end-to-end including the outgoing fade
+   and overlap) so the incoming photo dissolves in noticeably more
+   gradually -- must stay in sync with ImageViewer.jsx's own
+   INCOMING_FADE_MS constant, see that file's own comment for the full
+   calibration history. */
+.project-image-frame__incoming {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 300ms ease-in-out; /* INCOMING_FADE_MS */
+}
+
+.project-image-frame__incoming--visible {
+  opacity: 1;
 }
 
 /* Page-level Image Navigation row (Josh review, final correction pass):
-   Archive Number + Image Navigation, now a structural sibling of
-   .project-viewer and .project-navigation (see ProjectTemplate.jsx),
-   spanning the exact same full content width .project-navigation itself
-   spans -- not nested inside .project-image-column, so it's immune to
-   that column's width changing when the metadata panel opens/closes, and
-   (via .project-image-frame's own fixed height above) immune to Y
-   movement between landscape and portrait images. Internally it's a
-   3-column grid: the Archive Number (grid-column 2, centered) needs to
-   stay centered TO THIS ROW regardless of Image Navigation's own width,
-   which only a fixed center column guarantees -- flex space-between
-   would instead center the gap between two variable-width items, not the
-   row itself. The empty first column (1fr, no content) exists purely so
-   the second column lands at true center. Image Navigation (grid-column
-   3, right-aligned) sits flush with this row's own right edge -- the
-   same edge .project-navigation's own grid resolves to directly below,
-   since both now span an identical width. */
+   Archive Number + Image Navigation, a structural sibling of
+   .project-viewer (see ProjectTemplate.jsx), spanning .project-content's
+   own full content width -- not nested inside .project-image-column, so
+   it's immune to that column's width changing when the metadata panel
+   opens/closes, and (via .project-image-frame's own fixed height above)
+   immune to Y movement between landscape and portrait images. Internally
+   it's a 3-column grid: the Archive Number (grid-column 2, centered)
+   needs to stay centered TO THIS ROW regardless of Image Navigation's own
+   width, which only a fixed center column guarantees -- flex
+   space-between would instead center the gap between two variable-width
+   items, not the row itself. The empty first column (1fr, no content)
+   exists purely so the second column lands at true center. Image
+   Navigation (grid-column 3, right-aligned) sits flush with this row's
+   own right edge. (Interaction refinement, bottom-nav removal: this row
+   used to share its width contract with .project-navigation, the
+   Previous/current/Next row directly beneath it, now removed -- this row
+   is simply the last thing on the page now, its own grid unaffected.) */
 .project-image-nav-row {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
@@ -2564,15 +2764,15 @@ html.is-browsing .zoom-controls {
 
 /* Clickable archive number (Josh review, final polish pass): a bare
    <button> reset to carry NO visual identity of its own -- no
-   background, no border, no padding, and `font: inherit` for the same
-   reason .project-navigation__control needs it (a <button> doesn't
-   inherit font-family/weight/size from its ancestors by default; without
-   this reset it would silently render in the browser's own control font
-   instead of matching .project-archive-index__number below, even though
-   nothing about the number's own class changed). The number's visible
-   typography lives entirely on .project-archive-index__number, exactly
-   as before this button existed -- this wrapper is purely a click target,
-   deliberately not styled to look like a conventional button. */
+   background, no border, no padding, and `font: inherit` because a
+   <button> doesn't inherit font-family/weight/size from its ancestors by
+   default; without this reset it would silently render in the browser's
+   own control font instead of matching .project-archive-index__number
+   below, even though nothing about the number's own class changed. The
+   number's visible typography lives entirely on
+   .project-archive-index__number, exactly as before this button existed
+   -- this wrapper is purely a click target, deliberately not styled to
+   look like a conventional button. */
 .project-archive-index__button {
   display: block;
   border: 0;
@@ -2592,187 +2792,125 @@ html.is-browsing .zoom-controls {
 }
 
 /* Project Information trigger (ProjectInfoPanel.jsx's ProjectInfoTrigger)
-   -- the icon-only control that sits just outside the photo's own
-   top-right corner, to the RIGHT of the image (Josh review, hover-icon
-   debugging pass -- moved from above the image to the side of it; see
-   below for why). Still positioned against .project-image-frame__inner,
-   its containing block -- that wrapper carries no size of its own and
-   shrink-wraps exactly to the actual rendered image (see that rule's own
-   comment), so anchoring here keeps the trigger locked to the image's
-   own true edge for both landscape and portrait, never to
-   .project-image-frame's fixed reserved height. `top: 0` aligns the
-   trigger's own top edge with the image's top edge; `left: 100%` +
-   `margin-left` below places it entirely to the right of that edge --
-   never overlapping the photo. Corrected across several review passes
-   (Josh review): circled-i -> Urbanum's own existing plus-glyph
-   (.index-drawer__add's bare "+") -> circular backdrop stripped entirely
-   -- "no circular backgrounds... no filled or translucent button
-   background... a small piece of typography/interface language
-   belonging to the image rather than a floating UI button." This button
-   element itself carries NO visual styling at all (no background, no
-   border, no opacity of its own) -- it's purely an invisible,
-   comfortably-sized hit area (width/height below) positioned over the
-   glyph, larger than the glyph for click/touch usability while the
-   visible control itself stays minimal. All visible styling -- color,
-   fade, rotation -- lives on .project-info-trigger__glyph below,
-   deliberately consolidated onto that one element (see its own comment
-   for why).
+   -- Icon + position refinement (Josh review, second pass): no longer
+   `position: fixed` to the viewport's own edge -- it's now an ordinary
+   grid item of .project-image-nav-row (see that rule above), placed in
+   the row's own empty first column (grid-column: 1) and pinned to that
+   column's start edge, so it lands at the row's far-left, on the exact
+   same horizontal baseline as the Archive Number (centered, column 2)
+   and Image Navigation (right-aligned, column 3) -- see
+   ProjectTemplate.jsx's own comment on where this is rendered now.
+   Because column 1 and column 3 are both `1fr` (equal-width tracks
+   regardless of either one's own content), adding real content to column
+   1 here doesn't disturb the Archive Number's true-centering in column
+   2 -- the same grid math already relied on before this control moved
+   in. No fixed inset/clamp() of its own is needed for this to stay
+   correctly positioned at any viewport width, including mobile: it
+   simply follows the row's own existing responsive layout, exactly like
+   the two controls it now sits beside.
 
-   Moved from above the image to its right (Josh review, hover-icon
-   debugging pass): positioning the trigger entirely ABOVE the image
-   (the previous `bottom: 100%` approach) was confirmed via live browser
-   diagnostics to require clearance above the image's own top edge that
-   silently disappears -- and pushes the glyph off-screen -- the moment a
-   visitor has scrolled the page down even slightly before hovering, not
-   a rare edge case. Anchoring with `top: 0` instead keeps the trigger's
-   own vertical span entirely WITHIN the image's own top edge to
-   top+height range, rather than requiring extra space beyond it, so it
-   remains on screen under the same scroll conditions the image's own
-   top edge would. `left: 100%` + `margin-left` (restored to this
-   control's original 32px/8px sizing, no longer needing the
-   scroll-driven 22px/4px shrink the vertical version required) extends
-   it sideways instead of upward. Note: when the Project Information
-   panel is open, .project-info-panel--open's own margin-left
-   (clamp(32px, 4vw, 56px), see that rule below) is what keeps this
-   trigger clear of the panel's actual text content; at the narrowest end
-   of that clamp the trigger's own 40px horizontal footprint (32px width
-   + 8px margin-left) can reach as far as that panel's hairline divider,
-   though never as far as its padded text. */
+   This button element still carries NO visual styling of its own (no
+   background, no border) -- it's purely a comfortably-sized hit area
+   around the glyph; all visible styling lives on
+   .project-info-trigger__glyph below. History (Josh review, several
+   passes on the ORIGINAL hover-triggered version, kept for context):
+   circled-i -> Urbanum's own existing plus-glyph (.index-drawer__add's
+   bare "+") -> circular backdrop stripped entirely -- "no circular
+   backgrounds... no filled or translucent button background." That
+   reasoning about a filled/translucent BUTTON background still holds
+   today (this button has none); the glyph itself has since come back to
+   a circled "i" by explicit request -- see .project-info-trigger__glyph
+   below, and ProjectInfoPanel.jsx's own top comment for the full
+   history. */
 .project-info-trigger {
-  position: absolute;
-  top: 0;
-  left: 100%;
-  margin-left: 8px;
+  grid-column: 1;
+  justify-self: start;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border: 0;
   background: none;
   padding: 0;
   cursor: pointer;
-  /* Interaction gating only -- no opacity here; the fade lives on the
-     glyph itself (see below), so this button only ever toggles whether
-     clicks reach it. */
-  pointer-events: none;
 }
 
-.project-image-frame:hover .project-info-trigger,
-.project-image-frame:focus-within .project-info-trigger,
-.project-info-trigger--open {
-  pointer-events: auto;
-}
-
-/* Color (Josh review, hover-icon pass): now that the trigger sits
-   outside the photo, over the page's own background rather than over
-   variable photo content, the adaptive white + mix-blend-mode:
-   difference treatment this used when it overlaid the image is no
-   longer needed -- a plain solid dark tone is legible against the
-   page's own consistent background. Invisible at rest; reveals on
-   hover/focus of the photo (or whenever the panel is open) via the same
-   selectors as the button's pointer-events above, so the two stay in
-   sync. */
-/* Weight reduced (Josh review, final polish pass) from 500 to 300 --
-   "more subtle... reduce the visual weight/stroke weight... a quiet
-   architectural interface detail," not a heavy glyph. */
-/* Size/color matched to the Archive Number (Josh review, hover-icon
-   pass): color matched directly to .project-archive-index__number's own
-   color (#9d9d9d) below the photo, rather than the darker #1a1a1a
-   treatment sized for sitting over/near the image. Font-size first
-   matched literally to that rule's 0.68rem, but a "+" glyph's own mark
-   only fills roughly the middle half of its em box in this typeface,
-   while the archive number's digits/letters fill close to full
-   cap-height -- so an equal font-size renders a visibly shorter mark.
-   Bumped to 0.95rem so the "+" mark's own rendered height lines up with
-   the archive number's rendered text height (a metrics-based estimate,
-   not something rendered/measured live -- may need one more small nudge
-   once actually viewed). Font-weight (300 here vs. 400 there),
-   letter-spacing, and text-transform are left as this glyph's own
-   values, since those don't meaningfully apply to a single "+"
-   character and weren't part of what was asked. */
+/* The visible "information" mark: a lowercase "i" (or "×" once open, see
+   below) centered inside a thin circle -- border only, no fill, no
+   shadow, matching the "no filled or translucent background" reasoning
+   this control has carried since its very first pass. Size and color
+   matched to the Archive Number (.project-archive-index__number's own
+   #9d9d9d, same 1px-scale weight) so this still reads as the same family
+   of quiet archival marks used elsewhere in this row, just with an
+   unambiguous "information" shape instead of a repurposed "+". */
 .project-info-trigger__glyph {
   display: inline-flex;
-  font-size: 0.95rem;
-  font-weight: 300;
+  align-items: center;
+  justify-content: center;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  border: 1px solid #9d9d9d;
+  font-size: 0.62rem;
+  font-weight: 400;
   line-height: 1;
   color: #9d9d9d;
-  opacity: 0;
-  transform: rotate(0deg);
-  /* Rotation made slightly more perceptible (Josh review, final polish
-     pass): a bigger overshoot on the same cubic-bezier shape (was 1.2,
-     now 1.42) and a touch more duration (300ms -> 340ms) -- the 45deg
-     endpoint itself is untouched, since that's the exact angle that
-     visually turns "+" into "×"; only how obviously the motion reads on
-     the way there changed. */
-  transition:
-    opacity 200ms ease-out,
-    transform 340ms cubic-bezier(0.34, 1.42, 0.64, 1);
 }
 
-.project-image-frame:hover .project-info-trigger__glyph,
-.project-image-frame:focus-within .project-info-trigger__glyph,
-.project-info-trigger--open .project-info-trigger__glyph {
-  opacity: 1;
-}
+/* Project Information overlay (ProjectInfoPanel.jsx) -- Interaction
+   refinement (info-symbol + opaque-overlay pass): previously a right-hand
+   column that opened beside the image, sharing .project-viewer's flex
+   row and narrowing the image column as it animated open. Per explicit
+   instruction this is now a fully opaque layer that completely covers
+   the image while open -- position: absolute + inset: 0 against
+   .project-viewer (see that rule's own added `position: relative` above,
+   its one change for this pass), so it covers exactly the image's own
+   box regardless of that image's aspect ratio, with nothing of the photo
+   left visible or readable through it. Because it's taken out of normal
+   flex flow entirely, .project-image-column no longer needs to reflow
+   around it either -- the image now stays exactly the same rendered
+   size whether the overlay is open or closed, one less moving part than
+   the old side-panel version had.
 
-/* Same "+" character at rest and while open -- never swapped for a
-   separate icon. Rotating it 45deg turns its symmetrical bars into a
-   diagonal cross (reading as "×"/close) and rotates back to "+" on
-   close -- an intentionally perceptible rotation (larger glyph, a
-   slightly longer duration, and an easing curve with a touch of
-   overshoot/settle rather than plain ease-out), timed close to the
-   panel's own 320ms open/close motion (see .project-info-panel below)
-   so the two read as one coordinated transition. */
-.project-info-trigger--open .project-info-trigger__glyph {
-  transform: rotate(45deg);
-}
-
-/* Project Information panel (ProjectInfoPanel.jsx) -- the right-hand
-   column that opens beside the image. Width/opacity-based transition
-   rather than animating layout-affecting properties directly, so the
-   open/close motion stays smooth: .project-viewer (see above) is the
-   flex row, and this is its second flex child, collapsed to zero width
-   when closed and expanded to a fixed column width when open --
-   .project-image-column (flex: 1 1 auto) fills whatever space this
-   leaves, which is what makes the image reflow, not a separate resize
-   calculation. overflow: hidden keeps the panel's content from
-   reflowing/wrapping visibly while collapsed. */
+   A plain opacity fade, timed to match .page-transition-veil's own
+   520ms/var(--reveal-ease) -- the same "brief, controlled fade" motion
+   language this task establishes site-wide, reused here rather than
+   invented fresh, since opening/closing this overlay is exactly the kind
+   of interface-state change that language now governs. pointer-events
+   toggles alongside opacity so the closed, invisible overlay never
+   intercepts clicks meant for the image or the image-nav row beneath it. */
 .project-info-panel {
-  flex: 0 0 auto;
-  width: 0;
-  max-width: 0;
+  position: absolute;
+  inset: 0;
+  background: #faf9f5;
   opacity: 0;
-  overflow: hidden;
-  transition:
-    width 320ms ease-out,
-    max-width 320ms ease-out,
-    opacity 200ms ease-out,
-    margin-left 320ms ease-out;
+  pointer-events: none;
+  transition: opacity 520ms var(--reveal-ease);
 }
 
 .project-info-panel--open {
-  width: min(320px, 32vw);
-  max-width: min(320px, 32vw);
   opacity: 1;
-  margin-left: clamp(32px, 4vw, 56px);
+  pointer-events: auto;
 }
 
+/* No card/panel chrome by design -- no background of its own (the
+   overlay above already supplies the page's own solid background), no
+   border, no rounded container, per the explicit "should not look like a
+   modal dialog" instruction. A generous, restrained editorial margin
+   stands in for a divider or frame -- the same typographic spacing
+   language the rest of the site already uses, not a new one. Width
+   capped (not full-bleed) so the metadata reads as a quiet column of
+   text, matching the panel's own original reading width, not a
+   full-viewport wall of copy. */
 .project-info-panel__inner {
-  padding-top: clamp(2px, 0.4vw, 6px);
-  /* No card/panel chrome by design -- no background, no border, no
-     rounded container -- per the explicit "no cards, no rounded UI, no
-     heavy background" visual mandate. A single hairline rule, matching
-     .project-navigation's own border-top treatment below, is the one
-     divider between image and metadata. */
-  border-left: 1px solid rgba(0, 0, 0, 0.1);
-  padding-left: clamp(20px, 2.4vw, 32px);
+  height: 100%;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 0.5rem;
-  /* Keeps the panel's text from visibly reflowing/wrapping while its
-     parent's width is still animating toward min(320px, 32vw). */
-  width: min(320px, 32vw);
+  max-width: min(420px, 60%);
+  padding: clamp(24px, 3vw, 40px);
 }
 
 .project-info-panel__title {
@@ -2802,10 +2940,8 @@ html.is-browsing .zoom-controls {
 }
 
 /* Descriptive metadata group (Josh review, final polish pass, renamed
-   from .project-info-panel__image-meta): themes / description,
-   beneath a hairline divider (matching .project-info-panel__inner's own
-   border-left treatment against the image, and .project-navigation's
-   border-top below) -- no card, no background, no heading text, so the
+   from .project-info-panel__image-meta): themes / description, beneath a
+   hairline divider -- no card, no background, no heading text, so the
    identity block above and this group read as ordered but still one
    quiet column, not two competing blocks. The image's own title/date
    lines from the previous pass are gone -- see this file's own top
@@ -2843,188 +2979,31 @@ html.is-browsing .zoom-controls {
   color: #5a5a5a;
 }
 
-/* Image-first redesign (Josh review): three-part grid -- Previous /
-   current Project (a quiet, non-interactive "you are here" indicator) /
-   Next. Grid rather than the previous flex (space-between) specifically
-   because the center column needs to be truly centered regardless of how
-   long Previous/Next's own titles run, which space-between can't
-   guarantee once a third, center item is added. The two 1fr side columns
-   stay equal width even when empty (no previousProject/nextProject),
-   which is what keeps the center column centered on the page rather than
-   drifting toward whichever side has content. */
-.project-navigation {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: start;
-  column-gap: clamp(16px, 2vw, 28px);
-  padding-top: clamp(24px, 2.8vw, 36px);
-  border-top: 1px solid rgba(0, 0, 0, 0.1);
-}
-
-.project-navigation__side {
-  display: flex;
-  min-width: 0;
-}
-
-.project-navigation__side--previous {
-  justify-content: flex-start;
-}
-
-.project-navigation__side--next {
-  justify-content: flex-end;
-}
-
-.project-navigation__control {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  border: 0;
-  background: transparent;
-  padding: 0;
-  cursor: pointer;
-  text-align: left;
-  /* Typography-parity fix (Josh review): this is the actual root cause
-     of Previous/Next reading with different weight than Current --
-     Previous/Next are <button> elements, and without this reset a
-     <button> does NOT inherit font-family/font-weight/font-size/
-     line-height from its ancestors the way a plain <div> (Current's own
-     wrapper) does; it falls back to the browser's own default control
-     font instead. `.project-navigation__title` (used by all three
-     blocks) has never set its own font-weight or font-family, relying
-     entirely on inheritance -- so Current's title correctly inherited
-     the site's real type, while Previous/Next's title was silently
-     rendering in the browser's UI font. `font: inherit` resets every
-     font-related property on the button back to what it would have
-     inherited normally, which is what makes all three blocks true
-     instances of the same typography rather than two subtly different
-     ones. No new ".current" rule was needed or added -- the fix was
-     removing an implicit difference on the *other* two. */
-  font: inherit;
-}
-
-.project-navigation__control--next {
-  text-align: right;
-}
-
-/* Weight lightened from 600 to 400 (Josh review, final typography
-   refinement): 600 read as too heavy/prominent next to the rest of the
-   site's restrained type system -- 400 is the same "quiet archival
-   marker" weight already used for the small-uppercase-gray treatment
-   elsewhere on this page (.project-archive-index__number), so
-   Previous/Current/Next now reads as subtle navigation metadata rather
-   than a heading, using an existing site weight rather than a new one.
-   This is shared verbatim by all three blocks (Previous/Current/Next
-   labels all use this one class -- see ProjectNavigation.jsx's own
-   comment), so the change applies uniformly without touching any other
-   rule. Size, letter-spacing, uppercase transform, and color are
-   unchanged. */
-.project-navigation__label {
-  font-size: 0.68rem;
-  font-weight: 400;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: #9d9d9d;
-}
-
-.project-navigation__title {
-  font-size: 0.9rem;
-  color: #1a1a1a;
-}
-
-/* The current-project "you are here" indicator -- deliberately not a
-   <button>, so it's not focusable/clickable like Previous/Next. Its own
-   "Current" label (.project-navigation__label, shared verbatim with
-   Previous/Next's "Previous"/"Next" labels) and its title
-   (.project-navigation__title, also shared verbatim) give it EXACTLY the
-   same typography as Previous/Next -- no bolding, no size increase, no
-   other emphasis -- so it reads as a semantic peer, not a louder or
-   different kind of block. Final refinement (Josh review): the location
-   line this block used to carry is removed -- location now lives only in
-   the Project Information panel, not duplicated here, so this block is
-   title-only like Previous/Next. */
-.project-navigation__current {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.2rem;
-  text-align: center;
-  min-width: 0;
-}
+/* Project Navigation (Previous/current/Next), the "bottom text
+   navigation" that used to live here -- .project-navigation and its
+   __side/__control/__label/__title/__current children, plus the mobile
+   single-column collapse further down -- is removed outright (Interaction
+   refinement, bottom-nav removal): the brief was explicit that the
+   image/content area should become the page's primary interface without
+   a competing bottom text treatment, and that nothing should replace it.
+   ProjectNavigation.jsx is left on disk unused, per this file's own
+   existing convention for a retired component; these rules, which existed
+   purely to style it, are deleted rather than left as dead CSS, since
+   "remove before adding" applies exactly as much to a stylesheet as to a
+   component tree. */
 
 .project-not-found {
   font-size: 0.9rem;
   color: #5a5a5a;
 }
 
-/* Image-first redesign responsive pass (Josh review): the site's own
-   established tablet/mobile breakpoint (see .about-columns/.studio-layout
-   above, both also max-width: 900px) governs when the two-column
-   image+info layout and the three-column Previous/current/Next row each
-   collapse to a single stacked column -- consistent with how every other
-   multi-column section on this site already responds, not a new
-   breakpoint invented for this page. */
-@media (max-width: 900px) {
-  .project-viewer {
-    flex-direction: column;
-  }
-
-  .project-image-column {
-    width: 100%;
-  }
-
-  /* On narrow viewports the info panel can no longer sit beside the
-     image (per explicit instruction: don't force the desktop two-column
-     layout into a cramped sliver). It transitions vertically instead --
-     collapsed height rather than collapsed width -- and renders full
-     width, below the image, still never displacing/hiding the image
-     itself. max-height (not height:auto) is what makes the open/close
-     motion still animate on this axis; the cap is generous enough for
-     the panel's real content (title/location/dates/description) without
-     needing to measure it in JS. */
-  .project-info-panel {
-    width: 100%;
-    max-width: 100%;
-    max-height: 0;
-    margin-left: 0;
-    margin-top: 0;
-    transition:
-      max-height 320ms ease-out,
-      opacity 200ms ease-out,
-      margin-top 320ms ease-out;
-  }
-
-  .project-info-panel--open {
-    width: 100%;
-    max-width: 100%;
-    max-height: 600px;
-    margin-left: 0;
-    margin-top: clamp(20px, 4vw, 32px);
-  }
-
-  .project-info-panel__inner {
-    width: 100%;
-    border-left: none;
-    padding-left: 0;
-    border-top: 1px solid rgba(0, 0, 0, 0.1);
-    padding-top: clamp(16px, 3vw, 24px);
-  }
-
-  .project-navigation {
-    grid-template-columns: 1fr;
-    row-gap: clamp(16px, 3vw, 24px);
-    justify-items: center;
-    text-align: center;
-  }
-
-  .project-navigation__side--previous,
-  .project-navigation__side--next {
-    justify-content: center;
-  }
-
-  .project-navigation__control,
-  .project-navigation__control--next {
-    align-items: center;
-    text-align: center;
-  }
-}
+/* Image-first redesign responsive pass (Josh review) used to collapse a
+   two-column image+info layout into a stacked one at the site's own
+   tablet/mobile breakpoint (max-width: 900px, matching
+   .about-columns/.studio-layout above). Interaction refinement
+   (info-symbol + opaque-overlay pass): no longer needed. The overlay is
+   position: absolute + inset: 0 against .project-viewer now (see that
+   rule and .project-info-panel above), which covers the image completely
+   at any viewport width with no layout of its own to collapse -- one
+   fewer responsive special case than the old side-panel version needed. */
 

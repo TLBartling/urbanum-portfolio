@@ -179,13 +179,23 @@ const GALLERY_REGENERATION_SETTLE_MS = 1600;
 // regeneration until the exit-focus animation has actually completed.
 const EXIT_FOCUS_DURATION_MS = 450;
 
-// Matches Header.jsx's own VEIL_DURATION_MS (520ms, var(--reveal-ease)) --
-// the same motion vocabulary already used for the Filter/Search
-// return-to-homepage veil, reused here so a logo-triggered regeneration
-// reads as the gallery track quietly settling into a new composition
-// rather than a hard cut. See the .gallery-track.is-regenerating rule in
-// styles.css.
-const GALLERY_FADE_MS = 520;
+// Matches Header.jsx's own VEIL_DURATION_MS -- the same motion vocabulary
+// already used for the Filter/Search return-to-homepage veil, reused here
+// so a logo-triggered regeneration reads as the gallery track quietly
+// settling into a new composition rather than a hard cut. See the
+// .gallery-track.is-regenerating rule in styles.css.
+//
+// Site-wide interface fade, tuned again (Josh review, fourth pass): was
+// 520ms, then cut to 180ms (see Header.jsx's VEIL_DURATION_MS, which this
+// must stay in sync with) in the previous pass -- still var(--reveal-ease)
+// at that point. Still read as too much white interruption, so this pass
+// shortens further to 120ms AND moves the matching CSS transitions
+// (.page-transition-veil/.gallery-track in styles.css) off
+// var(--reveal-ease) onto a plain ease-out -- see Header.jsx's own comment
+// for why the easing curve itself, not just the duration, was part of the
+// problem. Still one shared "quick interface fade" duration/curve across
+// both files.
+const GALLERY_FADE_MS = 120;
 
 const clusterPlacements = [
   { axis: "x", direction: -1, distance: 1.08, scale: 0.38 },
@@ -1971,6 +1981,23 @@ function App() {
   // begins (see handleLogoClick), cleared after the freshly regenerated
   // gallery has settled (GALLERY_REGENERATION_SETTLE_MS).
   const isRegeneratingFromLogoRef = useRef(false);
+  // Site-wide fade transition system: a one-shot signal, set the instant
+  // a Theme is clicked from HoverOverlay (see handleMetadataFilterCommit
+  // below) and consumed by applyMetadataQuery the moment it actually
+  // runs. This is what lets applyMetadataQuery -- the single place BOTH a
+  // Theme metadata click and an ordinary Filter drawer selection
+  // ultimately arrive (see handleFilterChange's own comment on why Theme
+  // still routes through the same onFilterChange pipeline as a real
+  // drawer click) -- tell the two apart and fade only the former. A ref,
+  // not state: nothing needs to re-render off this value, it only needs
+  // to still be true by the time applyMetadataQuery synchronously runs at
+  // the end of the same effect flush pendingThemeFilterCommit triggers
+  // (see Header.jsx's own consuming effect) -- there is no user-facing
+  // gap in between where a different regeneration could interleave and
+  // read a stale value. The Filter drawer's own selections never set
+  // this, which is what keeps Filter itself immediate/un-faded, per the
+  // explicit "Filter = control panel" requirement.
+  const themeMetadataFadeRef = useRef(false);
   // Archive State Reset: Header owns several pieces of state that are
   // purely its own presentational echo of the archive's browsing state --
   // the Filter drawer's open/closed section and selected values, the
@@ -2041,6 +2068,33 @@ function App() {
   // regeneration (see handleLogoClick below and the matching .is-regenerating
   // rule in styles.css) -- mount and resize are untouched and stay instant.
   const [isGalleryTransitioning, setIsGalleryTransitioning] = useState(false);
+  // Site-wide fade transition system: entering a Project from the archive
+  // (clicking a project-linked gallery tile) changes the interface -- the
+  // gallery goes away entirely and Router.jsx swaps in ProjectTemplate, a
+  // completely different mounted component -- so this needs the same kind
+  // of "fade, then swap" treatment Header.jsx already uses for its own
+  // page-transition-veil (Logo/Menu clicks, and the Filter/Search
+  // return-to-homepage trip), rather than the in-place opacity dip
+  // isGalleryTransitioning drives above (that mechanism fades the gallery
+  // TRACK while staying mounted on this same page -- it has nothing to do
+  // with leaving the page entirely). Deliberately a small local veil
+  // scoped to this component, not a shared cross-component mechanism --
+  // reuses the exact same .page-transition-veil CSS class and
+  // GALLERY_FADE_MS/var(--reveal-ease) timing Header.jsx and this file
+  // already establish, so it reads as the same motion vocabulary, but
+  // keeps its own state here rather than threading a ref/imperative
+  // handle across the App/Header boundary for one interaction. See the
+  // isProjectLinked click handler and the veil's own render below.
+  const [isEnteringProject, setIsEnteringProject] = useState(false);
+  const enterProjectTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (enterProjectTimeoutRef.current) {
+        clearTimeout(enterProjectTimeoutRef.current);
+      }
+    };
+  }, []);
   // Relationship Highlight Pipeline (Commit 3): Gallery (this component) is
   // the single owner of relatedArchiveNumbers, the shared state that drives
   // highlighting below. hoveredGalleryItemId tracks which
@@ -2434,24 +2488,47 @@ function App() {
   // only one, when ARCHIVE_ITEMS is later replaced by a real Sanity query.
   const applyMetadataQuery = useCallback(
     (query) => {
-      const matched = queryArchive(query, getArchiveItems());
+      const runQuery = () => {
+        const matched = queryArchive(query, getArchiveItems());
 
-      if (matched.length === 0) {
-        // No results: there is no procedural batch a genuinely empty image
-        // pool could safely build (see pickImage's own bag-refill
-        // fallback), so this path deliberately never reaches
-        // buildGalleryItems/regenerateGallery at all. Whatever gallery is
-        // already on screen is left exactly as it is, untouched; the
-        // placeholder rendered below covers the gallery area in its place.
-        setHasNoSearchResults(true);
+        if (matched.length === 0) {
+          // No results: there is no procedural batch a genuinely empty
+          // image pool could safely build (see pickImage's own bag-refill
+          // fallback), so this path deliberately never reaches
+          // buildGalleryItems/regenerateGallery at all. Whatever gallery
+          // is already on screen is left exactly as it is, untouched; the
+          // placeholder rendered below covers the gallery area in its
+          // place.
+          setHasNoSearchResults(true);
+          return;
+        }
+
+        setHasNoSearchResults(false);
+        activeImagePoolRef.current = buildImagePool(
+          matched.map((item) => item.image),
+        );
+        regenerateGallery();
+      };
+
+      // Site-wide fade transition system: a Theme metadata click (see
+      // themeMetadataFadeRef's own comment above) fades the archive into
+      // its new state, exactly the "logo-triggered regeneration" motion
+      // handleLogoClick already established below -- dip the track's
+      // opacity out, swap the underlying query/composition while it's not
+      // visible, then let removing .is-regenerating fade it back in. An
+      // ordinary Filter drawer selection or a Search commit never sets
+      // this ref, so both stay exactly as immediate as they already were.
+      if (themeMetadataFadeRef.current) {
+        themeMetadataFadeRef.current = false;
+        setIsGalleryTransitioning(true);
+        window.setTimeout(() => {
+          runQuery();
+          setIsGalleryTransitioning(false);
+        }, GALLERY_FADE_MS);
         return;
       }
 
-      setHasNoSearchResults(false);
-      activeImagePoolRef.current = buildImagePool(
-        matched.map((item) => item.image),
-      );
-      regenerateGallery();
+      runQuery();
     },
     [regenerateGallery],
   );
@@ -2581,6 +2658,13 @@ function App() {
       // should always supersede a preview, whatever left it active.)
       setRelatedArchiveNumbers([]);
       if (field === "theme") {
+        // Site-wide fade transition system: arms themeMetadataFadeRef
+        // (see its own comment above) so the applyMetadataQuery call this
+        // commit eventually reaches -- via Header's own onFilterChange,
+        // once its pendingThemeFilterCommit effect fires -- fades the
+        // archive rather than snapping it, per "clicking a Theme should
+        // fade the archive into its new state."
+        themeMetadataFadeRef.current = true;
         setPendingThemeFilterCommit({ value });
         return;
       }
@@ -3446,10 +3530,23 @@ function App() {
                   }`}
                   onClick={
                     isProjectLinked
-                      ? () =>
-                          navigate(
-                            `/projects/${item.project}?image=${item.archiveNumber}`,
-                          )
+                      ? () => {
+                          // Site-wide fade transition system: see
+                          // isEnteringProject's own comment above. Guarded
+                          // against re-entry so a second click during the
+                          // fade (or on a different tile) can't stack a
+                          // second timeout/navigation on top of the first.
+                          if (isEnteringProject) return;
+                          setIsEnteringProject(true);
+                          enterProjectTimeoutRef.current = window.setTimeout(
+                            () => {
+                              navigate(
+                                `/projects/${item.project}?image=${item.archiveNumber}`,
+                              );
+                            },
+                            GALLERY_FADE_MS,
+                          );
+                        }
                       : imageFocusEnabled
                         ? () => handleImageClick(item.id)
                         : undefined
@@ -3712,6 +3809,21 @@ function App() {
           </div>
         );
       })}
+
+      {/* Site-wide fade transition system: the entering-a-project veil (see
+          isEnteringProject's own comment above). Reuses Header.jsx's own
+          .page-transition-veil class as-is -- same fixed full-viewport
+          cream surface, same opacity transition -- rather than defining a
+          second, near-identical CSS rule here. Rendered unconditionally
+          and normally fully transparent/non-interactive, exactly like
+          Header's copy, so .is-opaque is always animating a real
+          transition rather than an abrupt mount. */}
+      <div
+        className={`page-transition-veil${
+          isEnteringProject ? " is-opaque" : ""
+        }`}
+        aria-hidden="true"
+      />
     </div>
   );
 }

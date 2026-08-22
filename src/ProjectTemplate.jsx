@@ -1,12 +1,12 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Header from "./Header";
 import ImageViewer from "./ImageViewer";
 import ImageNavigation from "./ImageNavigation";
 import ProjectArchiveIndex from "./ProjectArchiveIndex";
 import ProjectInfoPanel, { ProjectInfoTrigger } from "./ProjectInfoPanel";
-import ProjectNavigation from "./ProjectNavigation";
 import { getProjectBySlug, resolveInitialImageId } from "./projectContent";
 import { navigate } from "./navigation";
+import { getOptimizedImageSrc } from "./imageOptimization.js";
 
 // The one reusable template every Project on the site renders through.
 // Everything about a specific project -- title, images, neighbors -- comes
@@ -23,40 +23,56 @@ import { navigate } from "./navigation";
 // Image-first redesign (Josh review): this page is now composed of four
 // deliberately separated systems, each owning exactly one concern, none
 // coupled to the others' internals:
-//   1. Project Image Viewer (ImageViewer.jsx) -- just the image itself
-//      plus the Project Information trigger overlaid on it. Image
-//      Navigation and the Archive Number used to render inside this
-//      component too; both moved out (final correction pass, Josh
-//      review) -- see point 2 below and ImageViewer.jsx's own comment.
-//   2. Archive/Image Index + Image Navigation (ProjectArchiveIndex.jsx,
-//      ImageNavigation.jsx) -- a page-level row (imageNavRow below,
-//      .project-image-nav-row in styles.css) that is a structural
-//      sibling of the image viewer and Project Navigation, NOT nested
-//      inside .project-image-column. This is what makes the row's
-//      position immune to the image's own rendered size, to the metadata
-//      panel opening/closing (which narrows .project-image-column, a
-//      box this row no longer lives inside), and to switching between
-//      landscape and portrait images -- it was previously nested inside
-//      the image column and drifted with all three. Clickable as of an
-//      earlier pass (Josh review): the archive number shares Project
-//      Information's own isInfoOpen state and handleToggleInfo function
-//      (below) with ProjectInfoTrigger, so clicking either one
-//      opens/closes the same panel via one state. Synchronized as of the
-//      final correction pass (Josh review): both the archive number and
-//      the "N / M" count reflect `displayedImage`, not `currentImage`
-//      (see below) -- see ImageNavigation.jsx's own comment for the bug
-//      this fixes.
-//   3. Project Information (ProjectInfoPanel.jsx) -- an icon-only trigger
-//      that sits inside the image's own top-right corner (passed into
-//      ImageViewer's `overlay` slot) and a right-hand panel that opens
-//      beside the image when activated. Owns its own open/closed state
-//      here (`isInfoOpen`) since neither the image nor the bottom nav
-//      needs to know about it -- opening/closing it never changes image
-//      size or the bottom nav, and changing images never closes it.
-//   4. Project Navigation (ProjectNavigation.jsx) -- Previous / current
-//      Project (title only, labeled "Current," a non-interactive "you are
-//      here" indicator) / Next. Entirely independent of Image Navigation
-//      and of whether Project Information is open.
+//   1. Project Image Viewer (ImageViewer.jsx) -- just the image itself,
+//      with a short crossfade to the next one when it changes (see that
+//      file's own comment). Image Navigation, the Archive Number, and
+//      (as of the icon + position refinement, Josh review, second pass)
+//      the Project Information trigger all used to render inside/over
+//      this component too; all three have since moved out to the
+//      page-level row described in point 2 -- see ImageViewer.jsx's own
+//      comment for why.
+//   2. Archive/Image Index + Image Navigation + Project Information
+//      trigger (ProjectArchiveIndex.jsx, ImageNavigation.jsx,
+//      ProjectInfoPanel.jsx's ProjectInfoTrigger) -- a page-level row
+//      (imageNavRow below, .project-image-nav-row in styles.css) that is
+//      a structural sibling of the image viewer and Project Navigation,
+//      NOT nested inside .project-image-column. This is what makes the
+//      row's position immune to the image's own rendered size, to the
+//      metadata panel opening/closing (which narrows
+//      .project-image-column, a box this row no longer lives inside),
+//      and to switching between landscape and portrait images -- it was
+//      previously nested inside the image column and drifted with all
+//      three. Clickable as of an earlier pass (Josh review): the archive
+//      number shares Project Information's own isInfoOpen state and
+//      handleToggleInfo function (below) with ProjectInfoTrigger, so
+//      clicking either one opens/closes the same panel via one state --
+//      unchanged by the icon + position refinement, which only moved
+//      ProjectInfoTrigger's own RENDER LOCATION into this same row (its
+//      far-left column) alongside the two controls that already lived
+//      here, not its open/close wiring. Synchronized as of the final
+//      correction pass (Josh review): both the archive number and the
+//      "N / M" count reflect `displayedImage`, not `currentImage` (see
+//      below) -- see ImageNavigation.jsx's own comment for the bug this
+//      fixes.
+//   3. Project Information (ProjectInfoPanel.jsx) -- ProjectInfoTrigger
+//      (now rendered in point 2's row, not over the image -- see that
+//      file's own top comment for the icon + position refinement) and a
+//      full-image opaque overlay that opens when activated. Owns its own
+//      open/closed state here (`isInfoOpen`) since neither the image nor
+//      the bottom nav needs to know about it -- opening/closing it never
+//      changes image size or the bottom nav, and changing images never
+//      closes it.
+//   4. Project Navigation (ProjectNavigation.jsx) used to be a fourth
+//      system here -- Previous / current Project / Next, rendered below
+//      the horizontal rule beneath the image. Interaction refinement
+//      (bottom-nav removal): removed outright, per explicit instruction
+//      that the image/content area become the page's primary interface
+//      without a competing bottom text treatment, and not replaced with
+//      anything else. ProjectNavigation.jsx itself is left on disk,
+//      unused, matching this codebase's own existing convention for a
+//      retired page section (see ProjectHeader.jsx/ImageMetadata.jsx,
+//      both left in place unused by an earlier pass, per this file's own
+//      comment further down).
 //
 // Selected vs. displayed image (Josh review, final correction pass): two
 // separate pieces of state now track "which image," on purpose.
@@ -128,6 +144,72 @@ export default function ProjectTemplate({ slug, imageId }) {
   // catches up once handleImageLoaded fires -- see this file's own top
   // comment ("Selected vs. displayed image") for why this exists.
   const [displayedImageId, setDisplayedImageId] = useState(currentImageId);
+
+  // Adjacent-image preload ("holds the previous picture too long" fix,
+  // Josh review): frame-by-frame comparison against the reference site's
+  // own recording ruled out the crossfade's duration/easing as the
+  // cause -- measured directly from both recordings' pixel data, this
+  // site's 400ms ease-in-out curve is already a close match to the
+  // reference's own curve shape. What actually differed was a real,
+  // measurable gap (roughly 200ms in the reference recording used to
+  // diagnose this) between the click and any visible change starting at
+  // all: ImageViewer's incoming layer can't begin fading in until its
+  // <img> has actually finished fetching + decoding the next photo (see
+  // ImageViewer.jsx's own onLoad-gated reveal), and nothing before this
+  // fix ever requested that photo before the visitor clicked. The old
+  // image just sat fully static for however long that fetch took, on top
+  // of the fade's own 400ms -- which is what read as "holding" it. This
+  // warms the browser's HTTP cache for exactly the two images Image
+  // Navigation's Previous/Next targets can jump to next (the same
+  // images[selectedIndex -1 / +1] pair ImageNavigation.jsx computes,
+  // recomputed here independently rather than threaded through props,
+  // since this effect only needs the array + index, not any rendering
+  // concern), at the same 1200px-width variants ImageViewer's own
+  // <picture> can select (both jpg and webp, since which one the browser
+  // actually picks depends on content negotiation this plain Image()
+  // request can't replicate -- preloading both costs two extra requests
+  // per neighbor but guarantees a real cache hit either way, versus
+  // guessing wrong and paying for the fetch twice). Runs off
+  // currentImageId, not displayedImageId, so the neighbor pair updates
+  // immediately on every click rather than waiting for the current
+  // photo's own fade to finish first -- keeping whatever's now adjacent
+  // warm as early as possible, including during a fast run of repeated
+  // clicks.
+  useEffect(() => {
+    if (!project) return undefined;
+    const index = project.images.findIndex(
+      (item) => item.archiveNumber === currentImageId,
+    );
+    if (index === -1) return undefined;
+    const neighbors = [
+      project.images[index - 1],
+      project.images[index + 1],
+    ].filter(Boolean);
+    // De-duplicated via Set: for a live Sanity asset, getOptimizedImageSrc
+    // ignores the extension argument entirely (buildSanityImageUrl uses
+    // .auto("format") so Sanity's CDN picks the format itself) -- the
+    // webp/jpg calls below would otherwise resolve to the exact same URL
+    // and fire the identical request twice. For a local asset the two
+    // calls genuinely differ, and both survive the dedupe untouched.
+    const preloads = new Set(
+      neighbors.flatMap((neighbor) => [
+        getOptimizedImageSrc(neighbor.image, 1200, "webp"),
+        getOptimizedImageSrc(neighbor.image, 1200, "jpg"),
+      ]),
+    );
+    // Kept alive for the request's own lifetime -- an Image object with
+    // no other reference can be garbage collected mid-fetch in some
+    // engines, which would abort the very request this effect exists to
+    // start. Not cleaned up early on deps change/unmount: an in-flight or
+    // already-cached fetch is still worth letting finish (e.g. a
+    // Previous click back to an image whose preload is still warming),
+    // and Image has no real cancel short of reassigning .src, which
+    // itself just starts another request.
+    preloads.forEach((src) => {
+      const img = new Image();
+      img.src = src;
+    });
+  }, [project, currentImageId]);
 
   if (!project) {
     return (
@@ -244,13 +326,8 @@ export default function ProjectTemplate({ slug, imageId }) {
               <div className="project-image-column">
                 <ImageViewer
                   image={currentImage}
+                  displayedImage={displayedImage}
                   onImageLoaded={handleImageLoaded}
-                  overlay={
-                    <ProjectInfoTrigger
-                      isOpen={isInfoOpen}
-                      onToggle={handleToggleInfo}
-                    />
-                  }
                 />
               </div>
 
@@ -262,6 +339,19 @@ export default function ProjectTemplate({ slug, imageId }) {
             </div>
 
             <div className="project-image-nav-row">
+              {/* Icon + position refinement (Josh review, second pass):
+                  the Project Information trigger now lives here, at the
+                  row's own far-left column, instead of overlaid on the
+                  image via ImageViewer's old `overlay` slot -- see
+                  ProjectInfoPanel.jsx's own top comment. Still the exact
+                  same isInfoOpen/handleToggleInfo pair ProjectArchiveIndex
+                  already shares below, so there is still exactly one
+                  open/closed boolean with multiple entry points, never
+                  independently tracked state. */}
+              <ProjectInfoTrigger
+                isOpen={isInfoOpen}
+                onToggle={handleToggleInfo}
+              />
               <ProjectArchiveIndex
                 archiveNumber={displayedImage.archiveNumber}
                 isOpen={isInfoOpen}
@@ -281,14 +371,6 @@ export default function ProjectTemplate({ slug, imageId }) {
           </p>
         )}
 
-        <ProjectNavigation
-          previousProject={project.previousProject}
-          nextProject={project.nextProject}
-          // Title only, per explicit instruction -- location now lives
-          // solely in the Project Information panel (ProjectInfoPanel.jsx)
-          // and is deliberately not duplicated here.
-          currentProject={{ title: project.title }}
-        />
       </div>
     </div>
   );

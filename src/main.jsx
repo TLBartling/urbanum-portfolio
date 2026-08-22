@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 import Router from "./Router";
 import SplashScreen from "./SplashScreen";
-import { loadArchiveItems, loadProjects, loadThemes, loadJournalEntries, loadAboutPage } from "./content";
+import { loadArchiveItems, loadProjects, loadThemes, loadJournalEntries, loadAboutPage, loadContactPage } from "./content";
 import "./styles.css";
 
 // Repository milestone (startup-experience fix): Archive Items come from
@@ -43,6 +43,10 @@ import "./styles.css";
 // render time, and Router (which renders AboutPage) doesn't mount until
 // this whole Promise.all settles, so the cache is already warm by the
 // time it could ever be read.
+//
+// Contact drawer -> Contact page milestone: loadContactPage() joins the
+// same Promise.all for the identical reason loadAboutPage() did --
+// src/ContactPage.jsx reads getContactPage() at render time.
 function Root() {
   const [isRepositoryReady, setIsRepositoryReady] = useState(false);
 
@@ -55,6 +59,7 @@ function Root() {
       loadThemes(),
       loadJournalEntries(),
       loadAboutPage(),
+      loadContactPage(),
     ]).finally(() => {
       if (!cancelled) setIsRepositoryReady(true);
     });

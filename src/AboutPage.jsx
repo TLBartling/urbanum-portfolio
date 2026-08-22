@@ -29,6 +29,26 @@ import { getOptimizedImageSrc, getOptimizedImageSrcSet } from "./imageOptimizati
 // and the page shell (.about-page/.about-content, shared with the
 // Project Page and unrelated to this page's own content) are both
 // untouched.
+//
+// Vertical composition pass (spatial-field redesign): the two-column
+// side-by-side reading above is now historical -- .about-layout stacks
+// vertically instead of running as a row (see styles.css's own comment
+// on .about-layout for the full reasoning). Composition, top to bottom:
+// one large defined image field first (.about-layout__image), then the
+// text box (.about-layout__copy) -- title/subtitle (.about-layout__intro)
+// grouped inside it as its opening, followed by the CMS body paragraphs,
+// all centered as one block below the image. Nothing about where these
+// three pieces of data come from changed -- only their arrangement in
+// the DOM/JSX and the CSS that positions them. .about-page/.about-content/
+// .about-hero__title/.about-hero__location remain the same shared base
+// classes other pages (Projects/Journal/Project Template) also use;
+// only the About-exclusive modifier/layout classes below them changed.
+//
+// Second composition pass (Josh review): title/subtitle moved from
+// standing alone above the image to being grouped inside the text box
+// (.about-layout__copy) below it, as that block's own opening -- see
+// styles.css's own comments on .about-layout__copy/.about-layout__intro
+// for the reasoning. The image is now the first child of .about-layout.
 
 // Featured-image selection (IMAGE REQUIREMENT): reuses the exact Archive
 // Item field Project Pages already use for their own opening image
@@ -112,40 +132,18 @@ export default function AboutPage() {
         }}
       >
         <div className="about-layout">
-          <div className="about-layout__text">
-            {aboutPage?.title && (
-              <h1 className="about-hero__title about-hero__title--small">
-                {aboutPage.title}
-              </h1>
-            )}
-
-            {aboutPage?.subtitle && (
-              <p className="about-hero__location">{aboutPage.subtitle}</p>
-            )}
-
-            {paragraphs.length > 0 && (
-              <div className="about-layout__copy">
-                {paragraphs.map((paragraph, index) => (
-                  <p className="about-layout__paragraph" key={index}>
-                    {paragraph}
-                  </p>
-                ))}
-              </div>
-            )}
-          </div>
-
           {featuredImage && (
             <div className="about-layout__image">
               <picture>
                 <source
                   type="image/webp"
                   srcSet={getOptimizedImageSrcSet(featuredImage.image, "webp")}
-                  sizes="(max-width: 900px) 100vw, 55vw"
+                  sizes="100vw"
                 />
                 <source
                   type="image/jpeg"
                   srcSet={getOptimizedImageSrcSet(featuredImage.image, "jpg")}
-                  sizes="(max-width: 900px) 100vw, 55vw"
+                  sizes="100vw"
                 />
                 <img
                   className="about-layout__img"
@@ -159,6 +157,34 @@ export default function AboutPage() {
                   decoding="async"
                 />
               </picture>
+            </div>
+          )}
+
+          {(aboutPage?.title ||
+            aboutPage?.subtitle ||
+            paragraphs.length > 0) && (
+            <div className="about-layout__copy">
+              {(aboutPage?.title || aboutPage?.subtitle) && (
+                <div className="about-layout__intro">
+                  {aboutPage?.title && (
+                    <h1 className="about-hero__title about-hero__title--small">
+                      {aboutPage.title}
+                    </h1>
+                  )}
+
+                  {aboutPage?.subtitle && (
+                    <p className="about-hero__location">
+                      {aboutPage.subtitle}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {paragraphs.map((paragraph, index) => (
+                <p className="about-layout__paragraph" key={index}>
+                  {paragraph}
+                </p>
+              ))}
             </div>
           )}
         </div>

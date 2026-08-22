@@ -62,22 +62,23 @@ const EMPTY_FILTER_SELECTION = { theme: [], project: [], year: [], type: [] };
 
 // Menu is the same drawer showing different content: no categories or
 // selection state, just a small set of top-level destinations.
-const MENU_LINKS = ["About", "Journal"];
+//
+// Contact drawer -> Contact page milestone: Contact joins this list as a
+// third real link, exactly the "third page later is one more entry here"
+// case the comment below already anticipated -- it's no longer a panel
+// with its own active-field state (MENU_CONTACT_ITEMS and every
+// `activeEntry === "contact"` branch that used to render it are gone;
+// see entryValues/entryLabels and the Active Panel further down).
+const MENU_LINKS = ["About", "Journal", "Contact"];
 
-// Both links are now wired up to real routes; kept as a lookup rather
-// than growing the ternary below, since a third page later is one more
+// All three links are wired up to real routes; kept as a lookup rather
+// than growing the ternary below, since a fourth page later is one more
 // entry here instead of a longer condition.
 const MENU_LINK_PATHS = {
   About: "/about",
   Journal: "/journal",
+  Contact: "/contact",
 };
-
-// Contact is revealed through the exact same active-field/panel mechanism
-// as Filter's Theme/Project/Year (see entryValues/entryLabels and the
-// shared Active Panel below) -- it's just another entry, "contact", in
-// that same lookup. Adding a fourth contact method later is a one-line
-// change here; no interaction code needs to change.
-const MENU_CONTACT_ITEMS = ["Instagram", "Email", "Phone"];
 
 // How many archive terms the Active Content Panel shows before offering
 // "View All" to reveal the complete index for that Context.
@@ -339,19 +340,58 @@ export default function Header({
     return () => cancelAnimationFrame(frame);
   }, [isArriving]);
 
-  // Matches the header's own framing transition (520ms, var(--reveal-ease))
-  // so this reads as part of the site's existing motion vocabulary rather
-  // than a new one.
-  const VEIL_DURATION_MS = 520;
+  // Site-wide interface fade, tuned again (Josh review, fourth pass): this
+  // veil (and GALLERY_FADE_MS in App.jsx, and their matching CSS transition
+  // declarations on .page-transition-veil/.gallery-track in styles.css)
+  // originally matched the header's own framing transition at
+  // 520ms/var(--reveal-ease), then was cut to 180ms (still on
+  // var(--reveal-ease)) in the previous pass. That still read as too much
+  // white interruption -- the duration cut alone wasn't the whole problem.
+  // var(--reveal-ease) (cubic-bezier(0.22, 1, 0.36, 1)) is a slow-settling
+  // deceleration curve, built for material "arriving" over 500ms+ (the info
+  // overlay, the header's own framing transition) -- its long, gentle tail
+  // stays disproportionately noticeable even compressed into a much shorter
+  // duration, which is very likely why the previous 180ms cut still read as
+  // sluggish. Two changes together this pass, not duration alone: shortened
+  // further to 120ms, AND the CSS transition-timing-function on
+  // .page-transition-veil/.gallery-track moved off var(--reveal-ease) onto
+  // a plain ease-out (see styles.css) -- a curve with no lingering tail, so
+  // the fade reads as a quick, controlled interface change rather than a
+  // settling/loading motion. .site-header--framed's own
+  // background-color/box-shadow transition is a separate, unrelated 520ms
+  // var(--reveal-ease) transition (the drawer framing itself) and is
+  // deliberately left alone -- this constant only ever governed the
+  // page-transition veil. The image-to-image crossfade
+  // (ImageViewer.jsx's IMAGE_FADE_MS / .project-image-frame__incoming) is
+  // also deliberately left alone -- it's its own short, separate
+  // transition, not part of this site-wide interface fade.
+  const VEIL_DURATION_MS = 120;
+
+  // Interaction refinement (site-wide fade transition system): generalized
+  // from a Filter/Search-only helper into the one shared mechanism for any
+  // navigation THIS component itself initiates that should read as "fade
+  // out, then land on the new page" rather than an instant swap -- reused
+  // below by both the child-page Logo click (back home) and Menu link
+  // clicks. Deliberately reuses the exact same veil/state/timing already
+  // established for the Filter/Search return trip -- no second veil, no
+  // separate timing constant, no new component -- since layering an
+  // independent fade mechanism on top of this one for the same kind of
+  // pathname change would risk double-fading, and the task's own
+  // instruction was to extend an existing transition mechanism rather than
+  // build a new one. The Filter/Search flow's own call below is untouched
+  // in behavior, just re-expressed in terms of this shared helper.
+  const beginPageTransition = (onTransitionEnd) => {
+    setIsLeaving(true);
+    leaveTimeoutRef.current = window.setTimeout(() => {
+      onTransitionEnd();
+    }, VEIL_DURATION_MS);
+  };
 
   // Shared by Filter and Search: both resolve on the homepage now, so
   // returning there is one motion regardless of which control asked for it
   // -- only the intent carried across differs.
   const beginGentleReturnHome = (intent) => {
-    setIsLeaving(true);
-    leaveTimeoutRef.current = window.setTimeout(() => {
-      navigateHomeWithIntent(intent);
-    }, VEIL_DURATION_MS);
+    beginPageTransition(() => navigateHomeWithIntent(intent));
   };
 
   const entryValues = {
@@ -359,14 +399,12 @@ export default function Header({
     project: projects,
     year: years,
     type: types,
-    contact: MENU_CONTACT_ITEMS,
   };
   const entryLabels = {
     theme: "Theme",
     project: "Project",
     year: "Year",
     type: "Type",
-    contact: "Contact",
   };
   const activeValues = activeEntry ? entryValues[activeEntry] : [];
   const previewValues = activeEntry ? getPreviewValues(activeValues) : [];
@@ -663,14 +701,17 @@ export default function Header({
     return () => clearTimeout(timer);
   }, [isDrawerOpen]);
 
-  // The active field panel (Theme/Project/Year under Filter, or Contact
-  // under Menu) only ever belongs to whichever section currently owns the
-  // shared drawer. Keying this cleanup on drawerSection itself -- rather
-  // than isFilterOpen alone -- guarantees a clean slate any time that
-  // ownership changes: Filter closing, Menu closing, or switching directly
-  // from one to the other. It does NOT fire on every click within a
-  // section (e.g. Theme -> Project, or opening Contact), since
-  // drawerSection itself doesn't change there -- only handleAddClick does.
+  // The active field panel (Theme/Project/Year under Filter) only ever
+  // belongs to whichever section currently owns the shared drawer. Keying
+  // this cleanup on drawerSection itself -- rather than isFilterOpen alone
+  // -- guarantees a clean slate any time that ownership changes: Filter
+  // closing, Menu closing, or switching directly from one to the other.
+  // It does NOT fire on every click within a section (e.g. Theme ->
+  // Project), since drawerSection itself doesn't change there -- only
+  // handleAddClick does. Menu's own fields (About/Journal/Contact) are all
+  // plain navigation links now, with no active-field state of their own
+  // (see MENU_LINKS' own comment) -- this cleanup effect still runs when
+  // Menu closes, it just never has anything Menu-owned left to clear.
   useEffect(() => {
     setActiveEntry(null);
   }, [drawerSection]);
@@ -734,7 +775,15 @@ export default function Header({
           className="brand-button"
           onClick={() => {
             if (isChildPage) {
-              navigate("/");
+              // Site-wide fade transition system: a plain click on the Logo
+              // from a child page changes the interface (child page ->
+              // homepage), so it now fades through the same veil the
+              // Filter/Search return trip already uses, instead of the
+              // instant navigate("/") this used to call directly. isChildPage
+              // already guarantees we're not on "/" yet, so no separate
+              // already-there guard is needed here (contrast the Menu link
+              // click below, which needs one).
+              beginPageTransition(() => navigate("/"));
             } else {
               onLogoClick?.();
             }
@@ -948,10 +997,12 @@ export default function Header({
             /* Menu displaying inside the exact same drawer surface Filter
                uses -- same wrapper, same is-open/is-settled classes, same
                unified (no per-field stagger) reveal CSS -- just a different
-               content row. Contact is the one interactive field here, and
-               it reuses the identical field/label/handleAddClick pattern
-               Theme/Project/Year use below -- see the shared Active Panel
-               further down for its reveal. */
+               content row. Contact drawer -> Contact page milestone: Contact
+               is now a plain navigation link, exactly like About/Journal --
+               MENU_LINKS.map() below renders all three uniformly, so the
+               separate hardcoded Contact field (its own handleAddClick("contact")
+               button, opening the shared Active Panel as a static options
+               list) is gone. */
             <div className="index-drawer__row index-drawer__row--menu">
               {/* Navigation active-state (bracket treatment removed):
                   replaced the bracket UI language ([ ABOUT ]) with a plain
@@ -960,12 +1011,10 @@ export default function Header({
                   #9d9d9d, see index-drawer__label-text--active below),
                   nothing added to the DOM. `path` (from useCurrentPath(),
                   already read above for isChildPage/isProjectPage) tells
-                  About/Journal whether they ARE the current page; Contact
-                  has no page/path of its own (it's a panel, not a route --
-                  see MENU_CONTACT_ITEMS' own comment), so its "active"
-                  instead means its own Active Panel is currently open
-                  (`activeEntry === "contact"`, the same state its
-                  aria-expanded below already reads). An inactive label is
+                  About/Journal/Contact whether each one IS the current
+                  page -- all three are real routes now, so this is a plain,
+                  uniform `path === MENU_LINK_PATHS[label]` check for every
+                  entry, nothing label-specific. An inactive label is
                   completely unchanged: plain uppercase text, no color
                   change. */}
               {MENU_LINKS.map((label) => {
@@ -978,7 +1027,23 @@ export default function Header({
                         className={`index-drawer__label-text${
                           isActive ? " index-drawer__label-text--active" : ""
                         }`}
-                        onClick={() => navigate(MENU_LINK_PATHS[label])}
+                        onClick={() => {
+                          // Site-wide fade transition system: a Menu link
+                          // click changes the interface (this page -> the
+                          // linked page), so it fades the same way the Logo
+                          // click above does. Guarded on isActive (already
+                          // computed above for the label's own active-state
+                          // styling) so clicking the current page's own menu
+                          // link doesn't fade to itself -- navigate() would
+                          // already have been a no-op here, but skipping
+                          // beginPageTransition entirely avoids an equally
+                          // pointless fade-and-back-to-the-same-place.
+                          if (!isActive) {
+                            beginPageTransition(() =>
+                              navigate(MENU_LINK_PATHS[label]),
+                            );
+                          }
+                        }}
                         tabIndex={isMenuOpen ? 0 : -1}
                       >
                         {label}
@@ -987,23 +1052,6 @@ export default function Header({
                   </div>
                 );
               })}
-              <div className="index-drawer__field">
-                <div className="index-drawer__field-row">
-                  <button
-                    type="button"
-                    className={`index-drawer__label-text${
-                      activeEntry === "contact"
-                        ? " index-drawer__label-text--active"
-                        : ""
-                    }`}
-                    aria-expanded={activeEntry === "contact"}
-                    onClick={() => handleAddClick("contact")}
-                    tabIndex={isMenuOpen ? 0 : -1}
-                  >
-                    Contact
-                  </button>
-                </div>
-              </div>
             </div>
           ) : (
           <div className="index-drawer__row">
@@ -1160,12 +1208,19 @@ export default function Header({
           )}
 
           {/* Level 3 -- the single Active Panel, shared by Filter's
-              Theme/Project/Year AND Menu's Contact -- there is exactly one
-              of these, not one per field or per section: each field just
-              tells this shared panel what to display. Its open state is
-              "is any field active", and its content is whichever field's
-              values that is (see entryValues/entryLabels above, which now
-              include "contact" alongside theme/project/year).
+              Theme/Project/Year -- there is exactly one of these, not one
+              per field or per section: each field just tells this shared
+              panel what to display. Its open state is "is any field
+              active", and its content is whichever field's values that is
+              (see entryValues/entryLabels above). Contact drawer -> Contact
+              page milestone: Menu no longer has any field of its own that
+              opens this panel (Contact used to, as a static options list --
+              see MENU_LINKS' own comment) -- Menu's links are all plain
+              navigation now, so in practice this panel is Filter-only
+              going forward, but it stays written generically (keyed off
+              whichever `activeEntry` a caller sets) rather than hardcoded
+              to Filter, in case Menu ever grows a field with real values
+              again.
               Third-tier alignment (Josh review): this used to shift its own
               left edge to sit beneath whichever field was active (measured
               via a useLayoutEffect against each field's offsetLeft), so it
@@ -1187,27 +1242,9 @@ export default function Header({
               <div
                 className={`index-drawer__options-list${
                   activeEntry ? " is-visible" : ""
-                }${
-                  activeEntry === "contact"
-                    ? " index-drawer__options-list--menu"
-                    : ""
                 }`}
               >
-                {activeEntry === "contact"
-                  ? /* Contact has no selection state -- it's a plain,
-                       static reading of the same options list, typographic
-                       like everything else in the header rather than
-                       icons. index-drawer__option--static just neutralizes
-                       the selectable-chip's hover/cursor affordance. */
-                    visibleValues.map((option) => (
-                      <span
-                        className="index-drawer__option index-drawer__option--static"
-                        key={option}
-                      >
-                        {option}
-                      </span>
-                    ))
-                  : activeEntry &&
+                {activeEntry &&
                     visibleValues.map((option) => {
                       const isSelected =
                         selection[activeEntry].includes(option);
@@ -1313,12 +1350,23 @@ export default function Header({
         </div>
       </div>
 
-      {/* The Filter/Search return-to-homepage veil (see isLeaving/isArriving
-          above). Rendered unconditionally, at rest it's fully transparent
-          and non-interactive -- .is-opaque is what the transition actually
-          drives. Kept mounted at all times rather than conditionally, so
-          the opacity change itself is always a real CSS transition, never a
-          mount that has nothing to animate from. */}
+      {/* The page-transition veil (see isLeaving/isArriving, and
+          beginPageTransition/beginGentleReturnHome, above). Originally
+          built for the Filter/Search return-to-homepage trip only; the
+          site-wide fade transition system reuses this same veil for the
+          Logo (child page -> home) and Menu link clicks too, rather than
+          building a second one -- isLeaving no longer implies "leaving for
+          home specifically," just "fading out for a navigation this
+          component just initiated." isArriving is still homepage-only
+          (only the Filter/Search return trip carries a pendingIntent to
+          resume on arrival), so a Menu-link or Logo landing on a plain
+          child page has nothing to fade in from and simply renders
+          normally -- consistent with those being ordinary, non-resuming
+          navigations. Rendered unconditionally, at rest it's fully
+          transparent and non-interactive -- .is-opaque is what the
+          transition actually drives. Kept mounted at all times rather than
+          conditionally, so the opacity change itself is always a real CSS
+          transition, never a mount that has nothing to animate from. */}
       <div
         className={`page-transition-veil${
           isLeaving || isArriving ? " is-opaque" : ""

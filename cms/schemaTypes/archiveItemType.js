@@ -46,7 +46,12 @@ export const archiveItemType = defineType({
       name: 'archiveNumber',
       title: 'Archive Number',
       type: 'string',
-      description: 'Assigned automatically. Not editable.',
+      // CMS refinement (client-requested): this field is editable -- see
+      // ArchiveNumberInput.jsx's own "EDITABLE OVERRIDE" comment. The
+      // description here is updated to match; nothing else about the
+      // field (its name, type, validation, or position in the form)
+      // changed.
+      description: 'Assigned automatically for new items. Edit here to override if needed.',
       components: {input: ArchiveNumberInput},
       validation: (Rule) => Rule.required(),
     }),

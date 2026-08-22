@@ -1939,12 +1939,19 @@ html.is-browsing .zoom-controls {
   aspect-ratio: 1 / 1;
 }
 
+/* Justified body copy (client-requested typography pass): text-align
+   only -- flex/margin/font-size/line-height/color unchanged. This is
+   the /projects page's own body paragraph (ProjectsPage.jsx); its
+   neighboring tile captions/numbers/meta fields on the same page are
+   separate selectors (.about-tile__*, .about-meta__*), untouched. No
+   text-align-last -- the paragraph's last line still ends naturally. */
 .about-description {
   flex: 1;
   margin: 0;
   font-size: clamp(0.85rem, 1vw, 0.95rem);
   line-height: 1.55;
   color: #333;
+  text-align: justify;
 }
 
 .about-meta {
@@ -2160,12 +2167,22 @@ html.is-browsing .zoom-controls {
 /* Same typography the previous intro column already used
    (.studio-intro__paragraph, now removed) -- carried forward unchanged
    rather than invented fresh, since it already matched this site's
-   restrained editorial type scale. */
+   restrained editorial type scale.
+   Justified body copy (client-requested typography pass): text-align only
+   -- font family/size/weight/line-height/color, the 56ch measure this
+   inherits from .about-layout__copy, and everything else about this rule
+   are unchanged. Scoped to this one selector, not a global rule: the
+   title/subtitle above it (.about-layout__intro, inside the same 56ch
+   column) keeps its own inherited text-align: left from .about-layout__copy,
+   completely untouched by this. No text-align-last override -- the last
+   line of each paragraph still ends naturally, left-aligned, not stretched
+   to the full measure. */
 .about-layout__paragraph {
   margin: 0;
   font-size: clamp(0.9rem, 1.05vw, 1rem);
   line-height: 1.7;
   color: #333;
+  text-align: justify;
 }
 
 /* Reuses the same 900px stacking breakpoint .about-columns/.about-layout
@@ -2225,13 +2242,28 @@ html.is-browsing .zoom-controls {
    still one blank-line-delimited "paragraph" -- see
    contactPageType.js's own field description), and this is what makes
    those single newlines render as real line breaks instead of being
-   collapsed the way plain text normally is. */
+   collapsed the way plain text normally is.
+   Justified body copy (client-requested typography pass): text-align
+   only -- everything above (font, line-height, color, white-space:
+   pre-line, the 46ch measure inherited from .contact-layout) is
+   unchanged. No text-align-last -- the last line of each blank-line-
+   delimited paragraph still ends naturally rather than being stretched.
+   Verified against a manually-broken address-style block (name/street/
+   city, one per line, same shape contactPageType.js's own field
+   description documents): browsers treat a forced line break from
+   white-space: pre-line the same way they treat a block's true last
+   line -- it's excluded from justification, not stretched -- so a short
+   address line reads at its own natural width instead of being spread
+   to fill the 46ch measure. Confirmed via a real rendered screenshot
+   (desktop and mobile) before this rule shipped, not assumed from the
+   spec alone. */
 .contact-layout__paragraph {
   margin: 0;
   font-size: clamp(0.9rem, 1.05vw, 1rem);
   line-height: 1.6;
   color: #333;
   white-space: pre-line;
+  text-align: justify;
 }
 
 /* --- Journal page -------------------------------------------------------
@@ -3050,13 +3082,33 @@ html.is-browsing .zoom-controls {
    project.description -- see ProjectInfoPanel.jsx). Extra margin above
    its neighbors' shared 0.3rem gap gives it the "slightly more breathing
    room" its own paragraph-length text needs against the single-line
-   Themes row above it. */
+   Themes row above it.
+   Justified body copy (client-requested typography pass): text-align
+   only -- font size/weight/line-height/color and the panel's own
+   min(420px, 60%) measure (.project-info-panel__inner) are unchanged.
+   The identity block above (title/location/year) and the Themes line
+   right above this one keep their own untouched alignment -- each is
+   its own selector, none shared with this one. No text-align-last --
+   the description's last line still ends naturally.
+   MOBILE NOTE (flagged during verification, not silently designed
+   around per instruction): on narrow phone widths, .project-info-panel__
+   inner's own min(420px, 60%) measure resolves to roughly 230-240px,
+   narrow enough that a short caption can land only one or two words per
+   line -- confirmed via a real rendered screenshot showing visibly
+   excessive word-spacing on those lines (e.g. one word stretched most of
+   the way across the line to reach the measure). This is the one
+   genuinely poor case found in this pass; left justified as requested
+   rather than redesigned, since fixing the word-spacing would mean
+   changing .project-info-panel__inner's own width constraint, which is
+   a layout change outside this task's scope -- see the typography
+   pass's own report for the full callout. */
 .project-info-panel__description {
   margin: 0.35rem 0;
   font-size: 0.85rem;
   font-weight: 400;
   line-height: 1.55;
   color: #5a5a5a;
+  text-align: justify;
 }
 
 /* Project Navigation (Previous/current/Next), the "bottom text

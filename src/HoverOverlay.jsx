@@ -103,6 +103,16 @@ function HoverOverlay({
   generation = 0,
   onRelatedArchiveNumbersChange,
   onMetadataCommit,
+  // Mobile Baseline Pass -- Task 2: the desktop hover-driven Relationship
+  // Engine is not being translated to touch in this pass (a different
+  // mobile interpretation may be designed later) -- see App.jsx's own
+  // useIsTouchDevice/isRelationshipEngineEnabled comment for the single
+  // source of this flag. Defaults to true (enabled) so every other,
+  // unrelated call site -- there are none today, but this keeps the
+  // component's own default behavior unchanged if one is ever added --
+  // keeps working exactly as before without needing to know this prop
+  // exists.
+  relationshipEngineEnabled = true,
   // Discovery is the first eligibility gate: an editorial boolean (see
   // COLUMN_PATTERNS) deciding whether this tile may show metadata at all.
   // Defaults to false so an unspecified call site shows no metadata, never
@@ -140,6 +150,14 @@ function HoverOverlay({
   // earlier commit did. Leaving a theme reports [] immediately, same as
   // leaving the image used to.
   const handleThemeHoverStart = (theme) => {
+    // Mobile Baseline Pass -- Task 2: when the Relationship Engine is
+    // disabled (touch devices, see relationshipEngineEnabled above), this
+    // becomes a hard no-op -- the query against the Relationship Engine
+    // never runs at all, not just its result being discarded/ignored
+    // downstream. findRelatedArchiveItems and the engine itself are
+    // untouched; this is the one and only place that decides whether they
+    // ever get called.
+    if (!relationshipEngineEnabled) return;
     onRelatedArchiveNumbersChange?.(
       findRelatedArchiveItems("theme", theme, getArchiveItems()),
     );

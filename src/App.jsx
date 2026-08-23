@@ -1692,6 +1692,43 @@ function createGalleryRenderer({
   };
 }
 
+// Mobile Baseline Pass -- Task 2 (Relationship Engine): the single
+// enable/disable signal used to gate the Relationship Engine on touch
+// devices, per the explicit instruction to introduce "the cleanest
+// explicit mobile enable/disable condition possible" rather than deleting,
+// simplifying, or rewriting relationshipEngine.js/relationshipModeEvaluator.js
+// (both untouched -- see their own files). No mobile/touch detection of
+// any kind existed anywhere in this codebase before this pass (confirmed
+// via grep for isMobile/matchMedia/innerWidth/pointer/hover -- every
+// existing @media rule lives in styles.css and only ever gates CSS, never
+// JS behavior). Reads the browser's own hover/pointer capability rather
+// than viewport width: what's actually being gated is a hover-driven
+// interaction system, so a device with a coarse pointer and no real hover
+// (a phone or tablet) is what "mobile" means for this specific decision,
+// regardless of how wide its viewport happens to be -- a narrow desktop
+// browser window should NOT lose hover behavior it can still perform.
+// Pairing (hover: none) with (pointer: coarse) (rather than either alone)
+// keeps this specific to touch-primary devices. Live via the
+// MediaQueryList's own change event (not just read once at mount) so an
+// emulator/device toggle during a session is reflected immediately.
+function useIsTouchDevice() {
+  const TOUCH_QUERY = "(hover: none) and (pointer: coarse)";
+  const [isTouchDevice, setIsTouchDevice] = useState(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return false;
+    return window.matchMedia(TOUCH_QUERY).matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return undefined;
+    const mediaQueryList = window.matchMedia(TOUCH_QUERY);
+    const handleChange = (event) => setIsTouchDevice(event.matches);
+    mediaQueryList.addEventListener("change", handleChange);
+    return () => mediaQueryList.removeEventListener("change", handleChange);
+  }, []);
+
+  return isTouchDevice;
+}
+
 function App() {
   // Phase 3 (Connect Projects): moved here from module scope -- see the
   // comment left at the old location, above the module-level helpers,
@@ -2187,6 +2224,17 @@ function App() {
   // pure CSS (:hover in styles.css) and was never driven by this state.
   const [hoveredGalleryItemId, setHoveredGalleryItemId] = useState(null);
   const [relatedArchiveNumbers, setRelatedArchiveNumbers] = useState([]);
+  // Mobile Baseline Pass -- Task 2: desktop = enabled, mobile/touch =
+  // disabled -- see useIsTouchDevice's own comment above for why this
+  // reads pointer/hover capability rather than viewport width. Passed to
+  // HoverOverlay below (gates the query at its source, in
+  // handleThemeHoverStart, so it never runs at all on a touch device) and
+  // ANDed into isRelationshipModeActive further down (defense-in-depth --
+  // ensures no dimming visual state can ever be left hanging on mobile
+  // even if relatedArchiveNumbers were somehow already non-empty, e.g.
+  // from a value set just before a hover/pointer-type change).
+  const isTouchDevice = useIsTouchDevice();
+  const isRelationshipEngineEnabled = !isTouchDevice;
   // Browsing/Exploration mode (interaction-layer only -- see
   // SCROLL_IDLE_DELAY_MS near the top of this file and where this is set,
   // inside the existing animateGallery loop below). True while the gallery
@@ -3034,6 +3082,20 @@ function App() {
     const renderWindowUpdateThreshold = Math.max(window.innerWidth * 0.35, 240);
     let animationFrame = null;
     let touchPoint = null;
+    // Mobile Baseline Pass -- Task 3 (Archive pinch-to-zoom): gesture-
+    // start-anchored pinch state, same closure-scoped-let lifetime as
+    // touchPoint immediately above (reset whenever this effect's own
+    // [galleryItems] dependency changes, exactly like touchPoint already
+    // is). null whenever fewer/more than two touches are down; set fresh
+    // in handleTouchStart the instant a second touch lands, holding the
+    // two-finger distance/midpoint/scale AT THAT MOMENT -- every
+    // subsequent touchmove frame computes the desired scale directly from
+    // this fixed starting ratio (distance-now / distance-at-gesture-start
+    // times scale-at-gesture-start), not by compounding a per-frame
+    // delta, so the zoom level tracks finger separation exactly and
+    // cannot drift from small per-frame rounding error the way an
+    // accumulating approach could over a long hold.
+    let pinchState = null;
     // Browsing/Exploration mode: pending "settle" timer, same lifetime
     // scope as animationFrame/touchPoint above (this whole effect body is
     // recreated only when galleryItems changes -- see this effect's own
@@ -3345,7 +3407,51 @@ function App() {
       addGalleryVelocity(event.deltaY + event.deltaX);
     };
 
+    // Mobile Baseline Pass -- Task 3: two small, stateless read-outs of a
+    // native TouchList -- no camera/scale knowledge, just geometry. Pulled
+    // out to their own named helpers (rather than inlined at each call
+    // site) purely so handleTouchStart/handleTouchMove below read as
+    // "get the distance, get the midpoint" instead of repeating the same
+    // Math.hypot/averaging twice each.
+    const getTouchDistance = (touches) =>
+      Math.hypot(
+        touches[0].clientX - touches[1].clientX,
+        touches[0].clientY - touches[1].clientY,
+      );
+    const getTouchMidpointX = (touches) =>
+      (touches[0].clientX + touches[1].clientX) / 2;
+
     const handleTouchStart = (event) => {
+      // Mobile Baseline Pass -- Task 3: touchstart fires again the instant
+      // the number of active touches changes (a finger lands or lifts),
+      // even mid-gesture -- not just for the very first touch of a new
+      // interaction. That guarantee is what this branch relies on: the
+      // moment a second finger lands, pinchState is (re)initialized from
+      // the CURRENT two-finger geometry, and the moment either finger
+      // lifts back down to one (or zero), pinchState is cleared and
+      // touchPoint is reset to wherever the remaining finger actually is
+      // right now -- never extrapolated from stale pre-pinch coordinates.
+      // This is exactly what keeps a pinch<->pan transition from jumping:
+      // each mode always restarts its own tracking from the gesture's
+      // real, current geometry rather than continuing an old baseline.
+      if (event.touches.length === 2) {
+        touchPoint = null;
+        pinchState = {
+          // Math.max(..., 1): guards the division in handleTouchMove below
+          // against a zero/near-zero denominator on the (extremely rare,
+          // but not impossible) frame where both touch points are
+          // reported at nearly the same coordinate -- without this, that
+          // single frame could divide by ~0 and hand viewportScaleRef a
+          // NaN/Infinity delta, corrupting the camera for the rest of the
+          // session until reload. 1px floor is far below any real pinch's
+          // starting finger separation, so it has no effect on normal use.
+          distance: Math.max(getTouchDistance(event.touches), 1),
+          startScale: viewportScaleRef.current,
+        };
+        return;
+      }
+
+      pinchState = null;
       const touch = event.touches[0];
       touchPoint = touch ? { x: touch.clientX, y: touch.clientY } : null;
     };
@@ -3357,6 +3463,41 @@ function App() {
       // JS needed, so this global handler must not preventDefault/consume
       // the gesture out from under it.
       if (isProjectFilterActiveRef.current) return;
+
+      // Mobile Baseline Pass -- Task 3: two fingers down and a live
+      // pinchState (set by handleTouchStart above the instant the second
+      // finger landed) means this frame is a pinch, not a pan -- branch
+      // here and return before any of the single-finger pan logic below
+      // ever runs, so a pinch never also accumulates gallery pan velocity
+      // from whichever finger happens to be touches[0]. Reusing
+      // handleZoomStep as-is (same function the +/- buttons and
+      // Ctrl+wheel/trackpad-pinch already share, see handleWheel above) --
+      // no new mutation path for viewportScaleRef/viewportPanXRef. The
+      // desired scale is computed directly from the fixed gesture-start
+      // distance/scale in pinchState (not the previous frame's scale), so
+      // it tracks finger separation exactly with no compounding drift;
+      // handleZoomStep receives that as a single delta (desired minus
+      // current) and, same as every other caller, does its own clamping
+      // to CAMERA_ZOOM_MIN/MAX. anchorClientX is the live midpoint between
+      // the two fingers -- handleZoomStep's existing X-only anchor
+      // support (already exercised by cursor-anchored wheel-zoom) keeps
+      // that midpoint visually stationary as scale changes, same as it
+      // already does for the cursor. No Y anchor is passed, matching this
+      // architecture's deliberate opening-viewport-only vertical
+      // composition (see getVerticalScaleCompensation's own comment) --
+      // this pass does not introduce cursor/touch-derived vertical drift.
+      if (event.touches.length === 2 && pinchState) {
+        event.preventDefault();
+        const distance = getTouchDistance(event.touches);
+        const midpointX = getTouchMidpointX(event.touches);
+        const desiredScale = clamp(
+          pinchState.startScale * (distance / pinchState.distance),
+          CAMERA_ZOOM_MIN,
+          CAMERA_ZOOM_MAX,
+        );
+        handleZoomStep(desiredScale - viewportScaleRef.current, midpointX);
+        return;
+      }
 
       const touch = event.touches[0];
       if (!touch || !touchPoint) return;
@@ -3449,10 +3590,18 @@ function App() {
   const activeGalleryArchiveNumbers = galleryItems
     .map((item) => item.archiveNumber)
     .filter(Boolean);
-  const isRelationshipModeActive = shouldActivateRelationshipMode(
-    relatedArchiveNumbers,
-    activeGalleryArchiveNumbers,
-  );
+  // Mobile Baseline Pass -- Task 2: ANDed with isRelationshipEngineEnabled
+  // as defense-in-depth (see that flag's own comment above) -- the primary
+  // gate is HoverOverlay never querying the engine at all on a touch
+  // device, but this ensures the dimming visual itself can never activate
+  // on mobile either way. shouldActivateRelationshipMode itself is
+  // untouched.
+  const isRelationshipModeActive =
+    isRelationshipEngineEnabled &&
+    shouldActivateRelationshipMode(
+      relatedArchiveNumbers,
+      activeGalleryArchiveNumbers,
+    );
 
   return (
     <div className="app-shell">
@@ -3768,6 +3917,7 @@ function App() {
                     generation={galleryGenerationRef.current}
                     onRelatedArchiveNumbersChange={setRelatedArchiveNumbers}
                     onMetadataCommit={handleMetadataFilterCommit}
+                    relationshipEngineEnabled={isRelationshipEngineEnabled}
                     // Discovery Mask (the only editorial gate): carried
                     // straight through from the tile's own layout.discovery
                     // (see createGalleryBatch above). Discovery decides

@@ -1676,7 +1676,7 @@ html.is-browsing .zoom-controls {
 
 @media (max-width: 640px) {
 .site-header{
-    height:60px;
+    min-height:60px;
     padding:12px 20px 0;
 }
 
@@ -1747,6 +1747,41 @@ html.is-browsing .zoom-controls {
     left: 1rem;
     right: 1rem;
     bottom: 1rem;
+  }
+
+  /* Mobile baseline pass -- Task 4 secondary fix: at narrow widths the
+     open Level-3 options panel's last row of values sat only
+     clamp(12px,1.6vw,18px) above the panel's own measured bottom edge --
+     confirmed via elementFromPoint sampling to leave a real, if small
+     (~1-2px), sliver where a touch could land just past the panel and
+     land on the dimmed archive image underneath instead. A touch's
+     contact area is much coarser than a mouse pointer, so this thin a
+     margin is a genuine (if minor) mobile risk even though it was never
+     visible as a bug on desktop. Purely additive extra breathing room,
+     scoped to this existing mobile breakpoint -- does not touch the
+     desktop clamp() value above. */
+  .index-drawer__options-list {
+    padding-bottom: 28px;
+  }
+
+  /* Mobile baseline pass -- Task 4 secondary fix: the per-category and
+     Filter-wide Clear ("x") buttons share .index-drawer__option with
+     every real value-selection option, so they inherit that same
+     type-sized, zero-padding hit area. On mouse that's fine -- the
+     label text itself is close enough to click precisely -- but on
+     touch it's a small target sitting immediately next to its own
+     label, flagged during testing as a plausible mis-tap risk.
+     .index-drawer__option--clear is a new, purely additive class
+     (see Header.jsx) applied only to the two Clear buttons, so this
+     rule cannot affect real value/View-All buttons. Negative margins
+     offset the added padding so neither the button's own visual size
+     nor the row's layout/spacing shifts -- only the invisible tappable
+     area grows. Scoped to this existing mobile breakpoint; desktop is
+     completely unaffected by design (the class exists sitewide, but
+     only this media query gives it any padding). */
+  .index-drawer__option--clear {
+    padding: 8px;
+    margin: -8px;
   }
 }
 .nav-divider {
@@ -2529,6 +2564,24 @@ html.is-browsing .zoom-controls {
   height: auto;
 }
 
+/* Mobile baseline pass -- Task 1: at small phone widths the desktop
+   clamp()'s 360px floor is wider than the available viewport minus any
+   margin at all (e.g. 375px), so the wordmark/brackets render essentially
+   edge-to-edge with no side breathing room and can visually clip against
+   the viewport edge. This does not change the logo's own composition or
+   the splash's timing/animation -- only its width at these widths, via a
+   viewport-relative clamp (82vw) so a small, deliberate margin is always
+   preserved instead of a fixed floor that ignores how narrow the
+   viewport actually is. Sized to hand off smoothly at the existing
+   480px boundary already used elsewhere in this stylesheet, well below
+   the desktop clamp's own 360px floor so this rule only ever applies at
+   phone widths, never on desktop or tablet. */
+@media (max-width: 480px) {
+  .splash-logo {
+    width: clamp(280px, 82vw, 360px);
+  }
+}
+
 /* --- Project Template ------------------------------------------------
    Reuses .about-page/.about-content for the page shell (same restrained
    editorial scale as About/Projects/Journal/Contact). Everything below is
@@ -2577,6 +2630,34 @@ html.is-browsing .zoom-controls {
      they can't end up on separate horizontal systems. */
   padding-left: clamp(102px, 12vw, 180px);
   padding-right: clamp(102px, 12vw, 180px);
+}
+
+/* Mobile Baseline Pass -- Task 7A: this page's own horizontal padding
+   above is deliberately triple .about-content's (clamp(34px, 4vw, 60px),
+   see that rule's own comment) -- correct at desktop/tablet widths, but
+   its 102px FLOOR is what actually governs everywhere below ~850px wide
+   (12vw only clears 102px once the viewport itself reaches 850px), so
+   every phone AND small-tablet width was rendering with the exact same
+   fixed 204px (102+102) eaten by padding alone regardless of how narrow
+   the viewport actually was -- confirmed the direct cause of the project
+   image "feeling too small" on mobile (at 375px wide, only 171px of the
+   375 was ever left for the image/nav row/metadata to use). This does
+   NOT touch the image's own sizing formula (.project-image-frame /
+   .project-image-frame__img, both untouched -- no cropping, no stretch,
+   same viewport-height-derived cap as before) or .about-content (still
+   shared, still untouched) -- purely how much horizontal room this one
+   page's own already-existing padding leaves for that formula to use.
+   Reuses this stylesheet's own existing ~900px tablet/mobile content
+   breakpoint (see .about-columns and friends below) rather than
+   introducing a new one. Scaled to roughly match .about-content's own
+   proportions at these widths (a modest, viewport-relative margin, not
+   a fixed floor that ignores how narrow the viewport is) instead of
+   just lowering the existing floor by an arbitrary amount. */
+@media (max-width: 900px) {
+  .project-content {
+    padding-left: clamp(20px, 5vw, 40px);
+    padding-right: clamp(20px, 5vw, 40px);
+  }
 }
 
 .project-image-viewer {
@@ -2893,6 +2974,26 @@ html.is-browsing .zoom-controls {
   cursor: default;
 }
 
+/* Mobile Baseline Pass -- Task 7C: this control's own base rule above
+   (padding: 0, sized purely by its 1.1rem glyph) gives Previous/Next a
+   real hit area of only about 17-18px square -- fine for a mouse cursor,
+   well under typical touch-target guidance for a finger. Padding +
+   equal-and-opposite negative margin (same technique used for the mobile
+   Filter drawer's Clear buttons -- see index-drawer__option--clear in
+   this stylesheet's own 640px block) grows the actual tappable box
+   without shifting the glyph's own visual position or widening
+   .project-image-nav's own gap to its neighbors -- the glyph reads
+   identically to before, only the invisible area around it responding to
+   touch is larger. Scoped to this stylesheet's existing ~900px
+   tablet/mobile content breakpoint (already reused just above for
+   .project-content); desktop is unaffected by design. */
+@media (max-width: 900px) {
+  .project-image-nav__control {
+    padding: 12px;
+    margin: -12px;
+  }
+}
+
 .project-image-nav__count {
   font-size: 0.75rem;
   letter-spacing: 0.06em;
@@ -2983,6 +3084,25 @@ html.is-browsing .zoom-controls {
   background: none;
   padding: 0;
   cursor: pointer;
+}
+
+/* Mobile Baseline Pass -- Task 7D: grows this control's own invisible hit
+   box (still no background/border of its own -- see the base rule's own
+   comment on why) from 28px to a more comfortable touch target. The
+   visible glyph -- .project-info-trigger__glyph's own 19px circle, a
+   flex-centered child of this button -- is completely untouched by this,
+   so the "circular info icon keeps same visual language" requirement
+   holds exactly as before; only the button's own invisible bounding box
+   (which nothing renders against) is larger. justify-self: start (see
+   base rule) means growing this box extends rightward from the row's own
+   left edge, same side the glyph already sits close to, so this doesn't
+   shift the glyph's own left-aligned position either. Same ~900px
+   breakpoint as this file's other Task 7 mobile touch-target fixes. */
+@media (max-width: 900px) {
+  .project-info-trigger {
+    width: 40px;
+    height: 40px;
+  }
 }
 
 /* The visible "information" mark: a lowercase "i" (or "×" once open, see

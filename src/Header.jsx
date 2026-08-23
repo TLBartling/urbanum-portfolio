@@ -866,7 +866,7 @@ export default function Header({
                 // to "clear everything" instead of "clear one value."
                 <button
                   type="button"
-                  className={`index-drawer__option${
+                  className={`index-drawer__option index-drawer__option--clear${
                     isFilterClearArmed
                       ? " index-drawer__option--remove-armed"
                       : ""
@@ -1185,7 +1185,7 @@ export default function Header({
                       {values.length > 0 && (
                         <button
                           type="button"
-                          className={`index-drawer__option${
+                          className={`index-drawer__option index-drawer__option--clear${
                             categoryClearArmed === key
                               ? " index-drawer__option--remove-armed"
                               : ""

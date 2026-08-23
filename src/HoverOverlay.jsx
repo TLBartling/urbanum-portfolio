@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { findRelatedArchiveItems } from "./relationshipEngine";
+import { hapticSelect } from "./haptics";
 // Content layer seam (Frontend <-> CMS handshake, Phase 1): no longer a
 // direct import of the mock data file -- see src/content/. Today
 // getArchiveItems() is a pure passthrough to the same mock array, so
@@ -119,6 +120,25 @@ function HoverOverlay({
   // everything. Geometry/container queries still decide how much is shown
   // once eligible -- see the `discovery &&` checks below.
   discovery = false,
+  // Mobile Archive Interaction Pass -- Stage 5 (Touch-Native Image
+  // Inspection): App.jsx's own JS-driven visibility signal for touch
+  // devices -- the equivalent of the plain CSS :hover this card's own
+  // opacity already reveals under on desktop (see the matching
+  // .gallery-image-wrapper--inspected rule in styles.css). Defaults to
+  // false so every existing desktop call site (and any future one that
+  // doesn't pass it) renders exactly as before this stage: purely a CSS
+  // hover card, aria-hidden, no interactive control inside it. This
+  // component still holds no gesture/touch state of its own -- App.jsx
+  // decides which single tile (if any) is inspected and simply tells this
+  // one instance whether it is.
+  isInspected = false,
+  // Stage 5: a callback into App.jsx's own existing "enter this Project"
+  // sequence (handleProjectRowImageClick, reused verbatim -- see the call
+  // site's own comment), supplied only for Project-linked tiles. Its mere
+  // presence/absence -- not a separate isProjectLinked boolean -- is what
+  // decides whether the "View Project" control below renders at all, so
+  // there is exactly one thing this component needs to check.
+  onEnterProject,
 }) {
   // Metadata-budget prototype: the first entry in `themes` is always the
   // Archive Item's designated primary theme (item.theme, the singular
@@ -184,11 +204,69 @@ function HoverOverlay({
   // navigate" requirement for this interaction rules out.
   const handleThemeClick = (event, theme) => {
     event.stopPropagation();
+    // Mobile Header/Search/Menu Refinement Pass -- Section 6: a Theme
+    // selection commit gets a haptic tick, but only on a genuinely
+    // touch-inspected card -- isInspected (this component's own prop) is
+    // ONLY ever true when App.jsx's isTouchDevice is also true (see that
+    // call site's own isInspected={isTouchDevice && ...} prop), so gating
+    // on it here is equivalent to gating on touch capability directly,
+    // with no second prop needed just to carry that signal down. A plain
+    // desktop mouse click on this same element (isInspected always false
+    // there) stays silent, per "Do NOT apply haptics on desktop/mouse
+    // interaction."
+    if (isInspected) hapticSelect();
     onMetadataCommit?.("theme", theme);
   };
 
+  // Mobile Archive Interaction Pass -- Stage 6 (Theme Exploration from
+  // Inspection): exposes the exact same commit pipeline handleThemeClick
+  // already calls -- nothing new is wired here, no second path into
+  // onMetadataCommit -- as a proper keyboard control, mirroring
+  // handleEnterProjectKeyDown's own Enter/Space pattern immediately above.
+  // Needed because a touch-inspected card is now, for the first time, a
+  // real (non-aria-hidden) part of the accessibility tree -- see this
+  // component's own aria-hidden={!isInspected} above -- so its Theme list
+  // needs to be genuinely operable by keyboard/switch-control, not just
+  // visually clickable, the moment it's exposed that way. Harmless,
+  // additive keyboard support on desktop's own hover card too, since
+  // nothing about handleThemeClick's own behavior changes -- it was never
+  // reachable by keyboard before this (no tabIndex existed on these
+  // elements at all), so this is a pure accessibility gain, not a
+  // behavior change to guard.
+  const handleThemeKeyDown = (event, theme) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    handleThemeClick(event, theme);
+  };
+
+  // Stage 5: Enter/Space activates the control the same way a click does --
+  // it's a <div role="button">, not a real <button> (see the control's own
+  // render comment below for why a real <button> can't be used here), so
+  // native keyboard activation isn't automatic and has to be wired
+  // explicitly for this to be a genuinely operable control, not just a
+  // visually-focusable one.
+  const handleEnterProjectKeyDown = (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    event.stopPropagation();
+    onEnterProject?.();
+  };
+
   return (
-    <div className="hover-overlay" aria-hidden="true">
+    <div
+      className="hover-overlay"
+      // Stage 5: this card is decorative chrome on desktop (a plain CSS
+      // :hover reveal with no keyboard-reachable content of its own,
+      // aria-hidden unconditionally before this stage) -- that stays true
+      // here whenever it isn't currently inspected. Once a touch device
+      // inspects it (isInspected), it can hold a real, focusable "View
+      // Project" control (below), so it needs to actually be exposed to
+      // assistive tech at that point rather than permanently hidden from
+      // it -- an aria-hidden ancestor would make an interactive descendant
+      // unreachable regardless of its own tabIndex/role. Desktop's hover
+      // card is completely unaffected: isInspected is never true there.
+      aria-hidden={!isInspected}
+    >
       {/* Archive-number presentation rule (Josh review): bracketed
           site-wide, e.g. "[033]" -- a display-only wrap of whatever value
           this prop already carries, not a reformat of it. The raw,
@@ -212,14 +290,70 @@ function HoverOverlay({
           {shuffledThemes.map((theme) => (
             <li
               key={theme}
+              role="button"
+              tabIndex={isInspected ? 0 : -1}
+              aria-label={`Filter by theme: ${theme}`}
               onMouseEnter={() => handleThemeHoverStart(theme)}
               onMouseLeave={handleMetadataHoverEnd}
               onClick={(event) => handleThemeClick(event, theme)}
+              onKeyDown={(event) => handleThemeKeyDown(event, theme)}
             >
               {theme}
             </li>
           ))}
         </ul>
+      )}
+      {/* Mobile Archive Interaction Pass -- Stage 5: the approved hybrid
+          design's explicit, distinct "enter the Project" control -- only
+          ever rendered while this specific tile is inspected AND it's
+          actually Project-linked (onEnterProject is undefined otherwise,
+          see this component's own prop comment above). A second tap on an
+          already-inspected tile is the dismiss gesture (see App.jsx's
+          handleGalleryTileTap), never navigation -- this control is the
+          only way a touch visitor enters the Project from here.
+
+          Deliberately a <div role="button"> rather than a real <button>:
+          this whole component is rendered as a child of the gallery tile's
+          own outer <button> (.gallery-image-wrapper, see App.jsx's render)
+          -- a nested <button> inside a <button> is invalid HTML, and
+          browsers do not render/behave predictably once one appears (the
+          exact reason Header.jsx's own filter-control wraps its Clear-All
+          "x" as a sibling rather than a nested button, see that file's own
+          comment). role="button" + tabIndex={0} + explicit onKeyDown
+          (below) is what keeps this a REAL focusable, keyboard-operable
+          control despite not being a literal <button> element -- not a
+          div with a bare onClick.
+
+          event.stopPropagation() mirrors handleThemeClick's own reasoning
+          immediately above: without it, this tap would also satisfy the
+          outer tile's own onClick (handleGalleryTileTap), which would
+          immediately dismiss the very inspection state this control
+          depends on being open. pointer-events are opted back in via this
+          component's own .hover-overlay__enter-project rule in styles.css,
+          the same targeted opt-in .hover-overlay__themes li already uses
+          against this card's own pointer-events: none default. */}
+      {isInspected && onEnterProject && (
+        <div
+          className="hover-overlay__enter-project"
+          role="button"
+          tabIndex={0}
+          onClick={(event) => {
+            event.stopPropagation();
+            // Section 6: this control only ever renders while isInspected
+            // is true (see the guard immediately above), which itself is
+            // only ever true on a touch device -- see handleThemeClick's
+            // own comment for why that makes an extra gate unnecessary
+            // here. An explicit "View Project" tap is one of the
+            // enumerated commit interactions, so it gets the same
+            // hapticSelect() a filter/search/theme commit gets.
+            hapticSelect();
+            onEnterProject();
+          }}
+          onKeyDown={handleEnterProjectKeyDown}
+          aria-label="View project"
+        >
+          View Project →
+        </div>
       )}
     </div>
   );

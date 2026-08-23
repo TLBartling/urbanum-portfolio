@@ -4,6 +4,8 @@ import imageMetadata from "./image-metadata.json";
 import Header from "./Header";
 import HoverOverlay from "./HoverOverlay";
 import { navigate } from "./navigation";
+import { useIsMobileUiMode } from "./useIsMobileUiMode";
+import { hapticTap } from "./haptics";
 // Image-delivery helpers (which sized/format variant of an already-known
 // image to request) -- moved to imageOptimization.js (Project Page
 // image-loading polish, Josh review) so ImageViewer.jsx (the Project
@@ -303,6 +305,91 @@ const FILTER_DRAWER_ZOOM_EASE = 0.14;
 // already uses, not a new one invented for this case.
 const FILTER_DRAWER_ZOOM_FLOOR = 0.7;
 
+// Mobile Archive Interaction Pass -- Stage 1 (Mobile Archive Geometry):
+// mobile UI mode's own default camera scale, deliberately separate from
+// CAMERA_ZOOM_MIN/MAX/desktop's own default (see viewportScaleRef and
+// resetCameraToNeutral in App(), both gated on isMobileUiModeRef). The
+// Archive previously opened/reset at CAMERA_ZOOM_MIN (0.8x, the zoom-out
+// floor) on every device -- on mobile this is what the investigation found
+// contributing to "images too small," independent of the header/footer
+// clearance fix below. A conservative value just above CAMERA_NEUTRAL_SCALE
+// (1x): immersed enough to read as a deliberate mobile-native starting
+// point, not so far in that it reads as an arbitrary jump. CAMERA_ZOOM_MIN/
+// MAX are untouched -- a mobile visitor can still pinch/zoom-button all the
+// way out to the same 0.8x floor as desktop if they choose; only where the
+// Archive STARTS (and what a regeneration resets to) changes on mobile.
+const MOBILE_DEFAULT_CAMERA_SCALE = 1.15;
+
+// Mobile Archive Interaction Pass -- Stage 1 (Header/Footer Clearance):
+// the investigation found the Archive's top/bottom clearance on mobile
+// reserved via one shared, ungrounded formula (clamp(vh*0.14, 105, 145) for
+// both edges) even though the real header and the real zoom controls
+// (~44px) are very different sizes -- see getViewportOpeningGeometry's own
+// comment below for the full reasoning. These two fallbacks are ONLY the
+// bootstrap value used for the very first paint, before Header's/App's own
+// ResizeObserver measurements (headerHeightRef/zoomControlsHeightRef, see
+// App()) have reported a real number -- they are not a second guessed
+// formula that governs ongoing layout the way the old shared clearance
+// was. Deliberately close to the real measured sizes so the first paint
+// (before measurement lands) is already close to correct rather than
+// flashing an oversized gap.
+//
+// Mobile Header/Search/Menu Refinement Pass -- Section 1: the header's own
+// real mobile height changed from ~92px to ~132px (12px top padding +
+// .site-header__row1's own new 120px height, see that rule's own comment
+// in styles.css for why) as part of fixing the header's box-height
+// coverage bug -- this fallback is updated to match so the very first
+// paint already reserves the correct clearance instead of a brief
+// undershoot before the real ResizeObserver measurement lands a moment
+// later.
+const MOBILE_HEADER_HEIGHT_FALLBACK_PX = 132;
+const MOBILE_ZOOM_CONTROLS_HEIGHT_FALLBACK_PX = 44;
+
+// Small, deliberate breathing margin added on top of each real measurement
+// -- not a second clearance formula, just a bit of air between the chrome's
+// own measured edge and the Archive composition/clip boundary next to it.
+const MOBILE_HEADER_BREATHING_MARGIN_PX = 8;
+const MOBILE_ZOOM_CONTROLS_BREATHING_MARGIN_PX = 10;
+
+// Mobile Archive Interaction Pass -- Stage 1C (Safe Area): reads the real
+// env(safe-area-inset-*) values via the CSS custom properties styles.css
+// defines on :root (env() itself has no direct JS accessor) -- see
+// --safe-area-inset-top/--safe-area-inset-bottom in styles.css. Falls back
+// to 0 on any browser without safe-area support, or before layout has
+// happened, rather than throwing/NaN-ing the clearance math that consumes
+// this.
+// Mobile Archive Interaction Pass -- Stage 0 (Gesture Correctness
+// Foundation): tap-vs-drag disambiguation thresholds. The investigation
+// found no tap-vs-drag disambiguation existed anywhere in this codebase --
+// every touchend risked becoming a synthetic click purely on the browser's
+// own undocumented heuristic. TAP_MOVEMENT_THRESHOLD_PX is deliberately a
+// little above the ~10px a native touch tap-suppression heuristic
+// typically uses: this is a virtual, transform-driven world (not native-
+// scrolled DOM), so even sub-native-threshold finger movement already
+// imparts real camera velocity (addGalleryVelocity has no minimum-delta
+// gate) -- a slightly larger threshold here is what keeps a slow,
+// deliberate small drag from being misread as a tap.
+const TAP_MOVEMENT_THRESHOLD_PX = 14;
+// A generous cap, not a strict "tap must be fast" rule -- this only rules
+// out an unusually long touch-and-hold-without-moving from being treated
+// the same as a quick, deliberate tap; ordinary taps land far under this.
+const TAP_MAX_DURATION_MS = 600;
+// How long after a pinch gesture ends a stray touchend on the finger(s)
+// that were part of it should still be treated as "part of that pinch
+// ending," not a fresh tap -- short and purposeful, just enough to absorb
+// the moment a lifting finger's own travel happens to look tap-sized on
+// its own.
+const POST_PINCH_TAP_COOLDOWN_MS = 300;
+
+function getSafeAreaInsetPx(customPropertyName) {
+  if (typeof document === "undefined") return 0;
+  const raw = getComputedStyle(document.documentElement).getPropertyValue(
+    customPropertyName,
+  );
+  const parsed = Number.parseFloat(raw);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 // Engine Contract: guaranteedWorldReach -----------------------------------
 //
 // The single spatial promise procedural generation and the render window
@@ -577,7 +664,35 @@ function pickImage(pickerState, orientation, imagePool = DEFAULT_IMAGE_POOL) {
 // Archive, Gallery Renderer -- needs to know header/footer clearance
 // exists as a concept; they only ever receive plain numbers from here.
 // This function knows nothing about images, patterns, distance, or scale.
-function getViewportOpeningGeometry() {
+//
+// Mobile Archive Interaction Pass -- Stage 1 (Mobile Archive Geometry):
+// desktop/tablet's own `isCompactViewport` branch below is completely
+// unchanged -- same formula, same values, same width/height thresholds --
+// this is purely an additive `isMobileUiMode` branch (the canonical mobile
+// UI MODE signal, see useIsMobileUiMode.js -- deliberately NOT
+// isCompactViewport/isTouchDevice) that replaces the old shared "same
+// formula for both edges" mobile reservation.
+//
+// The investigation traced that old formula (clamp(vh*0.14, 105, 145) for
+// BOTH top and bottom) to two real problems: (1) it was never actually
+// derived from the header's own rendered size, so it over-reserved ~15-50px
+// of dead space above the Archive; (2) it reused that same 105-145px
+// reservation for the bottom controls too, even though the real
+// .zoom-controls footprint is only ~44px -- leaving 60-100px of pure dead
+// gap between the Archive's own bottom edge and the controls. Mobile UI
+// mode now ties each edge to its OWN real, measured chrome size
+// (headerHeightPx/zoomControlsHeightPx -- see headerHeightRef/
+// zoomControlsHeightRef in App(), reported via the same ResizeObserver
+// pattern already established for the Filter drawer's own height,
+// onDrawerHeightChange) plus a small breathing margin and the real
+// safe-area inset for whichever edge that inset actually protects, instead
+// of a second guessed formula that can drift from the CSS exactly like the
+// old one did.
+function getViewportOpeningGeometry({
+  isMobileUiMode = false,
+  headerHeightPx = null,
+  zoomControlsHeightPx = null,
+} = {}) {
   const viewportHeight =
     typeof window === "undefined" ? 800 : window.innerHeight;
   const viewportWidth =
@@ -585,18 +700,41 @@ function getViewportOpeningGeometry() {
   const viewportPadding = Math.round(
     Math.min(Math.max(viewportHeight * 0.05, 18), 52),
   );
-  const isCompactViewport = viewportWidth < 1000 || viewportHeight < 760;
-  const headerClearance = Math.round(
-    isCompactViewport
-      ? clamp(viewportHeight * 0.14, 105, 145)
-      : clamp(viewportHeight * 0.1, 95, 125),
-  );
+
+  let headerClearance;
+  let bottomControlClearance;
+
+  if (isMobileUiMode) {
+    const safeAreaTop = getSafeAreaInsetPx("--safe-area-inset-top");
+    const safeAreaBottom = getSafeAreaInsetPx("--safe-area-inset-bottom");
+    const measuredHeaderHeight =
+      headerHeightPx ?? MOBILE_HEADER_HEIGHT_FALLBACK_PX;
+    const measuredZoomControlsHeight =
+      zoomControlsHeightPx ?? MOBILE_ZOOM_CONTROLS_HEIGHT_FALLBACK_PX;
+
+    headerClearance = Math.round(
+      measuredHeaderHeight + MOBILE_HEADER_BREATHING_MARGIN_PX + safeAreaTop,
+    );
+    bottomControlClearance = Math.round(
+      measuredZoomControlsHeight +
+        MOBILE_ZOOM_CONTROLS_BREATHING_MARGIN_PX +
+        safeAreaBottom,
+    );
+  } else {
+    const isCompactViewport = viewportWidth < 1000 || viewportHeight < 760;
+    headerClearance = Math.round(
+      isCompactViewport
+        ? clamp(viewportHeight * 0.14, 105, 145)
+        : clamp(viewportHeight * 0.1, 95, 125),
+    );
+    bottomControlClearance = Math.round(
+      isCompactViewport
+        ? clamp(viewportHeight * 0.14, 105, 145)
+        : clamp(viewportHeight * 0.1, 95, 125),
+    );
+  }
+
   const top = Math.max(viewportPadding, headerClearance);
-  const bottomControlClearance = Math.round(
-    isCompactViewport
-      ? clamp(viewportHeight * 0.14, 105, 145)
-      : clamp(viewportHeight * 0.1, 95, 125),
-  );
   const bottom = Math.max(viewportPadding, bottomControlClearance);
   const height = Math.max(80, viewportHeight - top - bottom);
 
@@ -1931,6 +2069,46 @@ function App() {
   // and Navigator still never read this. Set directly by handleZoomStep
   // below, with a plain, un-eased assignment; no smoothing or inertia.
   //
+  // Mobile Archive Interaction Pass -- Canonical Mobile/Touch Signals: the
+  // LAYOUT/breakpoint signal (see useIsMobileUiMode.js's own comment for
+  // why this is deliberately separate from useIsTouchDevice below). Called
+  // here, early, so its initial value is already available to
+  // viewportScaleRef's own initializer immediately below -- React computes
+  // a component's hooks top-to-bottom within one render, so this hook's
+  // synchronously-computed initial state (see useIsMobileUiMode.js) is
+  // already correct by the time viewportScaleRef reads it, with no extra
+  // effect/ref-sync needed for this one first-paint value.
+  const isMobileUiMode = useIsMobileUiMode();
+  // Mirrors isMobileUiMode into a ref for the same reason
+  // isProjectFilterActiveRef mirrors isProjectFilterActive elsewhere in
+  // this file: getViewportOpeningGeometry/resetCameraToNeutral are called
+  // from regenerateGallery (a useCallback with a `[]` dependency array, so
+  // its closure is never recreated when isMobileUiMode changes) and from a
+  // plain `window.addEventListener("resize", ...)` handler outside React
+  // entirely -- both need the CURRENT value without becoming a dependency
+  // that would force regenerateGallery's identity (and therefore the
+  // gallery-regenerating effect keyed on it) to change every time the
+  // viewport crosses the mobile breakpoint.
+  const isMobileUiModeRef = useRef(isMobileUiMode);
+  useEffect(() => {
+    isMobileUiModeRef.current = isMobileUiMode;
+  }, [isMobileUiMode]);
+  // Mobile Archive Interaction Pass -- Stage 1A (Header Clearance): the
+  // Archive's global <Header> instance reports its own live, measured
+  // rendered height here via the new onHeaderHeightChange prop -- the
+  // exact same ResizeObserver-on-a-DOM-node pattern already established
+  // for the Filter drawer's own height (indexDrawerHeightRef/
+  // onDrawerHeightChange, just below) -- so mobile UI mode's header
+  // clearance (see getViewportOpeningGeometry) always tracks whatever the
+  // header ACTUALLY renders at (idle, scrolled/"is-browsing", or with the
+  // drawer open) rather than a second guessed constant that can drift from
+  // the CSS the way the old shared clearance formula did. Desktop/tablet's
+  // own clearance formula never reads this ref at all -- see
+  // getViewportOpeningGeometry's isMobileUiMode branch.
+  const headerHeightRef = useRef(MOBILE_HEADER_HEIGHT_FALLBACK_PX);
+  const handleHeaderHeightChange = useCallback((height) => {
+    if (height > 0) headerHeightRef.current = height;
+  }, []);
   // Default (client request, polish pass): starts at CAMERA_ZOOM_MIN, not
   // 1 -- the Archive's existing zoom-out floor is now its opening/default
   // state instead of the old untouched-scale baseline. This is the
@@ -1942,7 +2120,16 @@ function App() {
   // Archive's own default scale is, so it was deliberately left alone.
   // CAMERA_ZOOM_MIN/MAX/STEP and FILTER_DRAWER_ZOOM_FLOOR are all
   // unchanged -- only where the Archive's own scale STARTS moved.
-  const viewportScaleRef = useRef(CAMERA_ZOOM_MIN);
+  //
+  // Mobile Archive Interaction Pass -- Stage 1D: mobile UI mode starts (and
+  // resets to, see resetCameraToNeutral below) MOBILE_DEFAULT_CAMERA_SCALE
+  // instead -- desktop's own CAMERA_ZOOM_MIN default is completely
+  // unchanged. isMobileUiMode (not isMobileUiModeRef) is read here since
+  // this only runs once, on this ref's own creation -- the same reasoning
+  // as isMobileUiModeRef's own comment above.
+  const viewportScaleRef = useRef(
+    isMobileUiMode ? MOBILE_DEFAULT_CAMERA_SCALE : CAMERA_ZOOM_MIN,
+  );
   // Camera owns two things total: scale, and one pan correction, on the X
   // axis only. viewportPanXRef is a constant screen-px offset that makes
   // horizontal zoom anchor on the cursor (or, for the buttons, viewport
@@ -1987,6 +2174,16 @@ function App() {
   const focusTimelineRef = useRef(null);
   const focusedIdRef = useRef(null);
   const renderWindowRef = useRef(getGalleryRenderWindow());
+  // Mobile Archive Interaction Pass -- Stage 1B (Bottom Control Clearance):
+  // zoomControlsRef is attached directly to the rendered .zoom-controls
+  // element below (see the JSX); the ResizeObserver effect further down
+  // measures its real height into zoomControlsHeightRef the same way
+  // headerHeightRef/indexDrawerHeightRef are measured -- so mobile UI
+  // mode's bottom clearance always tracks the real control footprint
+  // (~44px) instead of reusing the header's own, much larger, reservation
+  // the way the old shared formula did.
+  const zoomControlsRef = useRef(null);
+  const zoomControlsHeightRef = useRef(MOBILE_ZOOM_CONTROLS_HEIGHT_FALLBACK_PX);
   // Application Layout's own state -- the viewing-window opening's
   // position (top/bottom) and size (height) on the page. Read imperatively
   // here (by extendGalleryIfNeeded and by the Gallery Renderer, both inside
@@ -1995,7 +2192,22 @@ function App() {
   // as real, untransformed marginTop/height on .opening-viewport -- the
   // one element that owns the clip boundary (see OpeningViewport's own
   // comment in the JSX and in styles.css).
-  const openingGeometryRef = useRef(getViewportOpeningGeometry());
+  //
+  // Mobile Archive Interaction Pass -- Stage 1: this initial call runs
+  // before headerHeightRef/zoomControlsHeightRef have anything measured
+  // yet (their own ResizeObservers haven't attached to the DOM at this
+  // point in the very first render), so it deliberately reads their
+  // fallback-seeded .current values -- see MOBILE_HEADER_HEIGHT_FALLBACK_PX/
+  // MOBILE_ZOOM_CONTROLS_HEIGHT_FALLBACK_PX's own comment for why those
+  // fallbacks are chosen close to the real measured sizes rather than a
+  // second guessed formula.
+  const openingGeometryRef = useRef(
+    getViewportOpeningGeometry({
+      isMobileUiMode,
+      headerHeightPx: headerHeightRef.current,
+      zoomControlsHeightPx: zoomControlsHeightRef.current,
+    }),
+  );
   const columnStateRef = useRef(null);
   // Metadata Query Wiring: which image pool the procedural generator
   // (buildGalleryItems/createGalleryBatch/pickImage, all untouched) should
@@ -2070,7 +2282,11 @@ function App() {
     getGalleryRenderWindow(),
   );
   const [openingGeometry, setOpeningGeometry] = useState(() =>
-    getViewportOpeningGeometry(),
+    getViewportOpeningGeometry({
+      isMobileUiMode,
+      headerHeightPx: headerHeightRef.current,
+      zoomControlsHeightPx: zoomControlsHeightRef.current,
+    }),
   );
   const [focusedId, setFocusedId] = useState(null);
   const [focusedImage, setFocusedImage] = useState(null);
@@ -2134,6 +2350,64 @@ function App() {
   useEffect(() => {
     isProjectFilterActiveRef.current = isProjectFilterActive;
   }, [isProjectFilterActive]);
+  // Mobile Archive Interaction Pass -- Stage 0 (Overlay Gesture Guard):
+  // isOverlayActive means "Menu is open OR the mobile Search/discovery
+  // overlay is open" -- see Header.jsx's own onOverlayActiveChange effect,
+  // the one place this state is ever set. Deliberately NOT the desktop
+  // Filter drawer (that already has its own, separate accommodation via
+  // viewportDrawerScaleRef/updateGalleryMotion -- shrinking the
+  // composition to make room rather than needing gestures suppressed
+  // underneath it) and deliberately a NEW callback rather than reusing the
+  // existing onFilterOpenChange/isIndexDrawerOpen pair, since the
+  // investigation found that pair does not reliably fire on every
+  // Menu-open path (only when Filter itself was already open and Menu took
+  // over) -- reusing it here would have inherited that same gap for a
+  // guard that specifically must not have gaps. Mirrored into a ref for the
+  // gesture effect below for the same reason isProjectFilterActiveRef is:
+  // that effect's identity must not change just because an overlay opened
+  // or closed.
+  const [isOverlayActive, setIsOverlayActive] = useState(false);
+  const isOverlayActiveRef = useRef(isOverlayActive);
+  useEffect(() => {
+    isOverlayActiveRef.current = isOverlayActive;
+  }, [isOverlayActive]);
+  // Mobile Archive Interaction Pass -- Stage 5 (Touch-Native Image
+  // Inspection): which single gallery tile (if any) is currently showing
+  // its HoverOverlay metadata card in response to a genuine tap, on a
+  // TOUCH CAPABILITY device -- see isTouchDevice below, the signal this
+  // feature is gated on (NOT isMobileUiMode: a touch laptop in a wide
+  // viewport should still get tap inspection, and mobile UI mode itself
+  // says nothing about whether a pointer can hover, per the canonical
+  // signal split this pass establishes throughout). Deliberately a new,
+  // purpose-built id -- not a reuse of the dead hoveredGalleryItemId
+  // (mouse-only, see its own comment below) or the disabled
+  // focusedId/imageFocusEnabled zoom system (a different, unrelated
+  // feature that happens to also be gated per-tile) -- because neither
+  // already means "this tile's metadata card is being read," and forcing
+  // either to also mean that would be exactly the kind of signal-conflation
+  // this pass's canonical-signals section warns against.
+  //
+  // Only one tile is ever inspected at a time (a single id, not a Set):
+  // tapping a second tile is a dismiss-the-first/inspect-the-second action
+  // (see handleGalleryTileTap below), not a multi-card browsing mode.
+  // Mirrored into a ref for the gesture effect below (pan-start/pinch-start
+  // dismissal, and background-tap dismissal inside handleTouchEnd) for the
+  // same reason isProjectFilterActiveRef/isOverlayActiveRef already are:
+  // that effect's own identity must not change just because a tile was
+  // tapped.
+  const [inspectedItemId, setInspectedItemId] = useState(null);
+  const inspectedItemIdRef = useRef(inspectedItemId);
+  useEffect(() => {
+    inspectedItemIdRef.current = inspectedItemId;
+  }, [inspectedItemId]);
+  // Mobile Archive Interaction Pass -- Stage 5: opening either overlay
+  // (Menu or the mobile Search/discovery overlay -- the same OR
+  // isOverlayActive above already tracks) dismisses any open inspection
+  // card, so a visitor never returns from Search/Menu to find a stale card
+  // still up over an image they can no longer see clearly.
+  useEffect(() => {
+    if (isOverlayActive) setInspectedItemId(null);
+  }, [isOverlayActive]);
   // The Project-filtered row's own image set: queryArchive is a pure,
   // side-effect-free function (see metadataQueryEngine.js's own contract
   // comment) run here a second time against the exact same combined query
@@ -2269,6 +2543,37 @@ function App() {
     setHoveredGalleryItemId(null);
   }, []);
 
+  // Mobile Archive Interaction Pass -- Stage 5 (Touch-Native Image
+  // Inspection): the touch-only replacement for this tile's own onClick
+  // (see the gallery-image-wrapper render below, gated on isTouchDevice) --
+  // a genuine tap (already disambiguated from a drag/pan by Stage 0's own
+  // handleTouchEnd, the only thing that lets a click reach this handler at
+  // all on a touch device) reveals this tile's metadata card instead of
+  // immediately navigating, even for a Project-linked image. This is the
+  // approved hybrid design: tap inspects, in place; entering the Project
+  // is a distinct, explicit control (the "View Project" control rendered
+  // inside HoverOverlay itself, wired to handleProjectRowImageClick -- the
+  // exact same fade-then-navigate function the Project Filter Row already
+  // uses, reused rather than a third copy of that sequence) -- never a
+  // second identical tap on the same tile. Tapping the tile that is
+  // ALREADY inspected again is the dismiss gesture (a plain toggle),
+  // mirroring how a background tap or a different tile's tap already
+  // dismiss it (see handleTouchEnd/handleTouchMove/handleTouchStart's own
+  // Stage 5 additions).
+  const handleGalleryTileTap = useCallback((itemId) => {
+    // Mobile Header/Search/Menu Refinement Pass -- Section 6 (Haptics): a
+    // genuine inspection tap gets a single, subtle tick -- but only on the
+    // tap that OPENS the card, never the second tap that dismisses it (a
+    // plain toggle back to nothing shouldn't buzz). inspectedItemIdRef is
+    // read here, before the state update is scheduled, rather than inside
+    // the setInspectedItemId updater itself -- keeping the updater a pure
+    // function of its previous state, with the one-time side effect
+    // decided from the ref snapshot of what's committed right now.
+    const isOpening = inspectedItemIdRef.current !== itemId;
+    setInspectedItemId((current) => (current === itemId ? null : itemId));
+    if (isOpening) hapticTap();
+  }, []);
+
   // Shared regeneration sequence -- used on mount, on window resize, and
   // (see handleLogoClick below) when the logo is clicked on the homepage.
   // REFACTORED (extension-pipeline fix): buildGalleryItems no longer
@@ -2282,7 +2587,11 @@ function App() {
     galleryMovementRef.current.distance = 0;
     resetCameraToNeutral();
     galleryGenerationRef.current += 1;
-    const nextOpeningGeometry = getViewportOpeningGeometry();
+    const nextOpeningGeometry = getViewportOpeningGeometry({
+      isMobileUiMode: isMobileUiModeRef.current,
+      headerHeightPx: headerHeightRef.current,
+      zoomControlsHeightPx: zoomControlsHeightRef.current,
+    });
     openingGeometryRef.current = nextOpeningGeometry;
     setOpeningGeometry(nextOpeningGeometry);
     renderWindowRef.current = getGalleryRenderWindow(0);
@@ -2356,6 +2665,31 @@ function App() {
     };
   }, [regenerateGallery]);
 
+  // Mobile Archive Interaction Pass -- Stage 1B (Bottom Control Clearance):
+  // measures .zoom-controls' own real rendered height (see zoomControlsRef
+  // in the JSX below) into zoomControlsHeightRef, the same ResizeObserver-
+  // on-a-DOM-node pattern Header.jsx already uses for the Filter drawer
+  // (and now the header itself, see handleHeaderHeightChange above) --
+  // mount-only ([] deps), since .zoom-controls' own node identity never
+  // changes for the life of this component. Read by
+  // getViewportOpeningGeometry's isMobileUiMode branch only; desktop/
+  // tablet's clearance formula never reads this ref.
+  useEffect(() => {
+    const node = zoomControlsRef.current;
+    if (!node || typeof ResizeObserver === "undefined") return undefined;
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const height = entry.contentRect.height;
+      if (height > 0) zoomControlsHeightRef.current = height;
+    });
+
+    observer.observe(node);
+
+    return () => observer.disconnect();
+  }, []);
+
   const getImageWrapper = useCallback((imageId) => {
     return trackRef.current?.querySelector(`[data-image-id="${imageId}"]`);
   }, []);
@@ -2418,8 +2752,17 @@ function App() {
   // old 1.0 baseline. Deliberately not CAMERA_NEUTRAL_SCALE, for the same
   // reason viewportScaleRef's own initializer isn't -- see that ref's
   // comment.
+  //
+  // Mobile Archive Interaction Pass -- Stage 1D: mirrors viewportScaleRef's
+  // own initializer -- mobile UI mode resets to MOBILE_DEFAULT_CAMERA_SCALE
+  // instead of CAMERA_ZOOM_MIN, read via isMobileUiModeRef (not the
+  // isMobileUiMode hook value directly) since this callback has a `[]`
+  // dependency array and must not go stale -- see isMobileUiModeRef's own
+  // comment above for why.
   const resetCameraToNeutral = useCallback(() => {
-    viewportScaleRef.current = CAMERA_ZOOM_MIN;
+    viewportScaleRef.current = isMobileUiModeRef.current
+      ? MOBILE_DEFAULT_CAMERA_SCALE
+      : CAMERA_ZOOM_MIN;
     viewportPanXRef.current = CAMERA_NEUTRAL_PAN;
   }, []);
 
@@ -3096,6 +3439,28 @@ function App() {
     // cannot drift from small per-frame rounding error the way an
     // accumulating approach could over a long hold.
     let pinchState = null;
+    // Mobile Archive Interaction Pass -- Stage 0 (Gesture Correctness
+    // Foundation): tap-vs-drag disambiguation state, same closure-scoped-
+    // let lifetime as touchPoint/pinchState immediately above.
+    // touchGestureStartPoint/touchGestureStartTime capture where and when
+    // the CURRENT single-finger touch sequence began; touchTotalMovement
+    // accumulates real finger travel every touchmove frame (not just the
+    // most recent frame's delta), so a slow, deliberate drag -- which can
+    // look "small" moment-to-moment -- is still correctly recognized as a
+    // drag over its full duration. null/0 whenever there is no live
+    // single-finger tap candidate (no touch down, mid-pinch, or already
+    // resolved as a drag) -- see handleTouchStart/handleTouchMove/
+    // handleTouchEnd below, the only places these are set.
+    let touchGestureStartPoint = null;
+    let touchGestureStartTime = 0;
+    let touchTotalMovement = 0;
+    // Set the instant a pinch gesture (pinchState above) ends -- a
+    // touchend landing before this timestamp is treated as still part of
+    // that pinch ending, never as a fresh tap, regardless of how little
+    // that specific lifting finger happened to travel on its own. See
+    // handleTouchStart/handleTouchEnd below, the two places this is
+    // set/read.
+    let pinchCooldownUntil = 0;
     // Browsing/Exploration mode: pending "settle" timer, same lifetime
     // scope as animationFrame/touchPoint above (this whole effect body is
     // recreated only when galleryItems changes -- see this effect's own
@@ -3376,7 +3741,16 @@ function App() {
       // fighting over the same wheel event. Reads a ref, not state, so
       // this effect's own dependency array ([galleryItems], unchanged)
       // never needs Project-filter state added to it.
-      if (isProjectFilterActiveRef.current) return;
+      //
+      // Mobile Archive Interaction Pass -- Stage 0 (Overlay Gesture
+      // Guard): same early-return, now also while Menu or the mobile
+      // Search/discovery overlay is open (isOverlayActiveRef) -- the
+      // Archive must not respond to input happening underneath either
+      // overlay. See isOverlayActiveRef's own comment for why this is a
+      // dedicated new signal rather than reusing isIndexDrawerOpen.
+      if (isProjectFilterActiveRef.current || isOverlayActiveRef.current) {
+        return;
+      }
 
       // preventDefault unconditionally, before branching -- this is what
       // stops the browser's own native page-zoom, which Chrome/Firefox/
@@ -3422,19 +3796,37 @@ function App() {
       (touches[0].clientX + touches[1].clientX) / 2;
 
     const handleTouchStart = (event) => {
-      // Mobile Baseline Pass -- Task 3: touchstart fires again the instant
-      // the number of active touches changes (a finger lands or lifts),
-      // even mid-gesture -- not just for the very first touch of a new
-      // interaction. That guarantee is what this branch relies on: the
-      // moment a second finger lands, pinchState is (re)initialized from
-      // the CURRENT two-finger geometry, and the moment either finger
-      // lifts back down to one (or zero), pinchState is cleared and
-      // touchPoint is reset to wherever the remaining finger actually is
-      // right now -- never extrapolated from stale pre-pinch coordinates.
-      // This is exactly what keeps a pinch<->pan transition from jumping:
-      // each mode always restarts its own tracking from the gesture's
-      // real, current geometry rather than continuing an old baseline.
+      // Project Filter Composition: same guard handleWheel/handleTouchMove
+      // already have -- Stage 0 adds it HERE too (previously missing on
+      // this one handler; harmless in practice since it only ever wrote
+      // closure state and never called preventDefault, but every touch
+      // handler now steps aside consistently rather than three of four
+      // doing so). Overlay guard (Menu/mobile Search open) included for
+      // the same reason -- see isOverlayActiveRef's own comment.
+      if (isProjectFilterActiveRef.current || isOverlayActiveRef.current) {
+        return;
+      }
+
+      // Mobile Baseline Pass -- Task 3: the moment a second finger lands,
+      // pinchState is (re)initialized from the CURRENT two-finger
+      // geometry. A second finger landing mid-gesture also means whatever
+      // single-finger tap candidate was in progress is no longer a tap --
+      // clear its tracking so a stray touchend later (see handleTouchEnd
+      // below) can never mistake this for a completed single-finger
+      // gesture.
       if (event.touches.length === 2) {
+        // Mobile Archive Interaction Pass -- Stage 5: a second finger
+        // landing is an unambiguous pinch-start -- dismiss any open
+        // inspection card immediately rather than waiting for
+        // handleTouchMove's own pinch branch to actually change scale, so
+        // the card never lingers, even briefly, over a photo that's about
+        // to be zoomed. inspectedItemIdRef (not the isInspected prop this
+        // ref ultimately drives) is what this closure-scoped handler can
+        // read without becoming a dependency of the effect itself -- see
+        // its own declaration for why.
+        if (inspectedItemIdRef.current !== null) {
+          setInspectedItemId(null);
+        }
         touchPoint = null;
         pinchState = {
           // Math.max(..., 1): guards the division in handleTouchMove below
@@ -3448,12 +3840,28 @@ function App() {
           distance: Math.max(getTouchDistance(event.touches), 1),
           startScale: viewportScaleRef.current,
         };
+        touchGestureStartPoint = null;
+        touchTotalMovement = 0;
         return;
       }
 
+      // Mobile Archive Interaction Pass -- Stage 0 correction: a pinch
+      // ending because ONE of its two fingers lifts (not both) is a
+      // touchend, not a touchstart -- per the DOM Touch Events spec,
+      // touchstart only ever fires for a NEW touch point touching down,
+      // never for one lifting. That transition is now handled by
+      // handleTouchEnd below, which re-derives pinchState/touchPoint from
+      // whatever touches actually remain rather than waiting for a fresh
+      // touchstart that may never come. This branch therefore only ever
+      // runs for a genuinely NEW single-finger touch sequence -- start
+      // fresh tap-vs-drag tracking here alongside the existing pan
+      // tracking.
       pinchState = null;
       const touch = event.touches[0];
       touchPoint = touch ? { x: touch.clientX, y: touch.clientY } : null;
+      touchGestureStartPoint = touchPoint;
+      touchGestureStartTime = performance.now();
+      touchTotalMovement = 0;
     };
 
     const handleTouchMove = (event) => {
@@ -3462,7 +3870,14 @@ function App() {
       // ProjectFilterRow's own overflow-x container already works with no
       // JS needed, so this global handler must not preventDefault/consume
       // the gesture out from under it.
-      if (isProjectFilterActiveRef.current) return;
+      //
+      // Mobile Archive Interaction Pass -- Stage 0 (Overlay Gesture
+      // Guard): same early-return, now also while Menu or the mobile
+      // Search/discovery overlay is open -- see isOverlayActiveRef's own
+      // comment.
+      if (isProjectFilterActiveRef.current || isOverlayActiveRef.current) {
+        return;
+      }
 
       // Mobile Baseline Pass -- Task 3: two fingers down and a live
       // pinchState (set by handleTouchStart above the instant the second
@@ -3504,10 +3919,152 @@ function App() {
 
       event.preventDefault();
 
+      // Mobile Archive Interaction Pass -- Stage 5: pan-start dismissal --
+      // the instant a single-finger move is actually being applied as
+      // gallery pan (below), any open inspection card is dismissed. This
+      // fires on every frame a pan is in progress, not just the first, but
+      // setInspectedItemId is a no-op once the ref is already null (React
+      // bails out on an identical value), so this is not a meaningfully
+      // repeated write -- it just guarantees the very first real pan frame
+      // clears it, whichever frame that turns out to be.
+      if (inspectedItemIdRef.current !== null) {
+        setInspectedItemId(null);
+      }
+
       const deltaX = touchPoint.x - touch.clientX;
       const deltaY = touchPoint.y - touch.clientY;
       touchPoint = { x: touch.clientX, y: touch.clientY };
+      // Mobile Archive Interaction Pass -- Stage 0: accumulates REAL
+      // finger travel across every frame of this touch sequence, not just
+      // this frame's own delta -- what handleTouchEnd below compares
+      // against TAP_MOVEMENT_THRESHOLD_PX to decide whether the sequence
+      // that's about to end was a tap or a drag. Math.hypot of the exact
+      // same per-frame delta already being applied as pan velocity below,
+      // so this never diverges from what the visitor's finger actually
+      // did.
+      touchTotalMovement += Math.hypot(deltaX, deltaY);
       addGalleryVelocity(deltaX + deltaY);
+    };
+
+    // Mobile Archive Interaction Pass -- Stage 0 (Gesture Correctness
+    // Foundation): the load-bearing gap the investigation found -- no
+    // touchend/touchcancel listener existed anywhere in this codebase, so
+    // tap-vs-drag disambiguation relied entirely on the browser's own
+    // undocumented synthetic-click heuristic. This is the anchor point for
+    // that disambiguation, for the post-pinch stray-tap guard, and (in a
+    // later stage) for touch inspection's own "was this a genuine tap"
+    // signal.
+    const handleTouchEnd = (event) => {
+      // Same guards as every other touch handler above -- see their own
+      // comments. While ProjectFilterRow or an overlay is active, this
+      // handler must not suppress/consume anything either, so native
+      // touch scrolling (ProjectFilterRow) or an overlay's own touch
+      // handling is never interfered with.
+      if (isProjectFilterActiveRef.current || isOverlayActiveRef.current) {
+        return;
+      }
+
+      // event.touches (NOT event.changedTouches) is exactly the set of
+      // touches still down AFTER this lift -- what decides whether this
+      // was the pinch's last finger, its second-to-last, or an ordinary
+      // single-finger release.
+      const remainingTouches = event.touches;
+
+      if (pinchState) {
+        // A pinch is ending -- start the post-pinch cooldown (see
+        // POST_PINCH_TAP_COOLDOWN_MS's own comment) so a stray click can't
+        // fire on whatever image happens to sit under the lifting finger,
+        // and clear pinch tracking. If exactly one finger remains, resume
+        // single-finger pan tracking from THAT finger's current, real
+        // position -- there is no pre-pinch touchPoint to fall back to
+        // (it was cleared the instant this became a pinch, see
+        // handleTouchStart's 2-finger branch), and extrapolating from a
+        // stale position is exactly what would make the pinch-to-pan
+        // handoff jump. This sequence is never a tap candidate -- it
+        // included a pinch.
+        pinchState = null;
+        pinchCooldownUntil = performance.now() + POST_PINCH_TAP_COOLDOWN_MS;
+
+        if (remainingTouches.length === 1) {
+          const touch = remainingTouches[0];
+          touchPoint = { x: touch.clientX, y: touch.clientY };
+        } else {
+          touchPoint = null;
+        }
+        touchGestureStartPoint = null;
+        touchTotalMovement = 0;
+        return;
+      }
+
+      if (remainingTouches.length > 0) {
+        // A finger lifted but this wasn't a pinch and at least one finger
+        // is still down -- nothing to evaluate as a tap yet; leave the
+        // remaining finger's own pan tracking untouched.
+        return;
+      }
+
+      // Genuine end of a single-finger touch sequence that was never part
+      // of a pinch. A tap is recognized only when movement stayed under
+      // the threshold, the sequence had a real start point (guards
+      // against an already-invalidated sequence -- e.g. one that started
+      // as a 2-finger touch and never got its own single-finger start),
+      // it wasn't excessively long, and it isn't still inside the
+      // post-pinch cooldown from a DIFFERENT very recent pinch on this
+      // same continued interaction.
+      const withinPostPinchCooldown = performance.now() < pinchCooldownUntil;
+      const isGenuineTap =
+        !withinPostPinchCooldown &&
+        touchGestureStartPoint !== null &&
+        touchTotalMovement <= TAP_MOVEMENT_THRESHOLD_PX &&
+        performance.now() - touchGestureStartTime <= TAP_MAX_DURATION_MS;
+
+      if (!isGenuineTap) {
+        // This was a drag (or a stray post-pinch release) -- suppress the
+        // browser's own synthetic click that would otherwise follow this
+        // touchend, rather than relying on the browser's own tap-
+        // suppression heuristic (unreliable here -- see
+        // TAP_MOVEMENT_THRESHOLD_PX's own comment on why this is a
+        // virtual, transform-driven world, not native-scrolled DOM).
+        // preventDefault on touchend is what stops that synthetic click
+        // from ever being dispatched.
+        event.preventDefault();
+      } else if (inspectedItemIdRef.current !== null) {
+        // Mobile Archive Interaction Pass -- Stage 5: background-tap
+        // dismissal. A genuine tap that DIDN'T land on any gallery tile --
+        // empty gallery canvas, the zoom controls, anywhere else -- closes
+        // an open inspection card. event.target is a TouchEvent's original
+        // touch-start target (unlike a MouseEvent, it does not follow the
+        // finger), which is exactly "where this tap actually began."
+        // Tapping the tile that's already inspected, a different tile, or
+        // the "View Project" control inside the inspected card's own
+        // HoverOverlay all still land inside .gallery-image-wrapper, so
+        // none of those are mistaken for a background tap here -- those
+        // are handled by handleGalleryTileTap/the control's own onClick,
+        // not here.
+        const tappedGalleryTile = event.target?.closest?.(
+          ".gallery-image-wrapper",
+        );
+        if (!tappedGalleryTile) {
+          setInspectedItemId(null);
+        }
+      }
+
+      touchPoint = null;
+      touchGestureStartPoint = null;
+      touchTotalMovement = 0;
+    };
+
+    // A touchcancel means the browser itself aborted this touch sequence
+    // (an incoming system gesture, an OS alert, the tab losing visibility
+    // mid-touch, etc.) -- no synthetic click follows a cancel, so there is
+    // nothing to suppress; this only resets tracking to a clean slate so a
+    // future touchstart never inherits stale state from an aborted
+    // sequence.
+    const handleTouchCancel = () => {
+      pinchState = null;
+      touchPoint = null;
+      touchGestureStartPoint = null;
+      touchTotalMovement = 0;
     };
 
     updateGalleryMotion();
@@ -3516,6 +4073,15 @@ function App() {
     window.addEventListener("wheel", handleWheel, { passive: false });
     window.addEventListener("touchstart", handleTouchStart, { passive: true });
     window.addEventListener("touchmove", handleTouchMove, { passive: false });
+    // Mobile Archive Interaction Pass -- Stage 0: touchend must be
+    // non-passive -- it conditionally calls event.preventDefault() above
+    // to suppress the synthetic click that would otherwise follow a
+    // drag/stray-post-pinch touchend. touchcancel never calls
+    // preventDefault, so it stays passive like touchstart.
+    window.addEventListener("touchend", handleTouchEnd, { passive: false });
+    window.addEventListener("touchcancel", handleTouchCancel, {
+      passive: true,
+    });
 
     return () => {
       focusTimelineRef.current?.kill();
@@ -3524,6 +4090,8 @@ function App() {
       window.removeEventListener("wheel", handleWheel);
       window.removeEventListener("touchstart", handleTouchStart);
       window.removeEventListener("touchmove", handleTouchMove);
+      window.removeEventListener("touchend", handleTouchEnd);
+      window.removeEventListener("touchcancel", handleTouchCancel);
     };
   }, [galleryItems]);
 
@@ -3626,6 +4194,8 @@ function App() {
         onFilterOpenChange={setIsIndexDrawerOpen}
         onFilterChange={handleFilterChange}
         onDrawerHeightChange={handleDrawerHeightChange}
+        onHeaderHeightChange={handleHeaderHeightChange}
+        onOverlayActiveChange={setIsOverlayActive}
         onLogoClick={handleLogoClick}
         onSearchSubmit={handleSearchSubmit}
         onSearchClear={handleSearchClear}
@@ -3777,29 +4347,53 @@ function App() {
                   data-pattern-index={item.patternIndex}
                   className={`gallery-image-wrapper${
                     isInteractive ? "" : " gallery-image-wrapper--disabled"
+                  }${
+                    // Mobile Archive Interaction Pass -- Stage 5: the one
+                    // class the JS-driven touch inspection state adds --
+                    // purely presentational (see the matching
+                    // :not(.is-scrolling) .gallery-image-wrapper--inspected
+                    // rule in styles.css, mirroring the existing plain
+                    // :hover rule above it), never set on a non-touch
+                    // device since inspectedItemId itself is only ever
+                    // written by the touch-only handleGalleryTileTap below.
+                    isTouchDevice && inspectedItemId === item.id
+                      ? " gallery-image-wrapper--inspected"
+                      : ""
                   }`}
                   onClick={
-                    isProjectLinked
-                      ? () => {
-                          // Site-wide fade transition system: see
-                          // isEnteringProject's own comment above. Guarded
-                          // against re-entry so a second click during the
-                          // fade (or on a different tile) can't stack a
-                          // second timeout/navigation on top of the first.
-                          if (isEnteringProject) return;
-                          setIsEnteringProject(true);
-                          enterProjectTimeoutRef.current = window.setTimeout(
-                            () => {
-                              navigate(
-                                `/projects/${item.project}?image=${item.archiveNumber}`,
-                              );
-                            },
-                            GALLERY_FADE_MS,
-                          );
-                        }
-                      : imageFocusEnabled
-                        ? () => handleImageClick(item.id)
-                        : undefined
+                    // Mobile Archive Interaction Pass -- Stage 5: on a
+                    // TOUCH CAPABILITY device, every tile's tap (Project-
+                    // linked or not) goes through handleGalleryTileTap
+                    // first -- inspect/dismiss, never an immediate
+                    // navigation -- per the approved hybrid design (see
+                    // that handler's own comment). This click only ever
+                    // fires from a genuine tap to begin with: Stage 0's
+                    // handleTouchEnd suppresses the synthetic click for
+                    // anything that wasn't one. Desktop's own click
+                    // behavior (below) is completely unchanged.
+                    isTouchDevice
+                      ? () => handleGalleryTileTap(item.id)
+                      : isProjectLinked
+                        ? () => {
+                            // Site-wide fade transition system: see
+                            // isEnteringProject's own comment above. Guarded
+                            // against re-entry so a second click during the
+                            // fade (or on a different tile) can't stack a
+                            // second timeout/navigation on top of the first.
+                            if (isEnteringProject) return;
+                            setIsEnteringProject(true);
+                            enterProjectTimeoutRef.current = window.setTimeout(
+                              () => {
+                                navigate(
+                                  `/projects/${item.project}?image=${item.archiveNumber}`,
+                                );
+                              },
+                              GALLERY_FADE_MS,
+                            );
+                          }
+                        : imageFocusEnabled
+                          ? () => handleImageClick(item.id)
+                          : undefined
                   }
                   onMouseEnter={() => handleGalleryImageHoverStart(item.id)}
                   onMouseLeave={handleGalleryImageHoverEnd}
@@ -3814,6 +4408,16 @@ function App() {
                     !isProjectLinked && imageFocusEnabled
                       ? focusedId === item.id
                       : undefined
+                  }
+                  // Mobile Archive Interaction Pass -- Stage 5: exposes
+                  // this tile's own inspected/dismissed state to assistive
+                  // tech on touch devices, mirroring aria-pressed's own
+                  // "only set this attribute when it's actually meaningful
+                  // for this tile" pattern immediately above -- undefined
+                  // (i.e. the attribute is simply absent) on every desktop
+                  // tile, exactly as before this stage.
+                  aria-expanded={
+                    isTouchDevice ? inspectedItemId === item.id : undefined
                   }
                   tabIndex={isInteractive ? 0 : -1}
                   style={{
@@ -3927,6 +4531,33 @@ function App() {
                     // ever prevents a Discovery tile from showing a theme --
                     // see HoverOverlay's own comment.
                     discovery={item.layout.discovery}
+                    // Mobile Archive Interaction Pass -- Stage 5: isInspected
+                    // is this tile's own touch-driven visibility signal --
+                    // the JS equivalent of the plain CSS :hover this same
+                    // component already renders under on desktop (see
+                    // styles.css's matching --inspected rule) -- always
+                    // false on a non-touch device, since inspectedItemId
+                    // itself is never written there. Passed down so
+                    // HoverOverlay can decide, itself, whether it's
+                    // currently meaningful to expose to assistive tech (its
+                    // own aria-hidden) and whether to render the "View
+                    // Project" control below -- this component still holds
+                    // no state and performs no gesture logic of its own.
+                    isInspected={isTouchDevice && inspectedItemId === item.id}
+                    // Stage 5 (hybrid touch-inspection design): only
+                    // Project-linked tiles get an onEnterProject callback at
+                    // all -- undefined for every other tile, which is what
+                    // tells HoverOverlay not to render the control in the
+                    // first place (see its own prop default/guard).
+                    // handleProjectRowImageClick is the exact same
+                    // fade-then-navigate function the Project Filter Row
+                    // already calls -- reused verbatim, not a second "enter
+                    // a project" implementation.
+                    onEnterProject={
+                      isProjectLinked
+                        ? () => handleProjectRowImageClick(item)
+                        : undefined
+                    }
                   />
                 </button>
               );
@@ -3972,12 +4603,25 @@ function App() {
         </div>
       </div>
 
-      <div className="zoom-controls" aria-label="Zoom controls">
+      <div
+        className="zoom-controls"
+        aria-label="Zoom controls"
+        ref={zoomControlsRef}
+      >
+        {/* Mobile Header/Search/Menu Refinement Pass -- Section 6: haptics
+            on the zoom buttons are gated on isTouchDevice, exactly the same
+            capability signal handleGalleryTileTap's own touch-only wiring
+            above already uses -- "Do NOT apply haptics on desktop/mouse
+            interaction" means these must stay silent for every mouse click
+            on a non-touch device, regardless of viewport width. */}
         <button
           type="button"
           className="zoom-control"
           aria-label="Zoom out"
-          onClick={() => handleZoomStep(-CAMERA_ZOOM_STEP)}
+          onClick={() => {
+            handleZoomStep(-CAMERA_ZOOM_STEP);
+            if (isTouchDevice) hapticTap();
+          }}
         >
           -
         </button>
@@ -3985,7 +4629,10 @@ function App() {
           type="button"
           className="zoom-control"
           aria-label="Zoom in"
-          onClick={() => handleZoomStep(CAMERA_ZOOM_STEP)}
+          onClick={() => {
+            handleZoomStep(CAMERA_ZOOM_STEP);
+            if (isTouchDevice) hapticTap();
+          }}
         >
           +
         </button>

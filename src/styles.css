@@ -122,6 +122,19 @@
      (opening direction only); closing keeps its own, brisker pace, the
      way an archival drawer eases open slowly but shuts more directly. */
   --reveal-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Mobile Archive Interaction Pass -- Stage 1C (Safe Area): env() has no
+     direct JS accessor, so App.jsx's getSafeAreaInsetPx() reads these two
+     custom properties via getComputedStyle instead -- this is the one
+     place either inset is defined; every consumer (mobile UI mode's
+     Archive top/bottom clearance in App.jsx, .site-header's own top
+     padding, .zoom-controls' own bottom offset, both below) reads from
+     here rather than repeating env() with its own fallback. The 0px
+     fallback means a browser/device with no notch or home-indicator gets
+     exactly the same layout as before this pass -- these are additive
+     only where a real inset exists. */
+  --safe-area-inset-top: env(safe-area-inset-top, 0px);
+  --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 * {
@@ -1107,6 +1120,19 @@ body {
   opacity: 1;
 }
 
+/* Mobile Archive Interaction Pass -- Stage 5 (Touch-Native Image
+   Inspection): the JS-driven equivalent of the plain :hover rule
+   immediately above, for touch devices (App.jsx applies
+   .gallery-image-wrapper--inspected only when isTouchDevice is true --
+   see that rule's own comment at the render call site). Same property,
+   same :not(.is-scrolling) guard, same transition (inherited from
+   .hover-overlay's own base rule) -- this card fades in/out identically
+   either way; only what decides WHEN it's visible differs (a tap's
+   resulting state vs. a live pointer position). */
+.gallery-track:not(.is-scrolling) .gallery-image-wrapper--inspected .hover-overlay {
+  opacity: 1;
+}
+
 /* Archive number: typography, font-size scaling, and formatting are exactly
    as before this pass -- unchanged. Only its positioning mechanism changed,
    to fix the composition-centering bias above: rather than being
@@ -1352,6 +1378,48 @@ body {
 
 .hover-overlay__themes li:hover {
   opacity: 0.75;
+}
+
+/* Mobile Archive Interaction Pass -- Stage 5: the explicit "enter the
+   Project" control, only ever present while a Project-linked tile is
+   touch-inspected (see HoverOverlay.jsx's own isInspected && onEnterProject
+   guard). A <div role="button">, not a <button> -- see that component's
+   own render comment for why a real nested <button> can't be used here.
+   Sits with the archive number/themes as one more member of the same
+   flex column .hover-overlay already lays out (gap: 0.35rem there provides
+   its own spacing above this), rather than being independently positioned.
+   pointer-events: auto is the same targeted opt-in
+   .hover-overlay__themes li already uses against this card's own
+   pointer-events: none default (see .hover-overlay above) -- required for
+   this to be tappable at all, since it renders only while the touch-only
+   isInspected is true. min-height/padding give it a real touch target
+   (44px, the standard minimum) without the surrounding card needing any
+   layout change of its own. */
+.hover-overlay__enter-project {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 0.75rem;
+  margin-top: 0.15rem;
+  pointer-events: auto;
+  cursor: pointer;
+
+  font-family: "GT America", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 0.68rem;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #1a1a1a;
+  border: 1px solid rgba(26, 26, 26, 0.28);
+  transition: opacity 0.25s ease, border-color 0.25s ease;
+}
+
+.hover-overlay__enter-project:hover,
+.hover-overlay__enter-project:focus-visible {
+  opacity: 0.7;
+  border-color: rgba(26, 26, 26, 0.5);
 }
 
 .gallery-overlay {
@@ -1677,17 +1745,104 @@ html.is-browsing .zoom-controls {
 @media (max-width: 640px) {
 .site-header{
     min-height:60px;
-    padding:12px 20px 0;
+    /* Mobile Archive Interaction Pass -- Stage 1C (Safe Area): adds the
+       real top inset (a notch/status-bar cutout) on top of the existing
+       12px, rather than replacing it -- on a device with no such inset
+       this is a no-op (the custom property falls back to 0px, see :root),
+       byte-identical to the padding this rule already had. */
+    padding: calc(12px + var(--safe-area-inset-top)) 20px 0;
 }
+
+  /* Mobile Header/Search/Menu Refinement Pass -- Section 3/5 (stacking-
+     context fix, found during this pass's own Playwright verification):
+     .site-header is `position: fixed` with its own `z-index: 1200` (base
+     rule, further up this file), which makes it establish its OWN
+     stacking context -- every descendant's z-index (including
+     .mobile-search-overlay/.mobile-menu-overlay's own 2500, below) is only
+     ever compared against OTHER CHILDREN of .site-header, never against
+     .site-header's siblings directly. .zoom-controls sits outside
+     .site-header (a sibling under .app-shell, see App.jsx's own render)
+     and carries that exact same z-index: 1200 -- tied with .site-header's
+     own stacking level, so the tie breaks on DOM order, and
+     .zoom-controls (rendered later in the tree) was painting straight
+     over BOTH mobile overlays and remaining tappable underneath them the
+     whole time, confirmed via direct elementFromPoint verification. This
+     class -- applied only while mobileOverlay is non-null (see
+     Header.jsx's own className) -- raises .site-header's own stacking
+     level above .zoom-controls' fixed 1200 for exactly as long as either
+     overlay is actually open, closing that gap without changing anything
+     about the header's normal collapsed-state stacking (still 1200,
+     unaffected) or touching .zoom-controls/desktop at all. */
+  .site-header--mobile-overlay-active {
+    z-index: 2600;
+  }
+
+  /* Mobile Header/Search/Menu Refinement Pass -- Section 1 (Opaque, Stable
+     Mobile Header): row1's own base rule (further up this file) sizes its
+     box to exactly the logo/brand row's own footprint (`height: clamp(80px,
+     7vw, 102px)`) -- correct on desktop, where .top-menu sits inside that
+     same box. On mobile, .top-menu is shifted a further 60px down via its
+     own `top: 60px` relative offset (the "Mobile nav fix" rule just below)
+     without ever growing row1's own flow height to match -- `position:
+     relative` reserves no extra space for an offset like that -- so at
+     these widths SEARCH/[hamburger] were rendering measurably below row1's
+     own box, outside .site-header's own painted background entirely,
+     directly over the Archive imagery beneath. That is the reported
+     "transparent header" bug: the header's background color is already
+     solid at every breakpoint (see .site-header above, and
+     .site-header--framed, which sets the identical color) -- the box
+     painting it simply stopped short of the controls it was meant to
+     frame.
+     120px is sized to fully contain that shifted row (row1's own 34px
+     padding-top + the 60px offset + the control row's own ~14px line
+     height, plus a small margin) -- confirmed by direct measurement across
+     375px/390px/430px, where every term that produces this stayed flat or
+     floor-clamped, so one constant covers the whole mobile range up to the
+     640px breakpoint ceiling. Purely a box-height fix: .top-menu's own
+     position/offset is untouched, nothing on screen moves, only the
+     header's own frame now actually reaches it. headerRef's existing
+     ResizeObserver (Header.jsx) picks up this larger real height
+     automatically and reports it to App.jsx's getViewportOpeningGeometry
+     through the same measured-header pipeline the previous pass already
+     built -- no second clearance formula added anywhere.
+     This also gives the mobile header a compact, STABLE height: neither
+     Search nor Menu live inside this box any more (both are now full-
+     screen `position: fixed` overlays -- see .mobile-search-overlay and
+     .mobile-menu-overlay below), and mobile no longer ever opens
+     .index-drawer at all (see Header.jsx's own mobileOverlay state
+     machine), so nothing on mobile grows this element's height again once
+     it is set here. */
+  .site-header__row1 {
+    height: 120px;
+  }
 
   .brand {
     width: min(251px, 73vw);
   }
 
+  /* Mobile Header Alignment Refinement: `left: 24px; right: 24px;` used to
+     sit here alongside `top: 60px`. For a `position: relative` flex row
+     with an explicit `width: 100%` (see .top-menu's base rule), `right`
+     has no effect at all -- browsers resolve a relatively-positioned
+     box's horizontal offset from `left` alone when both are set (in LTR),
+     so `right: 24px` was dead weight. `left: 24px` DID do something, but
+     not what its own neighboring `right: 24px` implied it was paired
+     with: it silently shifted the ENTIRE row (both SEARCH at the start
+     and the hamburger at the end, via justify-content: space-between)
+     24px to the right of its otherwise-symmetric natural position --
+     turning what should have been equal insets on both ends into SEARCH
+     sitting ~78px from the left edge against the hamburger's ~30px from
+     the right (confirmed by direct measurement before this fix). Without
+     it, .top-menu's own inset comes purely from .site-header__row1's
+     already-symmetric horizontal padding (`clamp(34px, 4vw, 60px)` on
+     both sides, from that rule's own base declaration, completely
+     untouched by this change) plus .site-header's own symmetric 20px
+     mobile padding -- both ends land at the same real inset by
+     construction, with no compensating pixel value needed on either
+     side. top: 60px (unrelated to this bug -- see the "Mobile nav fix"
+     comment immediately below) is unchanged. */
   .top-menu {
     top: 60px;
-    left: 24px;
-    right: 24px;
   }
 
 .top-menu{
@@ -1783,6 +1938,393 @@ html.is-browsing .zoom-controls {
     padding: 8px;
     margin: -8px;
   }
+
+  /* Mobile Archive Interaction Pass -- Stage 1B/1C: mobile UI mode's own
+     zoom-controls positioning -- a smaller base offset than the desktop
+     clamp(14px, 2vw, 20px) (2vw floors below 640px anyway, so this isn't
+     changing the effective desktop-vs-mobile SIZE, just making the
+     mobile value explicit and adding the real bottom safe-area inset (the
+     iPhone home-indicator's own reserved band) on top of it -- a no-op on
+     a device with no such inset, see :root's own comment. This is what
+     keeps the controls from ever colliding with that gesture bar once the
+     Archive's own bottom clearance shrinks in Stage 1B (see App.jsx's
+     getViewportOpeningGeometry). */
+  .zoom-controls {
+    bottom: calc(10px + var(--safe-area-inset-bottom));
+  }
+
+  /* html.is-browsing .zoom-controls (base rule, further down this file)
+     is more specific than the plain .zoom-controls override immediately
+     above and would otherwise win once scrolling starts, reverting to a
+     bottom offset with no safe-area term -- this keeps the same safe-area
+     protection through the "is-browsing"/scrolled state too, just at that
+     state's own slightly smaller base offset. */
+  html.is-browsing .zoom-controls {
+    bottom: calc(6px + var(--safe-area-inset-bottom));
+  }
+
+  /* Mobile Archive Interaction Pass -- Stage 7 correction: the mobile
+     .about-content top-clearance override this comment used to live on
+     directly (Stage 2) has been moved to sit immediately after
+     .about-content's own base rule further down this file, where it
+     actually wins the cascade -- see that rule's own comment for why
+     (source-order tie against the unconditional base rule, which this
+     nested position lost). Nothing about the override's own value or
+     reasoning changed, only where it's declared. */
+
+  /* Mobile Archive Interaction Pass -- Stage 4 (Mobile Search / Discovery
+     Overlay): MobileSearchOverlay.jsx's own styling -- a full-viewport,
+     single-screen surface, not a shrunk copy of the desktop Filter drawer
+     (see that component's own header comment for the full architecture).
+     Scoped inside this existing mobile breakpoint since the overlay itself
+     only ever mounts in mobile UI mode (Header.jsx's own
+     `isMobileUiMode && <MobileSearchOverlay .../>` guard) -- this is a
+     belt-and-suspenders match to that same 640px threshold
+     (useIsMobileUiMode.js), not a second breakpoint decision.
+     z-index sits above .page-transition-veil (2000) so a stray transition
+     can never visually intrude on an open overlay, and well above
+     .site-header (1200) so it reads as its own surface floating above the
+     header controls that summoned it, not a panel living inside the
+     header's own frame.
+
+     pointer-events: auto is required, not optional: this overlay is
+     rendered as a child of <header> (see Header.jsx's own render), and
+     .site-header itself is `pointer-events: none` at its root (see that
+     rule further up this file) -- the header's own interactive chrome
+     only works because .top-menu/.index-drawer re-enable pointer-events
+     on themselves individually. Without this same explicit opt-in, this
+     entire overlay -- background, input, close button, every category
+     option -- would silently inherit pointer-events: none from
+     .site-header and be completely untappable despite being fully
+     visible, confirmed as a real failure during this pass's own
+     Playwright/CDP verification (every element hit-tested as the page's
+     <body> underneath, exactly what a pointer-events: none ancestor
+     produces). */
+  .mobile-search-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2500;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    background: #faf9f5;
+    padding: calc(20px + var(--safe-area-inset-top)) 20px
+      calc(24px + var(--safe-area-inset-bottom));
+    pointer-events: auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .mobile-search-overlay__search-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex: 0 0 auto;
+  }
+
+  .mobile-search-overlay__input {
+    flex: 1 1 auto;
+    min-width: 0;
+    border: none;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.18);
+    background: none;
+    outline: none;
+    padding: 6px 0;
+
+    font-family: "GT America", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-size: 1rem;
+    font-weight: 400;
+    letter-spacing: 0.04em;
+    color: #111;
+    caret-color: #111;
+  }
+
+  .mobile-search-overlay__close {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: none;
+    padding: 0;
+    cursor: pointer;
+
+    font-size: 1.6rem;
+    line-height: 1;
+    color: #9d9d9d;
+    transition: color 0.25s ease;
+  }
+
+  .mobile-search-overlay__close:hover {
+    color: #111;
+  }
+
+  .mobile-search-overlay__suggestions {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: -8px 0 0;
+    padding: 0;
+    list-style: none;
+    flex: 0 0 auto;
+  }
+
+  .mobile-search-overlay__suggestion {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    padding: 8px 0;
+    cursor: pointer;
+
+    font-family: "GT America", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-size: 0.78rem;
+    font-weight: 400;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #9d9d9d;
+    transition: color 0.25s ease;
+  }
+
+  .mobile-search-overlay__suggestion:hover,
+  .mobile-search-overlay__suggestion:active {
+    color: #111;
+  }
+
+  .mobile-search-overlay__clear-all {
+    align-self: flex-start;
+    flex: 0 0 auto;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+
+    font-family: "GT America", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-size: 0.68rem;
+    font-weight: 400;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #9d9d9d;
+    text-decoration: underline;
+    text-decoration-color: rgba(157, 157, 157, 0.4);
+    text-underline-offset: 3px;
+  }
+
+  .mobile-search-overlay__categories {
+    display: flex;
+    flex-direction: column;
+    gap: 26px;
+    flex: 1 1 auto;
+  }
+
+  .mobile-search-overlay__category-label {
+    margin: 0 0 12px;
+
+    font-family: "GT America", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-size: 0.68rem;
+    font-weight: 400;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #111;
+  }
+
+  .mobile-search-overlay__options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 14px;
+  }
+
+  /* Reuses .index-drawer__option's own touch-target fix (padding + a
+     matching negative margin, so the visual size/spacing is unchanged and
+     only the tappable area grows) rather than a second implementation --
+     see that rule's own comment a little further up this same media
+     query. */
+  .mobile-search-overlay__option {
+    background: none;
+    border: none;
+    padding: 8px 0;
+    margin: -8px 0;
+    cursor: pointer;
+
+    font-family: "GT America", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-size: 0.78rem;
+    font-weight: 400;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #9d9d9d;
+    transition: color 0.25s ease;
+  }
+
+  .mobile-search-overlay__option--selected {
+    color: #111;
+    text-decoration: underline;
+    text-decoration-color: rgba(17, 17, 17, 0.35);
+    text-underline-offset: 3px;
+  }
+
+  /* Mobile Header/Search/Menu Refinement Pass -- Section 2 (Collapsed
+     Mobile Header): the hamburger that replaces the visible "Menu" text
+     control on mobile. Two thin strokes, not a generic filled app icon --
+     the same restrained, line-based visual language the rest of this
+     header already speaks (the × close controls below, the "]"/"["
+     bracket glyphs elsewhere in this file). The glyph itself stays small
+     (18px wide, 1.5px strokes) to match the header's own quiet
+     typographic weight. Touch target: reuses this file's own established
+     "padding expands the tappable box, an equal-and-opposite negative
+     margin cancels the layout/visual footprint of that padding" idiom --
+     see .index-drawer__option's own comment a little further up this same
+     file for the pattern this is reused from -- rather than a second
+     technique. 15px padding gives a comfortably-sized square hit area
+     around the small glyph without shifting where that glyph visually
+     renders inside .top-menu's own flex row, and without growing
+     .top-menu__group's own layout footprint the way a plain width/height
+     box would. */
+  .mobile-menu-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: none;
+    padding: 15px;
+    margin: -15px;
+    cursor: pointer;
+  }
+
+  .mobile-menu-toggle__icon {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    width: 18px;
+  }
+
+  .mobile-menu-toggle__bar {
+    display: block;
+    width: 100%;
+    height: 1.5px;
+    background: #111;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Engaged (Menu overlay open) state echoes .text-control--engaged's own
+     restrained "quietly acknowledge the open state" treatment -- a small
+     opacity drop on the icon, no color change, no rotation-into-X (the
+     overlay itself already draws its own × for closing, so animating this
+     icon into one too would be a second, redundant close affordance). */
+  .mobile-menu-toggle--engaged .mobile-menu-toggle__bar {
+    opacity: 0.55;
+  }
+
+  /* Section 3 (Mobile Menu -- Full-Screen Vertical Overlay): deliberately
+     styled as a near-identical sibling of .mobile-search-overlay just
+     above, per Section 7's own "Search and Menu should feel like members
+     of the same system" requirement -- same fixed/inset:0 full-screen
+     surface, same opaque #faf9f5 background, same z-index (2500, above
+     .page-transition-veil's 2000, above .site-header's 1200), same
+     safe-area-aware padding, same pointer-events: auto opt-in (required
+     for the same reason documented on .mobile-search-overlay above -- this
+     is also rendered as a child of <header>, which is pointer-events: none
+     at its root). Search stays information-dense (the full taxonomy);
+     Menu stays deliberately sparse -- four links and a close control, per
+     Section 7's "do not over-design either." No rounded "app modal"
+     treatment, no shadow, no blur -- a plain opaque surface, consistent
+     with every other UI layer on this site. */
+  .mobile-menu-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2500;
+    display: flex;
+    flex-direction: column;
+    background: #faf9f5;
+    padding: calc(20px + var(--safe-area-inset-top)) 20px
+      calc(24px + var(--safe-area-inset-bottom));
+    pointer-events: auto;
+  }
+
+  /* Same top-row height/alignment as .mobile-search-overlay__search-row's
+     own close button sits in, so the × lands at the identical vertical
+     position switching between Search and Menu -- part of Section 7's
+     "similar top alignment" requirement. */
+  .mobile-menu-overlay__top-row {
+    display: flex;
+    justify-content: flex-end;
+    flex: 0 0 auto;
+  }
+
+  /* Byte-identical sizing/color/hover to .mobile-search-overlay__close --
+     the same close control, reused verbatim rather than a second
+     implementation, per Section 7's "same X control treatment." */
+  .mobile-menu-overlay__close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: none;
+    padding: 0;
+    cursor: pointer;
+
+    font-size: 1.6rem;
+    line-height: 1;
+    color: #9d9d9d;
+    transition: color 0.25s ease;
+  }
+
+  .mobile-menu-overlay__close:hover {
+    color: #111;
+  }
+
+  /* Vertically centered in the remaining space beneath the close row --
+     Menu is the sparse counterpart to Search's dense taxonomy grid, so it
+     reads as a short, deliberate list rather than filling the whole
+     screen edge-to-edge. */
+  .mobile-menu-overlay__links {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: clamp(8px, 4vw, 20px);
+  }
+
+  /* Larger than the header's own micro-typography (.text-control's
+     0.78rem) on purpose -- this is the one and only thing on a full
+     screen, so it needs to read as substantial, not as the same small
+     control label blown up without any other adjustment. Same family/
+     weight/uppercase treatment as every other control on this site
+     (GT America Bold, uppercase) for Section 7's "same typography family,"
+     just at a scale appropriate to a dedicated full-screen nav list. Each
+     link's own generous padding (not just its gap from its neighbors) is
+     what gives this a real touch target well beyond its visible text. */
+  .mobile-menu-overlay__link {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    padding: 10px 0;
+    cursor: pointer;
+
+    font-family: "GT America", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-size: clamp(1.6rem, 9vw, 2.1rem);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: #111;
+  }
+
+  /* Same neutral-gray active-state swap the desktop Menu drawer's own
+     .index-drawer__label-text--active already uses (see Header.jsx's own
+     comment on that rule) -- reusing that exact color rather than a second
+     active-state language, just applied to this component's own larger
+     type. */
+  .mobile-menu-overlay__link--active {
+    color: #9d9d9d;
+  }
 }
 .nav-divider {
   width: 1px;
@@ -1814,6 +2356,58 @@ html.is-browsing .zoom-controls {
   padding: clamp(110px, 11vw, 150px) clamp(34px, 4vw, 60px)
     clamp(48px, 5vw, 72px);
   transition: opacity 200ms ease-out;
+}
+
+/* Mobile Archive Interaction Pass -- Stage 2, corrected in Stage 7: this
+   rule's own flat clamp(110px, 11vw, 150px) top clearance immediately
+   above is a guess borrowed from the gallery's own (also approximate)
+   header-clearance math, never reconciled against the header's real
+   rendered size. .project-content already solves this correctly for the
+   Project page specifically (see that rule's own comment): it reuses
+   .site-header__row1's own `7vw` term plus a constant +12px, so it always
+   tracks ~12px below the header's real rendered height at any width. This
+   override gives .about-content (shared by Practice/Journal/Contact) that
+   exact same, already-correct formula at mobile widths -- floors at 92px
+   instead of 110px -- rather than inventing a second approximation.
+
+   Stage 7 correction: this override originally lived inside the earlier,
+   separate `@media (max-width: 640px)` block further up this file (the
+   one opened for the mobile baseline pass). Both it and this unconditional
+   base rule share the exact same specificity (a single class, 0-1-0), so
+   CSS's own tie-break -- whichever rule appears LATER in the stylesheet
+   wins, regardless of which one is media-scoped -- meant this base rule's
+   own `padding` shorthand (declared after that block) was silently
+   winning on every mobile viewport, and the Stage 2 fix never actually
+   took effect: confirmed by inspecting the built CSS bundle's own rule
+   order during Stage 7's verification pass. Moving this override to
+   immediately follow its own base rule, textually, is what actually wins
+   the cascade -- same selector, same media condition, same value, only
+   its position in the file changed. Scoped to this existing 640px
+   breakpoint only; desktop/tablet's own .about-content padding-top is
+   completely unaffected either way.
+
+   Mobile Header/Search/Menu Refinement Pass -- Section 1: this override's
+   own value is updated from clamp(92px, calc(7vw + 12px), 114px) to a flat
+   144px. The old value was itself `.site-header__row1`'s own real
+   rendered height (80px, its floor within this whole sub-1143px range)
+   plus a 12px gap -- correct at the time, since the mobile header's real
+   total height (.site-header's own 12px top padding + row1's 80px) also
+   happened to equal 92 by coincidence. Section 1's header fix changes
+   row1's OWN mobile height to a flat 120px (see that rule's own comment),
+   so the header's real mobile total is now 12 + 120 = 132px; this value
+   is that same real height plus the same 12px gap the desktop-range
+   formula already uses, i.e. 132 + 12 = 144. No longer expressed as a vw
+   clamp because row1's new mobile height is itself flat across the whole
+   0-640px range (nothing here needs to keep scaling with viewport width
+   the way it did when it tracked row1's own vw-based clamp) -- it can
+   simply state that one number. The base rule's own clamp (desktop/
+   tablet, 641px+) is completely untouched: it still correctly tracks
+   row1's original clamp(80px, 7vw, 102px) formula, which this pass never
+   changes outside the 640px breakpoint. */
+@media (max-width: 640px) {
+  .about-content {
+    padding-top: 144px;
+  }
 }
 
 .about-hero {
@@ -2087,6 +2681,26 @@ html.is-browsing .zoom-controls {
      reason (see that rule's comment) -- padding-right/bottom still
      inherit .about-content's shared values unchanged. */
   padding-top: clamp(92px, calc(7vw + 12px), 114px);
+}
+
+/* Mobile Header/Search/Menu Refinement Pass -- Section 1: this class's own
+   floor (92, in the unconditional rule immediately above) is real header
+   height (row1's 80px floor) + a 12px gap -- correct everywhere from 0px
+   up to ~1143px viewport width UNTIL Section 1's fix, since row1's own
+   clamp(80px, 7vw, 102px) never actually exceeds its 80px floor before
+   then. That fix gives row1 a flat 120px height, but ONLY inside the
+   640px mobile breakpoint (see .site-header__row1's own ≤640px override) --
+   so the unconditional rule above stays exactly correct for 641-1143px
+   (untouched, still real row1 height + 12), and this override -- same
+   cascade-order reasoning as .about-content's own ≤640px override just
+   above (later source position wins at equal specificity, regardless of
+   media scoping) -- carves out only the 0-640px range with the new real
+   value: 132px header height (12px .site-header padding + row1's new
+   120px) + the same 12px gap = 144px. */
+@media (max-width: 640px) {
+  .about-content--redesign {
+    padding-top: 144px;
+  }
 }
 
 /* Smaller than the shared .about-hero__title's own clamp(1.8rem, 2.6vw,
@@ -2632,6 +3246,26 @@ html.is-browsing .zoom-controls {
   padding-right: clamp(102px, 12vw, 180px);
 }
 
+/* Mobile Header/Search/Menu Refinement Pass -- Section 1: same fix, same
+   reasoning, as .about-content's own ≤640px padding-top override above --
+   see that rule's own comment for the full explanation. This rule's own
+   floor (92px, in the base rule immediately above) was real header height
+   (row1's 80px floor) + a 12px gap, correct everywhere below ~1143px wide
+   until Section 1 gave row1 a flat 120px height inside the 640px mobile
+   breakpoint specifically. This override -- positioned, deliberately,
+   textually AFTER the base rule immediately above so it actually wins the
+   cascade at equal specificity (the exact lesson the Stage 7 fix
+   documented on .about-content's own override) -- carves out just the
+   0-640px range with the new real value: 132px real header height + the
+   same 12px gap = 144px. The base rule's own clamp is untouched and stays
+   correct for 641px+ (still real row1 height + 12, unaffected by this
+   pass outside the 640px breakpoint). */
+@media (max-width: 640px) {
+  .project-content {
+    padding-top: 144px;
+  }
+}
+
 /* Mobile Baseline Pass -- Task 7A: this page's own horizontal padding
    above is deliberately triple .about-content's (clamp(34px, 4vw, 60px),
    see that rule's own comment) -- correct at desktop/tablet widths, but
@@ -2658,6 +3292,44 @@ html.is-browsing .zoom-controls {
     padding-left: clamp(20px, 5vw, 40px);
     padding-right: clamp(20px, 5vw, 40px);
   }
+}
+
+/* Mobile Archive Interaction Pass -- Stage 0B (Universal Back to Archive):
+   its own quiet row, the first child of .project-content, above
+   .project-viewer -- see ProjectBreadcrumb.jsx's own comment for why this
+   placement structurally guarantees it never competes with the Project
+   Information trigger / Archive Number / Image Navigation row further
+   down. Desktop and mobile share this same rule -- no breakpoint override
+   -- since the requirement is identical on both. */
+.project-breadcrumb {
+  margin-bottom: clamp(14px, 1.8vw, 22px);
+}
+
+/* Same typography as the Archive Number (.project-archive-index__number
+   below) -- deliberately not a new type treatment -- and the same bare-
+   button reset (.project-archive-index__button below) so this reads as
+   quiet page typography that happens to be interactive, never as a
+   conventional button/CTA. */
+.project-breadcrumb__control {
+  display: inline-flex;
+  align-items: center;
+  border: 0;
+  background: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #9d9d9d;
+  cursor: pointer;
+  transition: color 0.25s ease, opacity 0.25s ease;
+}
+
+.project-breadcrumb__control:hover {
+  color: #111;
+  opacity: 0.85;
 }
 
 .project-image-viewer {

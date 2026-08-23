@@ -7,6 +7,10 @@ import {
   useCurrentPath,
 } from "./navigation";
 import { resolveHiddenSearchCommand } from "./hiddenSearchCommands";
+import { useIsMobileUiMode } from "./useIsMobileUiMode";
+import MobileSearchOverlay from "./MobileSearchOverlay";
+import MobileMenuOverlay from "./MobileMenuOverlay";
+import { hapticTap, hapticSelect } from "./haptics";
 
 // Mock catalog values for the index drawer. These are the seam a developer
 // swaps for real CMS data later: point `themes` / `projects` / `years` /
@@ -128,6 +132,22 @@ export default function Header({
   onFilterOpenChange,
   onFilterChange,
   onDrawerHeightChange,
+  // Mobile Archive Interaction Pass -- Stage 1A: reports .site-header's own
+  // live, measured rendered height (see the ResizeObserver effect below) --
+  // only meaningfully consumed by the Archive's own <Header> instance
+  // (App.jsx), which feeds it into getViewportOpeningGeometry's mobile
+  // clearance calculation. Harmless no-op on every other page that doesn't
+  // pass this prop.
+  onHeaderHeightChange,
+  // Mobile Archive Interaction Pass -- Stage 0 (Overlay Gesture Guard):
+  // fires whenever "Menu open OR the mobile Search/discovery overlay open"
+  // changes -- see the effect below, the one place this is called. Kept
+  // completely separate from onFilterOpenChange (Filter's own open state,
+  // used only for the pre-existing cosmetic archive dim) since that prop
+  // does not reliably fire on every Menu-open path -- see this file's own
+  // notifyIfFilterCloses comment for why, and Stage 0's investigation
+  // finding this was based on.
+  onOverlayActiveChange,
   onLogoClick,
   // Search Query Wiring: Header still owns the Search UI entirely (typing,
   // when to open/close the input line, the collapsed chip below) and knows
@@ -168,6 +188,15 @@ export default function Header({
   // child page, Project pages included).
   const isProjectPage = /^\/projects\/[^/]+$/.test(path);
 
+  // Mobile Archive Interaction Pass -- Stage 2: the canonical mobile UI
+  // MODE signal (see useIsMobileUiMode.js's own comment for why this is
+  // deliberately separate from a touch/pointer capability check) -- called
+  // here, early, so its synchronously-computed initial value is already
+  // available to the drawerSection initializer immediately below, the
+  // same "hooks run top-to-bottom within one render" reasoning App.jsx's
+  // own isMobileUiMode/viewportScaleRef ordering relies on.
+  const isMobileUiMode = useIsMobileUiMode();
+
   // Consumed exactly once, on this mount: which control (if any) asked to
   // resume on the homepage after a Filter/Search return trip from a child
   // page. See navigateHomeWithIntent/consumePendingHomeIntent in
@@ -195,8 +224,23 @@ export default function Header({
   // closed, exactly as before. Only the initial value changes here -- once
   // mounted, Menu/Filter on a Project page open and close exactly the same
   // way (same toggles, same animation) as they always have.
+  //
+  // Mobile Archive Interaction Pass -- Stage 2: on mobile UI mode, the
+  // "child page starts with Menu open" default is turned off (added
+  // `&& !isMobileUiMode` below) -- the investigation traced this default,
+  // combined with .about-content's own flat top-padding guess (see the
+  // mobile override for it in styles.css), as the dominant cause of the
+  // mobile header "coming down into the page more than necessary,"
+  // Contact especially (no hero image/archive-number row there to absorb
+  // the extra measured drawer height this default stacks on top of the
+  // page's own padding). Desktop behavior is completely unchanged -- a
+  // child page on desktop still starts with Menu open exactly as before.
+  // Only the INITIAL value changes here, same as the Project-page case
+  // immediately above it: once mounted, Menu opens/closes on mobile
+  // exactly the same way (same toggle, same animation) as it always has --
+  // a visitor can still open it, it just doesn't start pre-opened.
   const [drawerSection, setDrawerSection] = useState(() => {
-    if (isChildPage && !isProjectPage) return "menu";
+    if (isChildPage && !isProjectPage && !isMobileUiMode) return "menu";
     if (pendingIntent?.type === "filter") return "filter";
     return null;
   });
@@ -252,6 +296,13 @@ export default function Header({
   // below. This ref exists purely to be observed; nothing here reads its
   // node for any other purpose.
   const drawerRef = useRef(null);
+  // Mobile Archive Interaction Pass -- Stage 1A: measures .site-header's
+  // own live, real rendered height (idle, "is-browsing"/scrolled, or with
+  // the drawer open all render at different heights -- see styles.css) for
+  // onHeaderHeightChange -- the same ResizeObserver-on-a-DOM-node pattern
+  // as drawerRef immediately above, just observing the outer header
+  // element instead of the drawer.
+  const headerRef = useRef(null);
   // Whether the Active Panel is showing the active Context's full value
   // list rather than just its curated preview. Reset whenever the active
   // Context changes (see handleAddClick) -- the preview is always where a
@@ -285,6 +336,24 @@ export default function Header({
     () => pendingIntent?.type === "search"
   );
   const searchInputRef = useRef(null);
+  // Mobile Header/Search/Menu Refinement Pass -- Section 5 (one mobile
+  // overlay contract): mobile UI mode's Search and Menu are two distinct
+  // surfaces (MobileSearchOverlay.jsx and MobileMenuOverlay.jsx) that must
+  // still behave as one coherent system -- only one open at a time, never
+  // both, never an ambiguous in-between state. A single
+  // `null | "search" | "menu"` state machine makes that mutual exclusivity
+  // structural rather than convention: opening one is a single assignment
+  // that always implicitly closes the other, so there is no pair of
+  // booleans that can ever disagree with each other. Deliberately separate
+  // from isSearchOpen above (the desktop search LINE's own open/closed
+  // state) and from drawerSection (the desktop Filter/Menu drawer) -- this
+  // is mobile UI mode's own overlay concept only; desktop's own state is
+  // untouched. Read by the onOverlayActiveChange effect below (Stage 0's
+  // gesture guard, from the previous pass, reused as-is) and by the
+  // mobile-only render branches further down.
+  const [mobileOverlay, setMobileOverlay] = useState(null);
+  const isMobileSearchOverlayOpen = mobileOverlay === "search";
+  const isMobileMenuOpen = mobileOverlay === "menu";
   // Search Query Wiring: null until the homepage's own Enter-to-commit
   // (see handleSearchKeyDown) sets it -- the one flag that decides whether
   // the input line or the compact chip renders below. Deliberately starts
@@ -688,6 +757,118 @@ export default function Header({
     setDrawerSection(null);
   };
 
+  // Mobile Header/Search/Menu Refinement Pass -- Section 4/5: opens the
+  // mobile Search overlay from the mobile-only Search button (see the
+  // render below). Assigning "search" to the unified mobileOverlay state
+  // machine (rather than a boolean flip) is what guarantees mutual
+  // exclusivity with Menu -- if Menu happened to be open, this single
+  // assignment closes it in the same action, with no separate "close Menu
+  // first" step required anywhere. The overlay owns its own input focus
+  // (see MobileSearchOverlay's own useEffect).
+  const handleMobileSearchOpen = () => {
+    setMobileOverlay("search");
+    hapticTap();
+  };
+
+  // Section 3/5: opens the mobile Menu overlay from the header's hamburger
+  // control (see the render below). Same single-assignment mutual-
+  // exclusivity guarantee as handleMobileSearchOpen above.
+  const handleMobileMenuOpen = () => {
+    setMobileOverlay("menu");
+    hapticTap();
+  };
+
+  // Section 4/5: the shared close path for either mobile overlay's own X
+  // control -- MobileSearchOverlay and MobileMenuOverlay both call this via
+  // their onClose prop, so there is exactly one place that resolves the
+  // mobile chrome back to its collapsed state.
+  const handleMobileOverlayClose = () => {
+    setMobileOverlay(null);
+    hapticTap();
+  };
+
+  // Mobile Archive Interaction Pass -- Stage 4: the overlay's onOptionToggle
+  // wrapper. Reuses handleOptionToggle verbatim -- the exact same function
+  // the desktop drawer's own Theme/Project/Year/Type options already call --
+  // then closes the overlay, since the approved interaction model is
+  // "tapping an option toggles it AND closes the overlay in the same
+  // action" (see MobileSearchOverlay.jsx's own header comment). `selection`
+  // itself persists across the close, so reopening Search still shows
+  // whatever is already active.
+  const handleMobileOptionToggle = (key, value) => {
+    handleOptionToggle(key, value);
+    setMobileOverlay(null);
+    hapticSelect();
+  };
+
+  // Mobile Archive Interaction Pass -- Stage 4: the overlay's onSubmitSearch
+  // wrapper -- the same three branches handleSearchKeyDown already applies
+  // to a committed Enter press (hidden command, child-page redirect,
+  // homepage commit), just callable directly with a plain string (a typed
+  // Enter submit or a tapped suggestion) instead of only from a keydown
+  // event, and closing the overlay afterward instead of blurring/collapsing
+  // a desktop input line that doesn't exist here. searchValue is kept in
+  // sync with whatever was actually submitted (a tapped suggestion may
+  // differ from what was typed) so the field reads correctly if Search is
+  // reopened.
+  const handleMobileSearchSubmit = (query) => {
+    const runHiddenCommand = resolveHiddenSearchCommand(query);
+    if (runHiddenCommand) {
+      runHiddenCommand();
+      setMobileOverlay(null);
+      hapticSelect();
+      return;
+    }
+
+    if (isChildPage) {
+      setMobileOverlay(null);
+      hapticSelect();
+      beginGentleReturnHome({ type: "search", query });
+      return;
+    }
+
+    const trimmed = query.trim();
+    if (!trimmed) return;
+
+    setSearchValue(trimmed);
+    setCommittedSearch(trimmed);
+    setMobileOverlay(null);
+    hapticSelect();
+    onSearchSubmit?.(trimmed);
+  };
+
+  // Section 3: the mobile Menu overlay's own link-selection handler --
+  // mirrors the desktop Menu row's own onClick body (see the
+  // MENU_LINKS.map() render further below) exactly: an active label is a
+  // no-op navigation (skip the fade so it never fades to itself), an
+  // inactive one fades via the same site-wide beginPageTransition/navigate
+  // pair every other navigation on this page already uses. The overlay
+  // itself always closes immediately, synchronously with the tap -- not
+  // deferred until the fade/navigation completes -- so a visitor never sees
+  // the full-screen Menu still up while the page underneath is already
+  // changing, and the destination always mounts with the collapsed header
+  // already restored (Section 9).
+  const handleMobileMenuSelect = (label) => {
+    const isActive = path === MENU_LINK_PATHS[label];
+    setMobileOverlay(null);
+    if (!isActive) {
+      beginPageTransition(() => navigate(MENU_LINK_PATHS[label]));
+    }
+  };
+
+  // Mobile Archive Interaction Pass -- Stage 4: the overlay's single
+  // "Clear ..." control combines both of the desktop UI's own separate
+  // clear actions (handleSearchClear for the committed search chip,
+  // handleFilterClearAll for every active Filter selection) -- mobile has
+  // one discovery surface for both, so it gets one clear control for both.
+  // Each half is still the exact existing function, only called
+  // conditionally on whether that half is actually active, so neither
+  // fires a no-op report to App.jsx when it has nothing to clear.
+  const handleMobileClearAll = () => {
+    if (committedSearch) handleSearchClear();
+    if (totalFilterCount > 0) handleFilterClearAll();
+  };
+
   // Filter UX consistency pass -- Category Clear: handleFilterClearAll's
   // scoped sibling -- same "set a selection field, report it" shape, just
   // one category instead of all four. Deliberately a separate function
@@ -789,13 +970,57 @@ export default function Header({
     return () => observer.disconnect();
   }, [onDrawerHeightChange]);
 
+  // Mobile Archive Interaction Pass -- Stage 1A: same pattern as the drawer
+  // ResizeObserver immediately above, observing .site-header itself instead
+  // -- reports its real rendered height (idle/scrolled/drawer-open, all
+  // different) via onHeaderHeightChange, consumed by the Archive's own
+  // <Header> instance for mobile UI mode's header clearance (see App.jsx's
+  // getViewportOpeningGeometry).
+  useEffect(() => {
+    const node = headerRef.current;
+    if (!node || typeof ResizeObserver === "undefined") {
+      return undefined;
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      onHeaderHeightChange?.(entry.contentRect.height);
+    });
+
+    observer.observe(node);
+
+    return () => observer.disconnect();
+  }, [onHeaderHeightChange]);
+
+  // Mobile Archive Interaction Pass -- Stage 0 (Overlay Gesture Guard):
+  // the one place onOverlayActiveChange is ever called -- fires whenever
+  // Menu's own open state changes. Refinement Pass update: the OR's second
+  // operand is now `mobileOverlay !== null` -- true whenever EITHER the
+  // mobile Search overlay OR the mobile Menu overlay is open, since both
+  // now live on the one unified state machine (see mobileOverlay above)
+  // instead of two independent booleans. An effect keyed on the derived
+  // values, rather than patching every individual toggle handler
+  // (handleMenuToggle, handleMobileMenuOpen, handleMobileSearchOpen,
+  // Escape-key close, a Menu link navigating away, etc.), so every code
+  // path that changes either overlay's open state notifies App.jsx
+  // automatically -- this is the fix for the gap the investigation found in
+  // the existing onFilterOpenChange/notifyIfFilterCloses pair, which only
+  // fires when Filter itself was already open and Menu took over, never
+  // when Menu opens directly.
+  useEffect(() => {
+    onOverlayActiveChange?.(isMenuOpen || mobileOverlay !== null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMenuOpen, mobileOverlay]);
+
   return (
     <header
+      ref={headerRef}
       className={`site-header${
         isDrawerOpen || (isChildPage && isChildPageScrolled)
           ? " site-header--framed"
           : ""
-      }`}
+      }${mobileOverlay !== null ? " site-header--mobile-overlay-active" : ""}`}
     >
       <div className="site-header__row1">
         <button
@@ -824,75 +1049,91 @@ export default function Header({
         </button>
         <nav className="top-menu" aria-label="Gallery navigation">
           <div className="top-menu__group" aria-label="Browse tools">
-            {/* Filter UX -- Clear All: filter-control wraps the existing
-                Filter toggle button and the new Clear All control as
-                siblings (not nested -- a clickable x inside a <button> is
-                invalid HTML), so hovering anywhere across the pair arms
-                the x the same way hovering Search's own chip does.
-                Clicking the Filter button itself is completely unchanged
-                (still just handleFilterToggle); only the separate,
-                sibling Clear All button clears anything. */}
-            <div
-              className="filter-control"
-              onMouseEnter={() => setIsFilterClearArmed(true)}
-              onMouseLeave={() => setIsFilterClearArmed(false)}
-            >
-              <button
-                type="button"
-                className={`text-control text-control--active text-control--filter${
-                  isFilterOpen ? " text-control--engaged" : ""
-                }`}
-                aria-expanded={isFilterOpen}
-                onClick={handleFilterToggle}
-              >
-                <span>Filter</span>
-                {totalFilterCount > 0 && (
-                  <span className="filter-count">
-                    <span
-                      className="index-drawer__option-bracket"
-                      aria-hidden="true"
-                    >
-                      [
-                    </span>
-                    {totalFilterCount}
-                  </span>
-                )}
-              </button>
-              {totalFilterCount > 0 && (
-                // Reuses index-drawer__option/-remove/--remove-armed
-                // as-is (no new CSS for this control itself) -- the same
-                // muted, understated styling and hover-reveal mechanics
-                // Filter's own per-value chips already use, just applied
-                // to "clear everything" instead of "clear one value."
-                <button
-                  type="button"
-                  className={`index-drawer__option index-drawer__option--clear${
-                    isFilterClearArmed
-                      ? " index-drawer__option--remove-armed"
-                      : ""
-                  }`}
-                  onClick={handleFilterClearAll}
-                  onFocus={() => setIsFilterClearArmed(true)}
-                  onBlur={() => setIsFilterClearArmed(false)}
-                  aria-label="Clear all active filters"
+            {/* Mobile Archive Interaction Pass -- Stage 3 (Mobile Header
+                Simplification): the desktop Filter button/drawer is
+                hidden entirely on mobile UI mode -- NOT deleted, NOT
+                behaviorally changed, just not rendered here. Every piece
+                of Filter's own code (handleFilterToggle,
+                handleFilterClearAll, the drawer JSX further down,
+                totalFilterCount, etc.) is completely untouched -- desktop
+                still renders and uses all of it exactly as before. Mobile
+                UI mode's own entry point into filtering is the Search
+                control below (always rendered) opening the new mobile
+                Search/discovery overlay -- see MobileSearchOverlay.jsx and
+                Stage 4. */}
+            {!isMobileUiMode && (
+              <>
+                {/* Filter UX -- Clear All: filter-control wraps the existing
+                    Filter toggle button and the new Clear All control as
+                    siblings (not nested -- a clickable x inside a <button> is
+                    invalid HTML), so hovering anywhere across the pair arms
+                    the x the same way hovering Search's own chip does.
+                    Clicking the Filter button itself is completely unchanged
+                    (still just handleFilterToggle); only the separate,
+                    sibling Clear All button clears anything. */}
+                <div
+                  className="filter-control"
+                  onMouseEnter={() => setIsFilterClearArmed(true)}
+                  onMouseLeave={() => setIsFilterClearArmed(false)}
                 >
-                  <span
-                    className="index-drawer__option-remove"
-                    aria-hidden="true"
+                  <button
+                    type="button"
+                    className={`text-control text-control--active text-control--filter${
+                      isFilterOpen ? " text-control--engaged" : ""
+                    }`}
+                    aria-expanded={isFilterOpen}
+                    onClick={handleFilterToggle}
                   >
-                    ×
-                  </span>
-                  <span
-                    className="index-drawer__option-bracket"
-                    aria-hidden="true"
-                  >
-                    ]
-                  </span>
-                </button>
-              )}
-            </div>
+                    <span>Filter</span>
+                    {totalFilterCount > 0 && (
+                      <span className="filter-count">
+                        <span
+                          className="index-drawer__option-bracket"
+                          aria-hidden="true"
+                        >
+                          [
+                        </span>
+                        {totalFilterCount}
+                      </span>
+                    )}
+                  </button>
+                  {totalFilterCount > 0 && (
+                    // Reuses index-drawer__option/-remove/--remove-armed
+                    // as-is (no new CSS for this control itself) -- the same
+                    // muted, understated styling and hover-reveal mechanics
+                    // Filter's own per-value chips already use, just applied
+                    // to "clear everything" instead of "clear one value."
+                    <button
+                      type="button"
+                      className={`index-drawer__option index-drawer__option--clear${
+                        isFilterClearArmed
+                          ? " index-drawer__option--remove-armed"
+                          : ""
+                      }`}
+                      onClick={handleFilterClearAll}
+                      onFocus={() => setIsFilterClearArmed(true)}
+                      onBlur={() => setIsFilterClearArmed(false)}
+                      aria-label="Clear all active filters"
+                    >
+                      <span
+                        className="index-drawer__option-remove"
+                        aria-hidden="true"
+                      >
+                        ×
+                      </span>
+                      <span
+                        className="index-drawer__option-bracket"
+                        aria-hidden="true"
+                      >
+                        ]
+                      </span>
+                    </button>
+                  )}
+                </div>
 
-            <div className="nav-divider"></div>
+                <div className="nav-divider"></div>
+              </>
+            )}
 
             <div className="search-control">
               {/* Persistent Search Label (refinement): SEARCH itself is no
@@ -901,17 +1142,82 @@ export default function Header({
                   before a search is ever committed. Only what sits beside
                   it (the growing input line, or the committed chip) still
                   swaps. handleSearchToggle/isSearchOpen are untouched --
-                  clicking SEARCH still does exactly what it always did. */}
+                  clicking SEARCH still does exactly what it always did.
+
+                  Mobile Archive Interaction Pass -- Stage 3/4: on mobile UI
+                  mode, this same button opens the mobile Search/discovery
+                  overlay (handleMobileSearchOpen) instead of the desktop
+                  input line (handleSearchToggle) -- see the branch just
+                  below for what renders beside it on mobile instead of the
+                  desktop input/chip. */}
               <button
                 type="button"
                 className="text-control text-control--muted"
-                aria-expanded={isSearchOpen}
+                aria-expanded={
+                  isMobileUiMode ? isMobileSearchOverlayOpen : isSearchOpen
+                }
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={handleSearchToggle}
+                onClick={isMobileUiMode ? handleMobileSearchOpen : handleSearchToggle}
               >
                 Search
               </button>
-              {committedSearch ? (
+              {isMobileUiMode ? (
+                // Mobile Archive Interaction Pass -- Stage 3/4: a compact
+                // active-query indicator standing in for the desktop
+                // input/chip -- summarizes both committedSearch and any
+                // active Filter selections (mobile has one discovery
+                // surface for both, see MobileSearchOverlay.jsx), and
+                // clears both at once (handleMobileClearAll) without
+                // reopening the overlay. Pure visual reuse of the exact
+                // same index-drawer__option/-selected/-chip styling the
+                // desktop chip below already uses -- not a new control
+                // language, just a different summary string and a
+                // combined clear action. Renders nothing when neither is
+                // active, same as the desktop input's own empty state.
+                (committedSearch || totalFilterCount > 0) && (
+                  <button
+                    type="button"
+                    className={`index-drawer__option index-drawer__option--selected search-control__chip${
+                      isSearchChipRemoveArmed
+                        ? " index-drawer__option--remove-armed"
+                        : ""
+                    }`}
+                    onMouseEnter={() => setIsSearchChipRemoveArmed(true)}
+                    onMouseLeave={() => setIsSearchChipRemoveArmed(false)}
+                    onFocus={() => setIsSearchChipRemoveArmed(true)}
+                    onBlur={() => setIsSearchChipRemoveArmed(false)}
+                    onClick={handleMobileClearAll}
+                    aria-label="Clear active search and filters"
+                  >
+                    <span
+                      className="index-drawer__option-bracket"
+                      aria-hidden="true"
+                    >
+                      [
+                    </span>
+                    <span className="index-drawer__option-text">
+                      {committedSearch && totalFilterCount > 0
+                        ? `${committedSearch} +${totalFilterCount}`
+                        : committedSearch ||
+                          `${totalFilterCount} filter${
+                            totalFilterCount === 1 ? "" : "s"
+                          }`}
+                    </span>
+                    <span
+                      className="index-drawer__option-remove"
+                      aria-hidden="true"
+                    >
+                      ×
+                    </span>
+                    <span
+                      className="index-drawer__option-bracket"
+                      aria-hidden="true"
+                    >
+                      ]
+                    </span>
+                  </button>
+                )
+              ) : committedSearch ? (
                 // Search Query Wiring: the collapsed committed state. Pure
                 // visual reuse of Filter's own selected-option styling
                 // (index-drawer__option/-selected/-bracket/-remove --
@@ -988,16 +1294,43 @@ export default function Header({
               )}
             </div>
           </div>
-          <button
-            type="button"
-            className={`text-control text-control--active text-control--filter${
-              isMenuOpen ? " text-control--engaged" : ""
-            }`}
-            aria-expanded={isMenuOpen}
-            onClick={handleMenuToggle}
-          >
-            <span>Menu</span>
-          </button>
+          {/* Mobile Header/Search/Menu Refinement Pass -- Section 2: mobile
+              UI mode replaces the visible "Menu" text control with a
+              minimal hamburger icon -- two thin, restrained strokes in the
+              site's own visual language, not a generic filled app icon.
+              The icon glyph itself stays small (matching the header's own
+              restrained typography); mobile-menu-toggle's own padding gives
+              it a touch target well beyond its visible size (see
+              styles.css). Desktop is completely untouched -- it keeps
+              exactly the existing text-control Menu button, same
+              handleMenuToggle/isMenuOpen/drawerSection wiring as always. */}
+          {isMobileUiMode ? (
+            <button
+              type="button"
+              className={`mobile-menu-toggle${
+                isMobileMenuOpen ? " mobile-menu-toggle--engaged" : ""
+              }`}
+              aria-expanded={isMobileMenuOpen}
+              aria-label="Open menu"
+              onClick={handleMobileMenuOpen}
+            >
+              <span className="mobile-menu-toggle__icon" aria-hidden="true">
+                <span className="mobile-menu-toggle__bar" />
+                <span className="mobile-menu-toggle__bar" />
+              </span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={`text-control text-control--active text-control--filter${
+                isMenuOpen ? " text-control--engaged" : ""
+              }`}
+              aria-expanded={isMenuOpen}
+              onClick={handleMenuToggle}
+            >
+              <span>Menu</span>
+            </button>
+          )}
         </nav>
       </div>
 
@@ -1403,6 +1736,60 @@ export default function Header({
         }`}
         aria-hidden="true"
       />
+
+      {/* Mobile Archive Interaction Pass -- Stage 4, refined by the Mobile
+          Header/Search/Menu Refinement Pass: instantiated only on mobile UI
+          mode, mirroring the "hidden entirely, not just visually collapsed"
+          treatment Stage 3 already gives the desktop Filter button (see the
+          !isMobileUiMode branch far above) -- the desktop build never
+          mounts this component at all. Every prop is either a plain read
+          already computed above (entries/entryValues/entryLabels/
+          selection/searchValue/committedSearch/totalFilterCount) or one of
+          the thin wrapper handlers above (handleMobileOptionToggle/
+          handleMobileSearchSubmit/handleMobileClearAll) that call straight
+          into the exact same functions the desktop drawer already uses --
+          see this component's own header comment in MobileSearchOverlay.jsx
+          for the full reasoning. onClose is now the shared
+          handleMobileOverlayClose (Section 5) rather than a boolean setter,
+          so closing via this overlay's own X resolves through the exact
+          same single path Menu's own X does. */}
+      {isMobileUiMode && (
+        <MobileSearchOverlay
+          isOpen={isMobileSearchOverlayOpen}
+          onClose={handleMobileOverlayClose}
+          entries={INDEX_ENTRIES}
+          entryValues={entryValues}
+          entryLabels={entryLabels}
+          selection={selection}
+          onOptionToggle={handleMobileOptionToggle}
+          searchValue={searchValue}
+          onSearchValueChange={setSearchValue}
+          onSubmitSearch={handleMobileSearchSubmit}
+          committedSearch={committedSearch}
+          totalFilterCount={totalFilterCount}
+          onClearAll={handleMobileClearAll}
+        />
+      )}
+
+      {/* Section 3: the mobile Menu overlay -- instantiated only on mobile
+          UI mode, exactly parallel to MobileSearchOverlay just above. Not a
+          mobile-conditional render of the desktop .index-drawer Menu row:
+          a fully separate, purpose-built full-screen component (see
+          MobileMenuOverlay.jsx's own header comment). MENU_LINKS/
+          MENU_LINK_PATHS are the exact same navigation table the desktop
+          Menu row (further above) already uses -- there is no second
+          navigation table here, only a second presentation of the same
+          one. */}
+      {isMobileUiMode && (
+        <MobileMenuOverlay
+          isOpen={isMobileMenuOpen}
+          onClose={handleMobileOverlayClose}
+          links={MENU_LINKS}
+          linkPaths={MENU_LINK_PATHS}
+          activePath={path}
+          onSelect={handleMobileMenuSelect}
+        />
+      )}
     </header>
   );
 }

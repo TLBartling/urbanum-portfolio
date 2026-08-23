@@ -1810,10 +1810,69 @@ html.is-browsing .zoom-controls {
      screen `position: fixed` overlays -- see .mobile-search-overlay and
      .mobile-menu-overlay below), and mobile no longer ever opens
      .index-drawer at all (see Header.jsx's own mobileOverlay state
-     machine), so nothing on mobile grows this element's height again once
-     it is set here. */
+     machine), so nothing on mobile GROWS this element's height again once
+     it is set here -- see the `html.is-browsing` override below, though,
+     for a real way this height was still being SHRUNK back below 120px
+     after this fix first shipped.
+
+     Second refinement pass -- reduced horizontal inset ("move SEARCH
+     further left"): row1's own horizontal padding, inherited unchanged
+     from the desktop base rule (`clamp(34px, 4vw, 60px)`, floor 34px at
+     every mobile width), combined with .site-header's own 20px mobile
+     padding to put a 54px gap on both sides of .top-menu's content box --
+     more than intended once SEARCH and the hamburger became the only two
+     things in that row. Zeroing row1's own horizontal padding on mobile
+     only (desktop's clamp is completely untouched) drops that combined
+     inset to a flat 20px on each side -- matching
+     .mobile-search-overlay/.mobile-menu-overlay's own 20px edge padding
+     exactly, so the whole mobile chrome system now shares one consistent
+     edge margin. Since .top-menu is `justify-content: space-between`
+     inside this same box, this pulls SEARCH and the hamburger in from
+     their respective edges by the same amount -- symmetry (see the
+     un-migrated `.top-menu` rule just below, which no longer needs its
+     own left/right offset at all) is preserved automatically, it isn't a
+     second value to keep in sync. The logo is unaffected: .brand-button
+     is centered via `left: 50%` against row1's own BORDER-box width,
+     which padding never changes. */
   .site-header__row1 {
     height: 120px;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  /* Second refinement pass -- the "header goes transparent over the
+     Archive" bug reported after real-device testing: `html.is-browsing
+     .site-header__row1` (the desktop-era "scroll-quiet" rule, further up
+     this file) shrinks row1 to `clamp(72px, 6.3vw, 90px)` (a 72px floor
+     at every mobile width) the moment a visitor pans the Archive at all
+     -- `is-browsing` flips on past a small movement threshold, so this is
+     not an edge case, it's the ordinary state within a second or two of
+     any real use. That compound selector's specificity (0-2-1) beats this
+     file's own plain `.site-header__row1` override immediately above
+     (0-1-0) regardless of media scoping, so row1 was silently reverting
+     to its old, too-short height the instant someone touched the Archive
+     -- reproduced directly: row1 measured 120px at rest, then 75px after
+     a single pan gesture, with SEARCH/the hamburger rendering outside the
+     header's own now-shorter box exactly as the reported screenshot
+     showed. The mobile header is meant to be a compact, STABLE height
+     unconditionally (see this rule's own comment above) -- browsing/
+     scrolling is not one of the states that should change it. Fixed with
+     the identical selector, restating row1's own resting-state values
+     (this rule's own height/padding-left/padding-right above, plus the
+     base rule's own 34px-floor padding-top, since `is-browsing` also
+     shrinks that) -- same specificity as the original, but declared later
+     in this file, so it wins the cascade the same documented way every
+     other equal-specificity override in this file already does. Every
+     OTHER `is-browsing` effect (the logo's own slight scale-down, the
+     zoom controls dimming, .top-menu__group's own tighter gap) is left
+     completely alone -- purely cosmetic, none of them break coverage the
+     way the height/padding-top pair did, so none of them needed
+     touching. */
+  html.is-browsing .site-header__row1 {
+    height: 120px;
+    padding-top: 34px;
+    padding-left: 0;
+    padding-right: 0;
   }
 
   .brand {

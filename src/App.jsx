@@ -126,6 +126,39 @@ const galleryEdgeBleed = 690;
 const SCROLL_IDLE_DELAY_MS = 200;
 const SCROLL_IDLE_VELOCITY_EPSILON = 0.5;
 
+// High-End Motion/Transition Polish pass: the gap this pass closes. Once
+// SCROLL_IDLE_DELAY_MS above has already decided the camera is stopped
+// (isScrollingRef flips false, the "is-scrolling" CSS class lifts, theme
+// <li> pointer-events -- and with them the instant text-color hover
+// affordance -- come back), three OTHER systems used to become eligible
+// on that exact same tick, the instant isScrollingRef went false: settled
+// image entrance (updateEntranceAnimations' motion branch), the local
+// centerScale/relationshipMotion transform resume (same function, the
+// smoothX/Y/Scale block), and Relationship Engine hover-intent
+// (isRelationshipActivationBlocked). Individually each of those is
+// already its own smooth transition (entrance tweens, the 0.14/frame
+// local-transform ease, the dwell timer) -- the "technical state switch"
+// feeling reported was never any ONE of them snapping, it was several
+// independently-smooth systems all being handed the green light on the
+// same frame, which reads as one coordinated flip rather than a field
+// settling into place.
+//
+// FIELD_SETTLE_GRACE_MS is a second, short debounce chained AFTER
+// isScrollingRef already goes false -- it does not touch
+// SCROLL_IDLE_DELAY_MS or how/when the camera itself is judged stopped,
+// and it does not gate pointer-events or the instant text-color hover
+// (those stay exactly as fast as they already were). It only delays the
+// three passive/visual systems above by one short additional beat, via
+// isFieldSettledRef below, so the field visibly finishes settling before
+// local transforms resume, new imagery resolves, or a relationship can
+// activate. 130ms was chosen empirically: short enough to sit under the
+// ~150ms threshold where an added wait starts reading as conscious lag
+// (nothing here is input-gated the way the hover-intent dwell is -- nothing
+// is "waiting to be let in"), long enough to reliably land after the
+// settle-timer tick that already flips isScrollingRef, so the two beats
+// are felt as one continuous settle rather than two separate delays.
+const FIELD_SETTLE_GRACE_MS = 130;
+
 // Four designer-authored DAPC compositions (Stage A/B source-fidelity
 // audit, approved 2026-08-15) -- replaces the earlier six-of-eight
 // pattern pool entirely. Each pattern is a fixed column of tiles sharing
@@ -229,6 +262,45 @@ const initialGalleryBatches = 3;
 const minRenderOverscan = 1200;
 const maxRenderOverscan = 3600;
 
+// Desktop Zoom + Motion Polish pass: the margin that resets an
+// already-revealed tile back to its hidden pre-entrance state once it
+// drifts this far past the viewport edge (see isAwayFromViewport's own
+// comment in createGalleryRenderer for the full reasoning and the direct
+// measurement behind this number). Deliberately kept well under
+// minRenderOverscan -- the render window's own smallest possible
+// mount/unmount margin -- so a tile is always reset here first, keeping
+// animatedImages in sync, before it would ever actually unmount from the
+// DOM.
+const AWAY_FROM_VIEWPORT_MARGIN_PX = 900;
+
+// Motion-Stability pass: while the Archive is actively moving (see
+// isArchiveInMotionRef, threaded into createGalleryRenderer), a tile
+// crossing into isNearViewport no longer plays the entrance tween below at
+// all -- it is set straight to its final resting state in one frame (see
+// updateEntranceAnimations' own comment for why: any local scale/opacity
+// animation while the whole world is panning/zooming past it reads as an
+// independent object popping, not a stable part of one moving composition,
+// which was the investigation's own diagnosis for the reported
+// shakiness). These two constant blocks are what a tile animates FROM
+// once the camera has genuinely settled and a GENUINELY new tile enters
+// view -- deliberately more restrained than the pre-existing initial-load
+// treatment just below (INITIAL_REVEAL_*), per the explicit instruction
+// that initial page load may keep slightly more visible entrance
+// character than tiles encountered during ordinary navigation.
+const SETTLED_ENTRANCE_FROM_OPACITY = 0.5;
+const SETTLED_ENTRANCE_FROM_SCALE = 0.99;
+const SETTLED_ENTRANCE_FROM_BLUR_PX = 3;
+// Shorter and fixed (not the randomized 0.72-1.08s initial-load range) --
+// this is meant to read as a quiet resolve, not a moment the visitor's
+// attention is pulled toward. No y-offset at all (unlike the initial-load
+// treatment's 12px slide): a translate reads more like a card sliding in;
+// opacity+scale+blur alone reads closer to "an image resolving into
+// focus," which is the effect asked for. power2.out, not power3 -- a
+// gentler deceleration for a smaller, quieter motion; still no spring/
+// elastic/back easing, matching the explicit "not bouncy" instruction.
+const SETTLED_ENTRANCE_DURATION = 0.45;
+const SETTLED_ENTRANCE_EASE = "power2.out";
+
 // Camera Phase 1: discrete, un-eased zoom step wired to the existing +/-
 // controls (see handleZoomStep in App()). No easing, cursor-anchoring, or
 // inertia -- a click just moves viewportScaleRef.current by one step,
@@ -247,6 +319,294 @@ const CAMERA_ZOOM_MAX = 2.5;
 // un-eased assignment per event, not smoothing. A plain default, easy to
 // retune.
 const CAMERA_ZOOM_WHEEL_SENSITIVITY = 0.01;
+
+// Desktop Zoom + Motion Polish pass: a single discrete mouse-wheel notch
+// reports deltaY around 100 in Chrome/Firefox/Safari's pixel delta mode --
+// at CAMERA_ZOOM_WHEEL_SENSITIVITY above, that one notch produces a raw
+// delta of 1.0, more than half of the entire CAMERA_ZOOM_MIN..MAX span
+// (1.7) in a single, un-eased, instantly-applied event (measured directly:
+// one notch took the Archive from scale 1 to scale ~2.25, a 2.25x jump).
+// That reads as exactly the "exaggerated"/"mechanical" zoom this pass was
+// asked to remove -- the sensitivity constant above was evidently tuned
+// only against trackpad-pinch's own much smaller per-frame deltaY values
+// (a continuous gesture built from many small events), never against a
+// single discrete wheel notch, which is why it was left "easy to retune"
+// in its own comment above.
+//
+// This is a per-EVENT ceiling, not a sensitivity change -- deliberately
+// separate from CAMERA_ZOOM_WHEEL_SENSITIVITY itself, and applied only in
+// handleWheel's own ctrlKey branch below, never inside handleZoomStep.
+// Keeping it out of handleZoomStep matters: that function is also the
+// mobile pinch handler's own call path (see handleTouchMove's pinch
+// branch) and the +/- buttons' (CAMERA_ZOOM_STEP = 0.25, already below
+// this ceiling and therefore unaffected either way) -- a cap inside
+// handleZoomStep itself would silently retune mobile pinch sensitivity
+// too, which this pass must not touch. A real trackpad-pinch gesture's
+// own per-frame deltaY is normally well under the raw-delta value this
+// ceiling would even engage at, so this only ever clips the rare large
+// spike (a fast discrete notch, or an outlier trackpad frame), leaving
+// genuine continuous trackpad-pinch feel exactly as it already was.
+const CAMERA_ZOOM_WHEEL_STEP_MAX = 0.12;
+
+// Camera Feel pass: viewportScaleRef no longer jumps straight to whatever
+// handleZoomStep asks for -- it eases toward a separate targetScaleRef
+// every animation frame (see the per-frame zoom-ease block in
+// updateGalleryMotion), the exact same ease-toward-target idiom this file
+// already uses for viewportDrawerScaleRef (FILTER_DRAWER_ZOOM_EASE = 0.14)
+// and updateEntranceAnimations' own smoothScale (0.14). This constant is
+// tuned separately from those, deliberately snappier: 0.14 measured too
+// sluggish for the PRIMARY zoom control (visibly lagging behind a
+// deliberate wheel gesture), where the drawer's own 0.14 is a passive,
+// rarely-noticed accommodation that has no such responsiveness demand.
+// 0.22 settles a step in ~5-6 frames (~90ms) -- fast enough to read as
+// "responsive, not delayed" while still visibly interpolating rather than
+// snapping (see CAMERA_ZOOM_MIN/MAX's own ~1.7 span -- even a full-range
+// jump now glides smoothly instead of stepping). Mobile pinch does NOT
+// use this ease -- see its own call site's comment for why it stays on
+// the instant, per-frame-exact path it already had.
+const CAMERA_ZOOM_EASE = 0.22;
+
+// Matches the snap-to-target epsilon convention already used for
+// viewportDrawerScaleRef above (0.0005) -- once within this distance of
+// the target, snap exactly to it rather than asymptotically approaching
+// forever, so the camera settles at a precise, final scale.
+const CAMERA_ZOOM_SETTLE_EPSILON = 0.0005;
+
+// True 2D Cursor Zoom pass: the fraction of the track's available vertical
+// overflow (see applyZoomAnchor's own comment for the full derivation) the
+// Y pan correction is allowed to actually use. Kept below 1 so a fraction
+// of the overflow always stays in reserve as a visible margin -- at REACH=1
+// the composition could shift exactly far enough that one edge of the
+// track lines up perfectly with the opening's own boundary (zero slack on
+// that side).
+//
+// Value history: total available overflow is small near neutral scale by
+// construction (it is proportional to (scale - 1) -- there simply isn't
+// much extra track height to redistribute yet), so a conservative REACH
+// made the bound engage even for fairly ordinary cursor positions at
+// modest zoom -- measured directly: a cursor only ~100px off center (22%
+// of the opening's own half-height) combined with a mild 3-notch zoom to
+// scale 1.16 already exceeded a REACH of 0.7's bound. That reads as "the
+// composition barely responds to where I'm looking" for exactly the
+// ordinary case this pass is meant to fix, not just an extreme edge case.
+// 0.88 leaves a smaller but still real 12% margin -- confirmed (same
+// measurement) to no longer clamp that moderate case, while the aggressive
+// far-off-center + heavy-zoom cases this pass also tested still clamp
+// well before the opening's true boundary.
+const CAMERA_VERTICAL_ANCHOR_REACH = 0.88;
+
+// Weighted Dial Pan Feel pass: friction/impulse/cap constants for the
+// EXISTING velocity+friction pan model (see animateGallery/
+// addGalleryVelocity in App()) -- no new physics system, this pass only
+// retunes these three numbers plus adds a soft input curve ahead of them
+// (see softenWheelPanDelta). Wheel/trackpad and single-finger touch-drag
+// are kept deliberately separate here (CAMERA_PAN_WHEEL_* vs
+// CAMERA_PAN_TOUCH_*) because they share ONE velocity accumulator and ONE
+// friction value (movement.velocity, decayed once per frame in
+// animateGallery, regardless of which input produced it) but must not
+// share IMPULSE tuning: retuning wheel's own feel must not silently
+// retune mobile finger-drag, which this pass is explicitly not allowed to
+// touch. CAMERA_PAN_TOUCH_IMPULSE_COEFF/CAP below are therefore the exact
+// prior shared values (0.16, 42), now applied only at the touch call site,
+// preserving touch-drag's per-pixel responsiveness byte-for-byte. Only
+// CAMERA_PAN_FRICTION is unavoidably shared -- there is only one
+// movement.velocity and one decay step, so a heavier/longer decay tail is
+// the one honest, minimal side effect this pass has on mobile pan (see the
+// friction constant's own comment for the full reasoning); it does not
+// change touch's peak per-frame responsiveness while a finger is actively
+// dragging, only how long the glide continues after it lifts.
+//
+// Prior wheel-side behavior: addGalleryVelocity multiplied every event's
+// raw (already deltaMode-normalized) delta by a flat 0.16, then hard-
+// clamped the RESULT to +-42 -- both a per-event linear multiplier and a
+// cliff-edge outer bound, together producing the "a single mouse notch
+// visibly snaps the Archive" feel this pass was asked to remove.
+//
+// CAMERA_PAN_WHEEL_SATURATION_PX is the input-side soft-saturation knee
+// (see softenWheelPanDelta) -- roughly the raw-delta magnitude of a single
+// discrete mouse-wheel notch (measured ~100-120px in pixel delta mode), so
+// one notch sits meaningfully into the curve's taper rather than the
+// purely linear region, while a small trackpad frame (a few px) still
+// passes through nearly 1:1 -- "precise for a small nudge, diminishing for
+// a big one," not a step function.
+//
+// Value history: an initial 85 (tighter than one notch's own ~110 raw
+// magnitude) was measured to compress a single hard flick (300 raw) down
+// to a 144px total glide, a 73% reduction from the pre-pass 525px --
+// clearly overshooting "less twitchy" into "a flick barely moves,"
+// violating this pass's own explicit "a flick should glide" requirement.
+// 110 -- roughly one notch's own magnitude, rather than well under it --
+// keeps a single notch close to the curve's linear region (still soft,
+// still meaningfully gentler than the old uncompressed multiply) while
+// letting a genuinely large flick retain most of its raw magnitude before
+// tapering, since tanh's own bend only becomes pronounced well past its
+// argument reaching ~1.
+// Casual Stroll pass (governor retune): lowered from 110 to 60. The prior
+// value's own job -- keep one notch close to the curve's near-linear
+// region, let a flick retain most of its magnitude before tapering -- is
+// still what this does, just against a smaller reference: 60 is closer to
+// a SMALL trackpad frame's own magnitude than a full mouse notch's, so
+// the curve's soft-resistance region now starts engaging noticeably
+// sooner (item 8's "small delta near-linear, medium increasing
+// resistance, very large delta strong diminishing returns" -- a lower
+// knee pulls "medium" earlier without adding a hard clip anywhere).
+// Tested alongside two less-restrained siblings (Candidate A: 90,
+// Candidate B: 75) that both measurably reduced peak speed and travel but
+// left an aggressive flick well above what this pass's own perceptual
+// check (a screenshot filmstrip during an aggressive flick, watching
+// individual tiles) still called comfortably readable -- see this pass's
+// own report for the full three-way comparison. 60 is Candidate C, the
+// one selected.
+const CAMERA_PAN_WHEEL_SATURATION_PX = 60;
+// Applied AFTER softening, converting the softened raw delta into a
+// velocity contribution.
+//
+// Value history, both measured with verify-pan-feel's own frame-by-frame
+// capture (continuous-trackpad steady-state speed and single-flick total
+// glide distance, against this pass's own pre-tuning baseline of
+// steady=24.0, flick-glide=525px):
+//   0.085 + 85px saturation:  steady~20  (83%), flick-glide=144px (27%)
+//     -- flick crushed far more than steady-state was calmed; violates
+//     "a flick should glide."
+//   0.11  + 110px saturation: steady~24  (100%, UNCHANGED) -- raising
+//     CAMERA_PAN_FRICTION from 0.92 to 0.95 alone increases the
+//     steady-state multiplier 1/(1-friction) by 60% (12.5 -> 20), which
+//     an impulse coefficient only "roughly half the old value" does not
+//     come close to offsetting; sustained-scroll cruising speed came out
+//     essentially the same as before, not calmer.
+//   0.085 + 110px saturation (final): steady~20 (85%), flick-glide~185px
+//     (35%) -- the wider saturation knee (110, roughly one notch's own
+//     magnitude, rather than the initial 85) keeps a genuine flick's
+//     raw magnitude mostly intact through the soft-saturation stage, so
+//     the SAME impulse coefficient that calms sustained small-delta
+//     input by ~15% only pulls a single large flick down to about a
+//     third of its old glide distance -- still clearly, deliberately
+//     shorter (an intentional part of "heavier, more controlled"), but
+//     nowhere near crushed to imperceptible.
+// Precision Dial Pan Weight pass: lowered from 0.085. The Stage-2 ease
+// added below (CAMERA_PAN_WHEEL_ACCEL_EASE) reshapes WHEN an impulse's
+// energy arrives on screen -- delayed, ramped -- but a first-order ease
+// toward a target conserves that target's total area over time (it is a
+// normalized weighted average, DC gain 1), so leaving this coefficient
+// alone would have kept total per-notch travel almost exactly what it was
+// before this pass (measured: 127.9px new vs a derived 134.8px old for an
+// identical single ordinary notch -- only a ~5% difference, from ease-
+// stage/frame-quantization edge effects, not a real reduction). The user's
+// explicit success criterion was travel that is NOT merely reshaped but
+// noticeably LESS ("The Archive should move LESS for a normal scroll
+// gesture than it currently does"), so this had to drop too. 0.05 (down
+// from 0.085) pulls one ordinary notch's total travel to ~79px, a ~41%
+// cut from the ~135px old baseline, while a flick (deltaY=400) drops by
+// the same ~41% proportionally (~187px -> ~110px) rather than being
+// crushed disproportionately -- both scale together because this
+// coefficient sits upstream of softenWheelPanDelta's own shape, so their
+// RATIO (flick still travels meaningfully further than a notch) is
+// preserved. Verified against actual dispatched WheelEvent sequences, not
+// just this formula -- see verify-pan-weight.mjs's ordinaryNotch/
+// strongFlick scenarios.
+// Casual Stroll pass: lowered from 0.05 to 0.015 -- the single largest
+// lever behind this pass's own primary goal (lower the MAXIMUM speed, not
+// just reshape the tail). Measured against actual dispatched WheelEvent
+// sequences (verify-pan-calibration.mjs), a single ordinary notch's total
+// travel dropped from ~75px to ~16px (a 79% cut), and an aggressive
+// trackpad-style flick's peak screen velocity dropped from ~1480px/s to
+// ~337px/s (a 77% cut) -- confirmed both numerically and by watching an
+// actual screenshot filmstrip of the flick: individual tiles stay
+// trackable across frames at every candidate tested, but only this one
+// (of the three compared) reads as a genuinely restrained, deliberate
+// stroll rather than "calmer but still quick." See this pass's own
+// report for the full A/B/C comparison and the user's explicit
+// instruction to bias toward the more restrained candidate.
+const CAMERA_PAN_WHEEL_IMPULSE_COEFF = 0.015;
+// Casual Stroll pass: lowered from 30 to 9 -- this pass's own explicit
+// "governor" requirement (a hard outer ceiling on achievable speed,
+// regardless of how hard or how long the input). Confirmed via direct
+// measurement that the old cap of 30 WAS the practical binding
+// constraint under sustained/aggressive input, not merely a rarely-
+// engaged backstop as its own prior comment assumed: baseline testing
+// this pass measured a sustained trackpad stream reaching ~22px/frame
+// and an aggressive flick reaching ~25px/frame, both approaching the old
+// 30 ceiling. At 9, the same aggressive flick now peaks around 5.6px/
+// frame (~337px/s) -- slow enough that a static screenshot filmstrip
+// taken every 120ms during the flick still shows every tile in a
+// trackable, non-overlapping position, matching the user's own
+// perceptual acceptance test ("watch the images... visually track the
+// larger images as they move past").
+const CAMERA_PAN_WHEEL_VELOCITY_CAP = 9;
+// Exact prior values, see this block's own opening comment.
+const CAMERA_PAN_TOUCH_IMPULSE_COEFF = 0.16;
+const CAMERA_PAN_TOUCH_VELOCITY_CAP = 42;
+// Up from 0.92 -- see animateGallery's own friction comment for the
+// empirical settle-time comparison behind this exact value. Touch-drag's
+// OWN decay constant as of the Precision Dial Pan Weight pass -- see
+// CAMERA_PAN_WHEEL_FRICTION below for why wheel now has a separate one.
+const CAMERA_PAN_FRICTION = 0.95;
+// Precision Dial Pan Weight pass: wheel's own Stage-1 target-velocity
+// decay rate, deliberately split out from CAMERA_PAN_FRICTION now that
+// wheelVelocity/touchVelocity are separate accumulators (see
+// movement.wheelVelocity/touchVelocity's own comments) -- previously
+// wheel and touch had NO choice but to share one friction constant
+// because they shared one velocity field; this pass's own instructions
+// explicitly called for separating a desktop-only parameter/path rather
+// than ever risking touch's decay as a side effect of retuning wheel, so
+// this exists even though its value happens to match touch's for now.
+// Kept equal to CAMERA_PAN_FRICTION (0.95) rather than shortened: the
+// "less travel" goal is met by injecting less force per input
+// (CAMERA_PAN_WHEEL_IMPULSE_COEFF, see its own comment) rather than by
+// cutting the tail short -- shortening decay was explicitly the wrong
+// lever here, since the user separately said WEIGHT is not simply a
+// longer-or-shorter coast, and a shorter tail right after finally getting
+// the weighted, gradual-buildup character this pass was asking for would
+// have undercut the same "substantial, not lightweight" feel from the
+// other direction.
+const CAMERA_PAN_WHEEL_FRICTION = 0.95;
+
+// Precision Dial Pan Weight pass: the Weighted Dial pass above only ever
+// shaped the SIZE of each wheel impulse (soft saturation) and how long the
+// tail lasted after input stopped (friction) -- it never changed HOW an
+// impulse turned into on-screen motion. addGalleryVelocity wrote straight
+// into the same movement.velocity that animateGallery reads and converts
+// into a screen move on that exact same frame, so however small a single
+// wheel event's contribution was, it still landed as one instantaneous
+// jump in the real, visible velocity. That is the confirmed reason the
+// Archive still read as "immediately responsive" / "shifty" despite the
+// longer decay: there was never an acceleration-limiting stage, only a
+// smaller-instant-jump-plus-longer-tail stage.
+//
+// Fix: wheel input is now two-stage, reusing this file's own established
+// ease-toward-target idiom (already proven for viewportScaleRef ->
+// targetScaleRef and viewportDrawerScaleRef) rather than inventing a new
+// physics system. Stage 1 (movement.wheelVelocity) is exactly the OLD
+// model -- a target/force accumulator that absorbs each softened wheel
+// impulse and decays via CAMERA_PAN_FRICTION every frame, unchanged. Stage
+// 2 (movement.appliedWheelVelocity) is new: it eases toward Stage 1's
+// current value every frame at this rate, and Stage 2 -- not Stage 1 -- is
+// what actually feeds worldDelta/on-screen movement. A single wheel notch
+// now ramps the real applied velocity up over several frames instead of
+// assigning it outright, which is what turns "input -> immediate
+// displacement -> long tail" into "input force -> restrained acceleration
+// -> velocity builds progressively -> controlled momentum -> smooth
+// deceleration" (the user's own stated target shape). Touch-drag is
+// deliberately NOT routed through this second stage -- it keeps writing
+// directly into its own movement.touchVelocity (see addTouchPanVelocity),
+// so finger tracking stays exactly as immediate/lag-free as before this
+// pass.
+//
+// Value: 0.13. Matched against this file's two other ease-toward-target
+// rates -- CAMERA_ZOOM_EASE (0.22, ~4.1-frame time constant, ~68ms to 63%
+// caught-up) reads as quick/responsive by design, since zoom is a discrete
+// per-notch action the user expects to track promptly. Pan needed to read
+// as heavier/more resistant than that, not merely different, so 0.13
+// (~7.2-frame time constant, ~120ms to 63%, ~360ms to ~95% caught-up) sits
+// clearly slower than zoom's ease while still resolving well within a
+// single deliberate gesture rather than lagging behind it -- verified
+// empirically against 0.10 (felt like the camera was chasing input by a
+// perceptible beat during rapid repeated notches -- too close to "laggy",
+// which the user explicitly said this must not become) and 0.18 (a single
+// ordinary notch's peak applied velocity was measurably closer to Stage
+// 1's instant peak again, eroding the "restrained acceleration" the whole
+// second stage exists to create).
+const CAMERA_PAN_WHEEL_ACCEL_EASE = 0.13;
 
 // Camera state/control split: Camera owns scale + pan, but does not decide
 // when they should return to default -- that decision belongs to whatever
@@ -366,7 +726,7 @@ const MOBILE_ZOOM_CONTROLS_BREATHING_MARGIN_PX = 10;
 // little above the ~10px a native touch tap-suppression heuristic
 // typically uses: this is a virtual, transform-driven world (not native-
 // scrolled DOM), so even sub-native-threshold finger movement already
-// imparts real camera velocity (addGalleryVelocity has no minimum-delta
+// imparts real camera velocity (addTouchPanVelocity has no minimum-delta
 // gate) -- a slightly larger threshold here is what keeps a slow,
 // deliberate small drag from being misread as a tap.
 const TAP_MOVEMENT_THRESHOLD_PX = 14;
@@ -1403,6 +1763,153 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
+// Relationship Field Recede pass: study of what happens AFTER the 325ms
+// hover-intent dwell commits. The dwell itself, HoverOverlay's dwell timer,
+// and the asymmetric 260ms/170ms activation/deactivation durations are all
+// untouched by this pass -- this only adds a small deterministic PER-TILE
+// transition-delay to the unrelated/receding field's existing opacity+blur
+// transition, so the recede reads as the field redistributing its
+// attention rather than one uniform state flip.
+//
+// Deliberately a plain CSS custom property + `transition-delay`, not a
+// setTimeout per tile: this is the "state-derived mechanism" the brief
+// asked for. If relatedArchiveNumbers clears (motion begins, pointer
+// leaves, a new theme is dwelled) before a tile's delayed transition has
+// even started, the browser abandons the pending delay on its own --
+// there is no JS timer to leak, cancel, or race, because none exists. The
+// stagger is entirely a property of the CSS transition already in place;
+// this only varies ONE input (the delay) per tile, deterministically.
+//
+// hashUnitInterval: a stable, non-Math.random per-tile pseudo-value in
+// [0, 1), seeded from the tile's own persistent id (`${batchIndex}-
+// ${itemIndex}`, stable for that tile's whole lifetime -- see
+// createGalleryBatch). Same tile -> same value, every render, every
+// session -- deterministic, not randomized at interaction time, per this
+// pass's own requirement.
+//
+// FNV-1a (large non-zero offset basis, XOR + multiply by a large prime
+// per character) rather than a simpler multiply-and-add hash starting
+// from 0: item.id is only 3-5 characters ("0-12"), and a from-0
+// accumulator was measured (empirical test harness) to stay too small
+// across that few iterations, collapsing toward ~0 for every id and
+// producing an almost-zero delay for every tile -- not the intended
+// "well-distributed, no visible pattern" texture. FNV-1a's large seed and
+// per-character multiply avoid that even for very short keys.
+function hashUnitInterval(key) {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < key.length; i += 1) {
+    hash ^= key.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0) / 4294967296;
+}
+
+// Total field-spread ceiling: 130ms sits in the 100-160ms range this pass's
+// own brief suggested, and doubles as the spatial-propagation clamp ceiling
+// so a tile at the far edge of a large field never drifts into a slow,
+// separately-noticeable straggle.
+const RELATIONSHIP_RECEDE_MAX_DELAY_MS = 130;
+
+// Spatial propagation: world-space Euclidean distance from the
+// intentionally-committed tile (relationshipOriginLayout, this render's own
+// center-point of whichever tile the visitor's cursor is still over when
+// the dwell commits -- see hoveredGalleryItemId's own wiring, untouched by
+// this pass) to this tile's own center, compressed into the ceiling above.
+// item.layout.left/top/width/height are DAPC's own authored world-space
+// geometry (px strings, already used elsewhere for camera math) -- reused
+// as-is, not recomputed, per this pass's "the composition remains
+// authoritative" instruction. Chosen over a pure per-tile hash (tested as
+// "Variant A" during this pass's own A/B/C study) because a spatial
+// gradient reads as the field's attention shifting outward from the point
+// of interest -- a pure per-tile hash has no spatial meaning, so adjacent
+// tiles could recede at very different rates for no legible reason, which
+// read closer to "noise" than an authored response during testing.
+//
+// RELATIONSHIP_RECEDE_DISTANCE_DIVISOR_PX: how many world px map to 1ms of
+// delay before the ceiling clamps. Chosen so an ordinary on-screen distance
+// (a few hundred to ~2000px, typical for tiles sharing a viewport) maps to
+// a fraction of the total ceiling, not a dramatic visible sweep -- a tile
+// 2860px from the origin already sits at the ceiling, so even a very
+// wide/zoomed-out field never produces a slow, separately-perceptible
+// straggle at the far edge.
+const RELATIONSHIP_RECEDE_DISTANCE_DIVISOR_PX = 22;
+function getSpatialPropagationDistanceMs(item, originLayout) {
+  if (!originLayout) return 0;
+  const left = Number.parseFloat(item.layout.left);
+  const top = Number.parseFloat(item.layout.top);
+  const width = Number.parseFloat(item.layout.width);
+  const height = Number.parseFloat(item.layout.height);
+  const cx = left + width / 2;
+  const cy = top + height / 2;
+  const dx = cx - originLayout.cx;
+  const dy = cy - originLayout.cy;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+  return clamp(
+    distance / RELATIONSHIP_RECEDE_DISTANCE_DIVISOR_PX,
+    0,
+    RELATIONSHIP_RECEDE_MAX_DELAY_MS,
+  );
+}
+
+// A small deterministic +/- jitter (hashUnitInterval, same stable per-tile
+// id-based pseudo-value used nowhere else once the pure micro-stagger
+// variant was retired) layered onto the spatial value above, breaking up
+// the otherwise perfectly smooth concentric distance bands pure spatial
+// propagation alone produces -- without introducing any visible randomness
+// (same tile, same offset, always). This was the "Variant C" combination in
+// this pass's own A/B/C study, and tested as the strongest of the three:
+// spatially coherent (unlike the pure hash), but without a perfectly clean
+// ring-like edge (unlike spatial propagation alone).
+const RELATIONSHIP_RECEDE_MICRO_JITTER_MS = 14;
+function getRelationshipRecedeDelayMs(item, originLayout) {
+  const spatial = getSpatialPropagationDistanceMs(item, originLayout);
+  const jitter = (hashUnitInterval(item.id) - 0.5) * RELATIONSHIP_RECEDE_MICRO_JITTER_MS;
+  return Math.round(
+    clamp(spatial + jitter, 0, RELATIONSHIP_RECEDE_MAX_DELAY_MS),
+  );
+}
+
+// Camera Feel pass: WheelEvent.deltaMode declares the UNIT deltaX/deltaY
+// are expressed in -- 0 (DOM_DELTA_PIXEL) is what every evergreen browser
+// reports for both a physical mouse wheel and a trackpad gesture today,
+// but the spec still allows 1 (DOM_DELTA_LINE -- some Firefox
+// configurations with "scroll by line" enabled) and 2 (DOM_DELTA_PAGE).
+// Converting defensively here means the camera's pixel-tuned feel doesn't
+// silently become an order of magnitude too slow (or too fast) on the
+// rare browser/OS/driver combination that still reports lines or pages,
+// without needing to flatten every device's own natural delta magnitude
+// into one identical value -- LINE_HEIGHT_PX (16) mirrors the approximate
+// CSS line-height browsers themselves use for this exact conversion; PAGE
+// mode is normalized against the viewport's own dimension, matching what
+// "one page" actually means on screen.
+const WHEEL_LINE_HEIGHT_PX = 16;
+function normalizeWheelAxisDelta(value, deltaMode, viewportDimension) {
+  if (deltaMode === 1) return value * WHEEL_LINE_HEIGHT_PX;
+  if (deltaMode === 2) return value * viewportDimension;
+  return value;
+}
+
+// Weighted Dial Pan Feel pass: soft saturation for wheel/trackpad pan
+// input, applied to the already deltaMode-normalized raw delta BEFORE it
+// becomes a velocity contribution (see CAMERA_PAN_WHEEL_SATURATION_PX's
+// own comment for the constant, and handleWheel's call site). tanh(x/k)*k
+// passes small |x| through almost linearly (x << k => close to x, so a
+// small trackpad frame still feels precise and direct) while bending
+// smoothly toward a fixed asymptote of +-k as |x| grows arbitrarily large
+// (a fast notch or an outlier spike gets diminishing additional effect,
+// never a hard cliff). This replaces the old flat multiplier + hard clamp
+// combination for wheel input specifically; touch-drag's own call site
+// never calls this (see CAMERA_PAN_TOUCH_IMPULSE_COEFF's comment).
+function softenWheelPanDelta(rawDelta) {
+  if (rawDelta === 0) return 0;
+  const sign = rawDelta > 0 ? 1 : -1;
+  return (
+    sign *
+    CAMERA_PAN_WHEEL_SATURATION_PX *
+    Math.tanh(Math.abs(rawDelta) / CAMERA_PAN_WHEEL_SATURATION_PX)
+  );
+}
+
 function getClusterCenter(placement, focusedRect, relatedRect) {
   const centerX = window.innerWidth / 2;
   const centerY = window.innerHeight / 2;
@@ -1497,12 +2004,33 @@ function createGalleryRenderer({
   viewportScaleRef,
   viewportDrawerScaleRef,
   viewportPanXRef,
+  viewportPanYRef,
   renderWindowRef,
   setRenderWindowState,
   focusedIdRef,
   preEntryDistance,
   renderWindowUpdateThreshold,
   openingHeight,
+  // Motion-Stability pass: the same isScrolling ref App()'s own
+  // Browsing/Exploration mode already computes (real pan velocity OR an
+  // unsettled zoom -- see updateGalleryMotion's own comment), aliased here
+  // under the name this file's entrance system actually cares about.
+  // Deliberately the SAME ref, not a parallel second one -- one signal,
+  // two consumers (CSS-driven Relationship Engine suppression via the
+  // is-scrolling class, and this renderer's own entrance/local-motion
+  // suppression below), per the explicit instruction not to invent a new
+  // state system.
+  isArchiveInMotionRef,
+  // High-End Motion/Transition Polish pass: a second, later-arriving
+  // signal than isArchiveInMotionRef above -- true only once the field has
+  // finished its short post-motion settle (see FIELD_SETTLE_GRACE_MS's own
+  // comment). isArchiveInMotionRef alone answers "is the camera moving";
+  // this answers "has it also had its brief settle beat since it stopped."
+  // Read by updateEntranceAnimations below to stagger entrance/local-
+  // transform eligibility one small step later than the camera-stopped
+  // moment itself, instead of both resuming on the exact same frame
+  // isArchiveInMotionRef flips false.
+  isFieldSettledRef,
 }) {
   const setTrackX = gsap.quickSetter(track, "x", "px");
   const setTrackY = gsap.quickSetter(track, "y", "px");
@@ -1572,19 +2100,22 @@ function createGalleryRenderer({
   // Vertical framing is intentionally NOT cursor-anchored. The archive is
   // horizontally navigable but has no vertical world to navigate -- its
   // vertical position is a fixed composition centered on the OpeningViewport,
-  // not a place the cursor can be "over." This is the sole vertical term:
-  // pure opening-anchored scale compensation, anchored on openingHeight/2 --
-  // the viewing-window opening's OWN center, supplied by Application Layout
-  // -- not window.innerHeight/2 and not any interaction-time cursor position.
+  // not a place the cursor can be "over" -- BEFORE the True 2D Cursor Zoom
+  // pass, that is. This is still the base vertical term: pure opening-
+  // anchored scale compensation, anchored on openingHeight/2 -- the
+  // viewing-window opening's OWN center, supplied by Application Layout --
+  // not window.innerHeight/2 and not any interaction-time cursor position.
   // This element's local coordinate space starts at the opening's own
   // top-left (Archive no longer bakes any page-relative offset into tile
   // positions), so the anchor has to be expressed in that same
   // opening-relative space. Application Layout positions the opening itself
   // on the page separately, via untransformed layout, so this function never
-  // needs to know where on the page that is. Because there is no cursor or
-  // pan term here, the composition returns to exactly this same vertical
-  // position at every scale, on every zoom in/out cycle, with no possibility
-  // of drift.
+  // needs to know where on the page that is. On its own, with no pan term,
+  // this always returns the composition to exactly this same vertical
+  // position at every scale -- applyTransform below now adds
+  // viewportPanYRef's own correction on top of this, exactly the same
+  // relationship viewportPanXRef already has with projectWorldToScreenX
+  // (a pure additive offset, not a replacement of this term).
   const getVerticalScaleCompensation = (scale) => {
     return (openingHeight / 2) * (1 - scale);
   };
@@ -1592,7 +2123,14 @@ function createGalleryRenderer({
   const applyTransform = (distance) => {
     const scale = getEffectiveScale();
     setTrackX(projectWorldToScreenX(0, distance, scale));
-    setTrackY(getVerticalScaleCompensation(scale));
+    // True 2D Cursor Zoom pass: viewportPanYRef.current is the ONLY change
+    // here -- see its own declaration and applyZoomAnchor's comment. The
+    // base opening-centered compensation is untouched and still runs every
+    // frame; this is a pure additive correction on top of it, the same
+    // relationship viewportPanXRef already has with projectWorldToScreenX.
+    // No new wrapper transform, no new element -- same setTrackY call this
+    // always was.
+    setTrackY(getVerticalScaleCompensation(scale) + viewportPanYRef.current);
     setTrackScaleX(scale);
     setTrackScaleY(scale);
   };
@@ -1634,19 +2172,61 @@ function createGalleryRenderer({
 
       const layoutLeft = Number.parseFloat(item.layout.left);
       const layoutWidth = Number.parseFloat(item.layout.width);
+      const scale = getEffectiveScale();
       const screenLeft = projectWorldToScreenX(
         layoutLeft,
         movement.distance,
-        getEffectiveScale(),
+        scale,
       );
       const screenRight = screenLeft + layoutWidth;
       const isVisible = screenRight > 0 && screenLeft < window.innerWidth;
+      // Desktop Zoom + Motion Polish pass: an item drifting past
+      // preEntryDistance of the viewport edge is what resets an
+      // already-revealed tile back to its hidden pre-entrance state
+      // (isAwayFromViewport below), so it replays its pop-in the next time
+      // it re-enters view. The first attempt here tried to make that
+      // margin scale-INVARIANT (reasoning: zoom shouldn't cross a
+      // screen-space threshold the way a pan does) -- direct instrumentation
+      // proved that reasoning wrong. The world-space range actually
+      // visible on screen genuinely shrinks as scale increases (zooming in
+      // IS showing less world -- projectWorldToScreenX's own contract, not
+      // a bug), so a boundary tile legitimately leaving that shrunken
+      // range is correct geometry, not drift to be corrected. Scaling (or
+      // world-izing) the margin doesn't change that: instrumented after
+      // that fix, the same pure zoom-in/zoom-out cycle (no pan) still
+      // reset tiles, because those tiles were genuinely, correctly
+      // computed as now-outside-cushion by BOTH the old and the "fixed"
+      // formula alike.
+      //
+      // The actual defect is narrower: this same tight, ~360px cushion is
+      // reused for two different jobs that don't need the same tolerance.
+      // For staging a NOT-YET-REVEALED tile's entrance (isNearViewport,
+      // untouched below) a tight cushion is exactly right -- it's a small
+      // head start before the tile is visible. For deciding whether an
+      // ALREADY-REVEALED tile should be torn back down to hidden
+      // (isAwayFromViewport), that same tight cushion means an ordinary
+      // zoom step -- which moves the visible world range by exactly the
+      // kind of distance a 360px margin is meant to absorb -- routinely
+      // crosses it for tiles sitting near the current edge, even though
+      // the visitor hasn't panned anywhere and is likely to zoom right
+      // back. Verified directly: one in/out zoom cycle at a fixed cursor,
+      // zero pan, reset dozens of already-revealed tiles before this fix.
+      //
+      // Fixed by giving the away-reset its own, much larger margin
+      // (AWAY_FROM_VIEWPORT_MARGIN_PX) -- generous enough to absorb normal
+      // zoom oscillation, but still kept safely under the render window's
+      // own minimum mount/unmount overscan (minRenderOverscan = 1200px)
+      // so a tile is still always reset -- and animatedImages kept in sync
+      // -- well before it would ever actually unmount from the DOM (see
+      // that Set's own comment for why this ordering matters: nothing else
+      // clears an id from it on unmount). isNearViewport, isVisible, and
+      // screenLeft/screenRight are all untouched.
       const isNearViewport =
         screenRight > -preEntryDistance &&
         screenLeft < window.innerWidth + preEntryDistance;
       const isAwayFromViewport =
-        screenRight < -preEntryDistance ||
-        screenLeft > window.innerWidth + preEntryDistance;
+        screenRight < -AWAY_FROM_VIEWPORT_MARGIN_PX ||
+        screenLeft > window.innerWidth + AWAY_FROM_VIEWPORT_MARGIN_PX;
       const wrapperCenter = screenLeft + layoutWidth / 2;
       const viewportCenter = window.innerWidth / 2;
       const centerAmount =
@@ -1677,43 +2257,155 @@ function createGalleryRenderer({
       if (isNearViewport && !animatedImages.has(item.id)) {
         animatedImages.add(item.id);
 
-        const initialStagger =
-          wrapper.dataset.initialReveal === "true" && isVisible
-            ? clamp(screenLeft / window.innerWidth, 0, 1) * 0.42
-            : 0;
-
-        gsap.fromTo(
-          wrapper,
-          {
-            opacity: 0.18,
-            y: 12,
-            scale: 0.96,
-            filter: "blur(8px) saturate(0.72) brightness(0.94)",
-          },
-          {
+        if (isArchiveInMotionRef.current || !isFieldSettledRef.current) {
+          // Motion-Stability pass: the Archive is actively panning/
+          // zooming (see isArchiveInMotionRef's own comment at this
+          // renderer's params) -- a tile newly crossing into view during
+          // real motion is set straight to its final resting state in
+          // this one frame instead of queuing the tween below. That tween
+          // is a genuinely local, independent animation on this one tile;
+          // playing it while the whole world is moving past is exactly
+          // what read as "twenty individual cards each reacting
+          // independently" rather than one stable composition moving
+          // through the viewport. No blank gap and no wait: opacity/
+          // scale/filter land at their final values immediately, same
+          // frame the tile is first considered near-viewport.
+          //
+          // High-End Motion/Transition Polish pass: the `|| !isFieldSettledRef.current`
+          // addition extends this same instant-final-state treatment
+          // through the brief post-motion settle beat too (see
+          // FIELD_SETTLE_GRACE_MS's own comment) -- a tile crossing into
+          // view in that short window right after the camera stops still
+          // lands at its final state immediately rather than queuing a
+          // tween, so entrance tweens only ever start once the field has
+          // genuinely finished settling, not the instant the camera does.
+          gsap.set(wrapper, {
             opacity: item.opacity,
+            x: 0,
             y: 0,
             scale: 1,
             filter: "blur(0px) saturate(1) brightness(1)",
-            duration: item.motion.duration,
-            delay: initialStagger + item.motion.delay,
-            ease: "power3.out",
-            onComplete: () => {
-              wrapper.dataset.initialReveal = "false";
-              wrapper.dataset.hasEntered = "true";
-              wrapper.dataset.smoothX = "0";
-              wrapper.dataset.smoothY = "0";
-              wrapper.dataset.smoothScale = "1";
-            },
-            overwrite: "auto",
-          },
-        );
+          });
+          wrapper.dataset.initialReveal = "false";
+          wrapper.dataset.hasEntered = "true";
+          wrapper.dataset.smoothX = "0";
+          wrapper.dataset.smoothY = "0";
+          wrapper.dataset.smoothScale = "1";
+        } else {
+          // Not moving: a genuinely new (or re-entering, post-away-reset)
+          // tile may perform its entrance. Two distinct treatments --
+          // initialReveal ("true" only for a tile that has never yet
+          // entered, including the very first population at page load;
+          // see primeEntranceState) keeps the existing, slightly more
+          // present pop -- opacity/y/scale/blur, item.motion's own
+          // randomized duration/delay, the initial-load left-to-right
+          // stagger -- exactly as it always was. Every other tile
+          // (encountered later during ordinary navigation, whether truly
+          // new or re-entering after an isAwayFromViewport reset) gets
+          // the deliberately quieter SETTLED_ENTRANCE_* treatment: no
+          // y-slide (a translate reads more like a card sliding in; this
+          // is meant to read as an image resolving into focus), a
+          // smaller opacity/scale/blur range, a shorter fixed duration,
+          // and a gentler power2 ease -- see those constants' own
+          // comments. `y: 0` alone in the settled tween's toVars (with no
+          // matching fromVars entry) self-heals any residual y=12 left by
+          // a prior away-reset by animating from whatever y currently is
+          // -- 0 the overwhelming majority of the time (a no-op), 12 only
+          // for the reset-then-revisited case -- without adding a
+          // deliberate slide to the ordinary case.
+          const isInitialReveal = wrapper.dataset.initialReveal === "true";
+          const initialStagger =
+            isInitialReveal && isVisible
+              ? clamp(screenLeft / window.innerWidth, 0, 1) * 0.42
+              : 0;
+
+          gsap.fromTo(
+            wrapper,
+            isInitialReveal
+              ? {
+                  opacity: 0.18,
+                  y: 12,
+                  scale: 0.96,
+                  filter: "blur(8px) saturate(0.72) brightness(0.94)",
+                }
+              : {
+                  opacity: SETTLED_ENTRANCE_FROM_OPACITY,
+                  scale: SETTLED_ENTRANCE_FROM_SCALE,
+                  filter: `blur(${SETTLED_ENTRANCE_FROM_BLUR_PX}px)`,
+                },
+            isInitialReveal
+              ? {
+                  opacity: item.opacity,
+                  y: 0,
+                  scale: 1,
+                  filter: "blur(0px) saturate(1) brightness(1)",
+                  duration: item.motion.duration,
+                  delay: initialStagger + item.motion.delay,
+                  ease: "power3.out",
+                  onComplete: () => {
+                    wrapper.dataset.initialReveal = "false";
+                    wrapper.dataset.hasEntered = "true";
+                    wrapper.dataset.smoothX = "0";
+                    wrapper.dataset.smoothY = "0";
+                    wrapper.dataset.smoothScale = "1";
+                  },
+                  overwrite: "auto",
+                }
+              : {
+                  opacity: item.opacity,
+                  y: 0,
+                  scale: 1,
+                  filter: "blur(0px)",
+                  duration: SETTLED_ENTRANCE_DURATION,
+                  ease: SETTLED_ENTRANCE_EASE,
+                  onComplete: () => {
+                    wrapper.dataset.initialReveal = "false";
+                    wrapper.dataset.hasEntered = "true";
+                    wrapper.dataset.smoothX = "0";
+                    wrapper.dataset.smoothY = "0";
+                    wrapper.dataset.smoothScale = "1";
+                  },
+                  overwrite: "auto",
+                },
+          );
+        }
       }
 
       if (
         isVisible &&
         animatedImages.has(item.id) &&
-        wrapper.dataset.hasEntered === "true"
+        wrapper.dataset.hasEntered === "true" &&
+        // Motion-Stability pass: freezes the ENTIRE per-frame local-motion
+        // block below -- both the smoothX/Y/Scale/relationshipProgress
+        // bookkeeping and the gsap.set that applies it -- while the
+        // Archive is actively moving, not just the visual write. Freezing
+        // only the gsap.set call while letting the bookkeeping keep
+        // advancing underneath would have meant the FIRST gsap.set after
+        // motion ends could jump to wherever the hidden accumulator had
+        // drifted to by then; freezing both means every tile's smoothed
+        // x/y/scale sits exactly where it last visibly was, so the ease
+        // resumes toward whatever the (possibly since-changed) target is
+        // at the normal 0.14/frame rate the instant motion settles, with
+        // no snap. This stops the continuous centerScale wobble (every
+        // visible tile's scale is normally re-targeted every frame by how
+        // close it sits to horizontal viewport-center, which changes
+        // constantly while panning) and the relationshipMotion x/y/zIndex
+        // offset from reading as local scale/position animation fighting
+        // the camera during fast motion -- see this pass's own report for
+        // the A/B measurement behind including this block in the fix.
+        //
+        // High-End Motion/Transition Polish pass: ANDed with
+        // isFieldSettledRef.current below for the same reason as the
+        // entrance branch above -- the freeze now also holds through the
+        // brief post-motion settle beat, so local transforms don't start
+        // re-converging on the exact same frame the camera stops (and, on
+        // desktop, the exact same frame theme-hover pointer-events come
+        // back) -- they wait the one small additional beat every other
+        // passive/visual system in this pass now waits for. Still exactly
+        // the same 0.14/frame ease with no snap once unfrozen; only WHEN
+        // it unfreezes changed, not how.
+        !isArchiveInMotionRef.current &&
+        isFieldSettledRef.current
       ) {
         const targetX = relationshipX;
         const targetY = relationshipY;
@@ -2009,7 +2701,27 @@ function App() {
     direction: 1,
     distance: 0,
     enabled: true,
+    // Precision Dial Pan Weight pass: velocity remains the SAME semantic
+    // value every existing downstream reader (render-window, relationship-
+    // motion direction, distance accumulation) already expects -- "the
+    // actual applied velocity driving this frame's movement." It is now
+    // computed each frame as touchVelocity + appliedWheelVelocity rather
+    // than being written to directly by wheel input; nothing that only
+    // ever READS movement.velocity needed to change.
     velocity: 0,
+    // Wheel's own Stage 1 target/force accumulator -- absorbs softened
+    // wheel impulses and decays via friction, exactly like the old shared
+    // velocity field used to. Never read outside animateGallery/
+    // addWheelPanVelocity.
+    wheelVelocity: 0,
+    // Wheel's Stage 2 -- eases toward wheelVelocity every frame (see
+    // CAMERA_PAN_WHEEL_ACCEL_EASE) and is the piece of wheelVelocity that
+    // actually contributes to movement.velocity/worldDelta each frame.
+    appliedWheelVelocity: 0,
+    // Touch's own single-stage accumulator -- direct-injection, decays via
+    // the same friction constant, completely independent of the wheel
+    // fields above so finger-drag latency is untouched by this pass.
+    touchVelocity: 0,
     hasBrowsed: false,
   });
   const isExtendingGalleryRef = useRef(false);
@@ -2060,6 +2772,20 @@ function App() {
   // the actual source of truth read by render/CSS; this ref only prevents
   // redundant setState calls.
   const isScrollingRef = useRef(false);
+  // High-End Motion/Transition Polish pass: FIELD_SETTLE_GRACE_MS's own
+  // ref (see that constant's comment for the reasoning). Starts true --
+  // a freshly loaded page that has never moved is already "at rest," not
+  // "waiting to settle," so there's nothing to gate before any motion has
+  // ever happened. Flips false the instant real motion begins (mirrors
+  // isScrollingRef's own instant-on behavior -- no grace period on the way
+  // back INTO motion, only on the way out of it) and flips true again only
+  // after the chained FIELD_SETTLE_GRACE_MS timer (armed once
+  // isScrollingRef itself has already gone false) completes without motion
+  // resuming. Read by updateEntranceAnimations (entrance eligibility +
+  // local centerScale/relationshipMotion transform resume) and by
+  // isRelationshipActivationBlocked (Relationship Engine hover-intent
+  // eligibility) -- three read sites, one ref, no new global state enum.
+  const isFieldSettledRef = useRef(true);
   // Camera owns this and this alone: the current zoom scale. No vertical
   // state, no interaction logic. A ref, not state, since it's read every
   // animation frame by Gallery Renderer (galleryMovementRef's own
@@ -2130,19 +2856,63 @@ function App() {
   const viewportScaleRef = useRef(
     isMobileUiMode ? MOBILE_DEFAULT_CAMERA_SCALE : CAMERA_ZOOM_MIN,
   );
-  // Camera owns two things total: scale, and one pan correction, on the X
-  // axis only. viewportPanXRef is a constant screen-px offset that makes
-  // horizontal zoom anchor on the cursor (or, for the buttons, viewport
-  // center) instead of always the center. Purely Camera's own correction
-  // term: it neither reads nor writes Navigator's `distance`, Archive never
-  // sees it, and it only ever changes inside handleZoomStep, in the same
-  // plain/un-eased way viewportScaleRef does. Defaults to 0, which is a
-  // total no-op in projectWorldToScreenX -- so scale = 1 and any zoom
-  // sequence anchored exactly at center are unaffected, byte-identical to
-  // Phase 1/2. There is deliberately no vertical counterpart: the archive
-  // has no vertical world to navigate, so Y has no cursor-derived pan term
-  // at all -- see getVerticalScaleCompensation's own comment.
+  // Camera Feel pass: what viewportScaleRef is easing TOWARD, not what it
+  // currently is. handleZoomStep (wheel/buttons) now only ever writes
+  // here, clamped to CAMERA_ZOOM_MIN/MAX exactly as viewportScaleRef
+  // itself used to be -- the per-frame ease step in updateGalleryMotion is
+  // the only thing that still writes viewportScaleRef directly. Starts
+  // equal to viewportScaleRef's own initializer so there is no phantom
+  // glide on first paint. Mobile pinch bypasses this entirely (see its own
+  // call site) and keeps both refs in sync directly, since a pinch gesture
+  // is already a live, continuously-updating direct-manipulation input
+  // that should track fingers with no added lag.
+  const targetScaleRef = useRef(
+    isMobileUiMode ? MOBILE_DEFAULT_CAMERA_SCALE : CAMERA_ZOOM_MIN,
+  );
+  // Camera Feel pass: the live screen-space anchor (event.clientX for
+  // wheel, viewport center for buttons) that the per-frame zoom-ease step
+  // keeps visually fixed while viewportScaleRef eases toward
+  // targetScaleRef -- see applyZoomAnchor's own comment. Written only by
+  // handleZoomStep; read only by the per-frame ease step. window.innerWidth
+  // / 2 is a reasonable inert default (center-anchored) for the brief
+  // window before any zoom input has ever occurred.
+  const zoomAnchorClientXRef = useRef(
+    typeof window === "undefined" ? 0 : window.innerWidth / 2,
+  );
+  // True 2D Cursor Zoom pass: the Y-axis counterpart to
+  // zoomAnchorClientXRef immediately above, same lifetime and the same
+  // "written only by handleZoomStep (and mobile pinch's own direct call),
+  // read only by the per-frame ease step" contract. window.innerHeight / 2
+  // is the same kind of inert, center-anchored default.
+  const zoomAnchorClientYRef = useRef(
+    typeof window === "undefined" ? 0 : window.innerHeight / 2,
+  );
+  // Camera owns scale, and one pan correction per axis. viewportPanXRef is
+  // a constant screen-px offset that makes horizontal zoom anchor on the
+  // cursor (or, for the buttons, viewport center) instead of always the
+  // center. Purely Camera's own correction term: it neither reads nor
+  // writes Navigator's `distance`, Archive never sees it, and it only ever
+  // changes inside applyZoomAnchor (below), called every frame the
+  // camera's scale is actually easing, in the same plain/un-eased way
+  // viewportScaleRef itself is written (each individual write is still a
+  // plain assignment -- it is the SEQUENCE of per-frame writes, now driven
+  // by the ease step instead of a single event, that produces the visible
+  // glide). Defaults to 0, which is a total no-op in
+  // projectWorldToScreenX -- so scale = 1 and any zoom sequence anchored
+  // exactly at center are unaffected, byte-identical to Phase 1/2.
   const viewportPanXRef = useRef(0);
+  // True 2D Cursor Zoom pass: the Y-axis counterpart to viewportPanXRef.
+  // Applied alongside (added to, not replacing) the existing scale-only
+  // getVerticalScaleCompensation term at the one place Gallery Renderer
+  // writes the track's vertical transform (see applyTransform) -- the
+  // opening-centered compensation still runs exactly as before and
+  // guarantees the composition is centered at scale a viewportPanYRef of 0
+  // (e.g. a center-anchored zoom, or before any zoom input has occurred);
+  // this ref is purely the ADDITIONAL correction a cursor Y position off
+  // the opening's own center asks for, unbounded on its own the same way
+  // viewportPanXRef is -- see applyZoomAnchor's own comment for where its
+  // bound actually comes from.
+  const viewportPanYRef = useRef(0);
   // Layout Bug Fix -- Gallery Shift on Filter Open: the Filter drawer's own,
   // entirely separate multiplier on top of viewportScaleRef -- see
   // getEffectiveScale in createGalleryRenderer, the one place the two are
@@ -2543,6 +3313,131 @@ function App() {
     setHoveredGalleryItemId(null);
   }, []);
 
+  // Relationship Transition Refinement pass: the actual cause of the
+  // reported "rollover flash" between two Theme links. HoverOverlay's own
+  // handleMetadataHoverEnd (untouched) reports [] the instant ANY theme's
+  // mouseleave fires -- including when the cursor is already on its way to
+  // a different, adjacent theme (the same card's next li, or a nearby
+  // tile's own theme list). Previously that meant: leave fires -> [] ->
+  // every dimmed tile undims (the fast deactivation transition) -> the new
+  // theme's own fresh 325ms dwell has to elapse in full before anything
+  // re-dims. That's a real, visible dim -> undim -> (325ms pause at full
+  // brightness) -> dim-again cycle, not a subtle abruptness issue -- this
+  // is the state-handoff bug the brief asked to find rather than paper
+  // over with a longer fade.
+  //
+  // Fix: bridge the clear, not the activation. A [] report is held for
+  // RELATIONSHIP_CLEAR_BRIDGE_MS before it actually commits. Two things
+  // can cancel that hold before it fires: a NEW theme's dwell actually
+  // committing (a non-empty report -- the field jumps straight from the
+  // old pattern to the new one, never touching a cleared/undimmed state
+  // in between), or -- the piece that makes the bridge actually work in
+  // practice -- a NEW theme's hover intent simply BEGINNING
+  // (handleThemeHoverIntentStart below). A commit alone can't be the only
+  // cancel signal: it's gated behind that theme's own full, unmodified
+  // 325ms dwell, far longer than any bridge window that would still let a
+  // genuine leave feel immediate. Hover-start is cheap and instantaneous,
+  // and is exactly the signal that distinguishes "the cursor is already
+  // resting on a new theme, something is pending" from "the cursor left
+  // and nothing followed" -- so the bridge only needs to survive the
+  // brief travel gap between two hover targets, not the dwell itself.
+  // Canceling on hover-start doesn't set anything -- it just suppresses
+  // the pending clear, so the display keeps showing whatever was already
+  // active until that new theme's own dwell resolves one way or another
+  // (a real result, replacing it directly; or nothing, if the visitor
+  // leaves again before it commits -- which simply restarts this same
+  // bridge from the new leave).
+  //
+  // Deliberately does NOT gate the hard-clear paths below (motion
+  // beginning, a metadata commit, an archive reset) -- those always call
+  // clearRelatedArchiveNumbersImmediately() directly, bypassing this
+  // bridge entirely, so nothing here can make motion-safety or a commit
+  // boundary any less instant than before this pass.
+  const relationshipClearTimeoutRef = useRef(null);
+  // RELATIONSHIP_CLEAR_BRIDGE_MS: only needs to comfortably cover ordinary
+  // cursor travel time to a new theme (an adjacent li in the same
+  // HoverOverlay card, or a nearby tile's own theme list) given the
+  // hover-start cancel above -- not the 325ms dwell itself. Tested against
+  // real (non-instant) Playwright pointer travel between two theme
+  // elements; still short enough that a genuine, deliberate leave (no new
+  // hover follows) doesn't read as a delayed release.
+  const RELATIONSHIP_CLEAR_BRIDGE_MS = 140;
+  const clearRelatedArchiveNumbersImmediately = useCallback(() => {
+    if (relationshipClearTimeoutRef.current !== null) {
+      clearTimeout(relationshipClearTimeoutRef.current);
+      relationshipClearTimeoutRef.current = null;
+    }
+    setRelatedArchiveNumbers([]);
+  }, []);
+  const handleThemeHoverIntentStart = useCallback(() => {
+    if (relationshipClearTimeoutRef.current !== null) {
+      clearTimeout(relationshipClearTimeoutRef.current);
+      relationshipClearTimeoutRef.current = null;
+    }
+  }, []);
+  const handleRelatedArchiveNumbersChange = useCallback((received) => {
+    if (received.length > 0) {
+      if (relationshipClearTimeoutRef.current !== null) {
+        clearTimeout(relationshipClearTimeoutRef.current);
+        relationshipClearTimeoutRef.current = null;
+      }
+      setRelatedArchiveNumbers(received);
+      return;
+    }
+    // Already a clear pending (e.g. a fast fly-by across several themes
+    // with none of them committing) -- let the existing timer run rather
+    // than restarting the hold on every additional [] report.
+    if (relationshipClearTimeoutRef.current !== null) return;
+    relationshipClearTimeoutRef.current = setTimeout(() => {
+      relationshipClearTimeoutRef.current = null;
+      setRelatedArchiveNumbers([]);
+    }, RELATIONSHIP_CLEAR_BRIDGE_MS);
+  }, []);
+  useEffect(
+    () => () => {
+      if (relationshipClearTimeoutRef.current !== null) {
+        clearTimeout(relationshipClearTimeoutRef.current);
+      }
+    },
+    [],
+  );
+
+  // Relationship Hover Intent pass: the one check HoverOverlay's own dwell
+  // timer needs at the moment its dwell period completes, to decide
+  // whether the context that started it is still valid -- "if cursor is
+  // still intentionally there AND Archive is settled," per this pass's
+  // own brief. Reuses the exact three refs already gating desktop
+  // wheel/touch input (isScrollingRef -- the same signal the entrance
+  // system already reads as isArchiveInMotionRef, real pan velocity OR an
+  // unsettled zoom; isProjectFilterActiveRef; isOverlayActiveRef, mobile
+  // Menu/Search) rather than introducing any new state -- a stable
+  // useCallback with an empty dependency array (all three are refs, never
+  // props/state) so passing it down never causes HoverOverlay to re-render
+  // for an unrelated reason. Motion beginning AFTER a dwell timer has
+  // already started (not just before it starts) is exactly the case this
+  // exists for: CSS already keeps a NEW hover from starting once
+  // .is-scrolling is set (see the .hover-overlay__themes li pointer-events
+  // rule in styles.css), but an already-pending timer needs this explicit
+  // re-check at fire time, since nothing else would stop it.
+  const isRelationshipActivationBlocked = useCallback(
+    () =>
+      isScrollingRef.current ||
+      // High-End Motion/Transition Polish pass: also blocked through the
+      // short post-motion settle beat (see FIELD_SETTLE_GRACE_MS/
+      // isFieldSettledRef's own comments) -- a dwell timer that happens to
+      // complete in the narrow window right after the camera stops but
+      // before the field has finished settling is still deferred, exactly
+      // like one that completes while the camera is still genuinely
+      // moving. isFieldSettledRef starts false and only flips true once
+      // isScrollingRef has already been false for FIELD_SETTLE_GRACE_MS,
+      // so this check alone (with isScrollingRef above) fully covers both
+      // phases without a third explicit condition.
+      !isFieldSettledRef.current ||
+      isProjectFilterActiveRef.current ||
+      isOverlayActiveRef.current,
+    [],
+  );
+
   // Mobile Archive Interaction Pass -- Stage 5 (Touch-Native Image
   // Inspection): the touch-only replacement for this tile's own onClick
   // (see the gallery-image-wrapper render below, gated on isTouchDevice) --
@@ -2694,49 +3589,115 @@ function App() {
     return trackRef.current?.querySelector(`[data-image-id="${imageId}"]`);
   }, []);
 
-  // Camera Phase 1/3A: the zoom controls' (and now wheel/pinch's) only job
-  // is to move Camera's state by a step, clamped to a fixed range -- a
-  // plain synchronous assignment to the refs Gallery Renderer already
-  // reads every frame. No easing, no inertia, no animation; the very next
-  // requestAnimationFrame tick (already running continuously) picks up the
-  // new values on its own, exactly the same way it already picks up
-  // movement.distance changes.
-  //
-  // anchorClientX is the screen position this particular zoom should hold
-  // fixed horizontally -- event.clientX for wheel/pinch, or omitted for the
-  // buttons, which default to viewport center (no new state invented just
-  // for them, per Phase 3A's own constraint). This is the X axis's own pan
-  // update, the closed-form solution of "whatever world point currently
-  // projects to this anchor must still project to it after scale changes":
-  // with k = anchor-offset-from-viewport-center and r = newScale / oldScale,
-  // the only value of the pan ref that keeps that invariant is
-  // k*(1 - r) + oldPan*r -- derived directly from projectWorldToScreenX,
-  // solved for the new pan term with distance held fixed (Navigator is
+  // Camera Feel pass: the anchor-preserving pan math, extracted verbatim
+  // from what used to be handleZoomStep's own body (Phase 3A) so it can be
+  // called from two places that need the identical guarantee: the
+  // per-frame zoom-ease step below (oldScale/newScale one small step
+  // apart, called every frame while easing) and mobile pinch's own instant
+  // path (oldScale/newScale a full gesture-frame apart, called once per
+  // touchmove). Both need "whatever world point currently projects to
+  // anchorClientX must still project to anchorClientX after this specific
+  // scale change" -- the closed-form solution is k*(1 - r) + oldPan*r,
+  // where k = anchor-offset-from-viewport-center and r = newScale /
+  // oldScale, derived directly from projectWorldToScreenX, solved for the
+  // new pan term with distance held fixed (Navigator's `distance` is
   // never read or written here). At k = 0 (buttons, or a wheel/pinch
-  // dead-center) this reduces to oldPan*r -- 0 stays 0, matching the old
+  // dead-center) this reduces to oldPan*r -- 0 stays 0, matching
   // center-anchored behavior exactly. Because this is an exact algebraic
-  // solve rather than an iterative approximation, zooming in and back out
-  // over the same anchor returns the pan ref to its exact prior value -- no
-  // accumulated drift over repeated zoom cycles.
+  // solve rather than an iterative approximation, and because it is
+  // reapplied every single frame scale actually changes (not just once at
+  // gesture start), zooming in and back out over the same anchor -- even
+  // across an animated, multi-frame ease -- returns the pan ref to its
+  // exact prior value, and the anchor never drifts while the ease is
+  // catching up.
   //
-  // There is deliberately no vertical counterpart. The vertical axis has no
-  // navigable world for a cursor position to be "over," so Y is never
-  // touched here at all -- it comes entirely from getVerticalScaleCompensation
-  // (opening-anchored scale compensation only), called directly by
-  // applyTransform. A second parameter for anchorClientY was deliberately
-  // not added; passing a Y coordinate into this function would invite exactly
-  // the cursor-derived vertical drift this architecture avoids.
-  const handleZoomStep = useCallback((delta, anchorClientX) => {
-    const oldScale = viewportScaleRef.current;
-    const newScale = clamp(oldScale + delta, CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX);
-    const scaleRatio = newScale / oldScale;
+  // True 2D Cursor Zoom pass: anchorClientY / viewportPanYRef is the exact
+  // same closed-form solve, on the Y axis, added alongside the X solve
+  // above (not a second wrapper transform -- see viewportPanYRef's own
+  // comment for where this gets applied). The X solve holds `distance`
+  // (Navigator's own horizontal world position) fixed while solving; the Y
+  // solve equivalently holds the opening-centered scale compensation
+  // (getVerticalScaleCompensation) fixed and solves only for the
+  // additional pan term on top of it -- same algebra, different fixed
+  // baseline, because Y has no `distance`-equivalent to hold fixed against.
+  //
+  // Unlike X, Y did not previously have ANY bound -- Navigator's own world
+  // bounds (guaranteedWorldReach, untouched by this pass) are what keeps X
+  // recoverable; nothing analogous exists for Y, because Y never needed
+  // it before this pass. Deriving one here, from the same geometry
+  // getVerticalScaleCompensation itself already assumes: the track's own
+  // natural (scale = 1) height equals openingHeight (DAPC's own vertical-
+  // composition contract -- confirmed directly: measured track height /
+  // measured scale === measured opening height, exactly, at every scale
+  // checked). At effective scale s the track therefore overflows the
+  // opening by openingHeight * (s - 1) total, split evenly above/below by
+  // the existing scale-only compensation before this pan term is even
+  // added. Half that overflow is exactly how far the pan correction could
+  // shift the composition before ONE edge would touch the opening's own
+  // boundary and start exposing blank space past it;
+  // CAMERA_VERTICAL_ANCHOR_REACH keeps a fraction of that in reserve so the
+  // opposite edge never fully reaches the boundary either. At or below
+  // neutral scale the track no longer overflows the opening at all, so the
+  // bound collapses to exactly 0 -- Y pan is fully suppressed whenever
+  // zoomed out enough that any shift would immediately show blank space,
+  // and (because this function re-derives the bound from THIS frame's own
+  // scale every time it runs, exactly like the anchor math itself) shrinks
+  // smoothly toward 0 as a zoom-out ease approaches that point, with no
+  // separate "snap back" step needed.
+  const applyZoomAnchor = useCallback(
+    (oldScale, newScale, anchorClientX, anchorClientY) => {
+      if (oldScale === newScale) return;
+      const scaleRatio = newScale / oldScale;
 
+      const viewportCenterX = window.innerWidth / 2;
+      const kX = anchorClientX - viewportCenterX;
+      viewportPanXRef.current =
+        kX * (1 - scaleRatio) + viewportPanXRef.current * scaleRatio;
+
+      const viewportCenterY = window.innerHeight / 2;
+      const kY = anchorClientY - viewportCenterY;
+      const rawPanY = kY * (1 - scaleRatio) + viewportPanYRef.current * scaleRatio;
+
+      const openingHeight = openingGeometryRef.current.height;
+      const effectiveNewScale = newScale * viewportDrawerScaleRef.current;
+      const verticalOverflow = Math.max(
+        0,
+        openingHeight * (effectiveNewScale - 1),
+      );
+      const maxPanY = (verticalOverflow / 2) * CAMERA_VERTICAL_ANCHOR_REACH;
+      viewportPanYRef.current = clamp(rawPanY, -maxPanY, maxPanY);
+    },
+    [],
+  );
+
+  // Camera Feel pass: the zoom controls' (and wheel's) only job is now to
+  // move targetScaleRef by a step, clamped to a fixed range, and remember
+  // where on screen that step should stay anchored -- a plain synchronous
+  // assignment to two refs the per-frame zoom-ease step (in
+  // updateGalleryMotion) already reads every frame. viewportScaleRef
+  // itself is no longer written here at all; the ease step is now the
+  // ONLY thing that moves it, which is what turns a burst of discrete
+  // wheel events into one continuous glide toward wherever the burst's
+  // accumulated target ends up, instead of each event visibly snapping the
+  // displayed scale on its own.
+  //
+  // anchorClientX/anchorClientY is the screen position this particular
+  // zoom should hold fixed -- event.clientX/clientY for wheel, or omitted
+  // for the buttons, which default to viewport center on both axes (no new
+  // state invented just for them, per the original Phase 3A constraint,
+  // preserved here and now extended symmetrically to Y).
+  //
+  // Mobile pinch does NOT call this -- see its own call site's comment.
+  const handleZoomStep = useCallback((delta, anchorClientX, anchorClientY) => {
     const viewportCenterX = window.innerWidth / 2;
-    const kX = (anchorClientX ?? viewportCenterX) - viewportCenterX;
-    viewportPanXRef.current =
-      kX * (1 - scaleRatio) + viewportPanXRef.current * scaleRatio;
-
-    viewportScaleRef.current = newScale;
+    const viewportCenterY = window.innerHeight / 2;
+    targetScaleRef.current = clamp(
+      targetScaleRef.current + delta,
+      CAMERA_ZOOM_MIN,
+      CAMERA_ZOOM_MAX,
+    );
+    zoomAnchorClientXRef.current = anchorClientX ?? viewportCenterX;
+    zoomAnchorClientYRef.current = anchorClientY ?? viewportCenterY;
   }, []);
 
   // Camera state/control split: this is a pure mechanism, not a policy.
@@ -2760,10 +3721,21 @@ function App() {
   // dependency array and must not go stale -- see isMobileUiModeRef's own
   // comment above for why.
   const resetCameraToNeutral = useCallback(() => {
-    viewportScaleRef.current = isMobileUiModeRef.current
+    const neutralScale = isMobileUiModeRef.current
       ? MOBILE_DEFAULT_CAMERA_SCALE
       : CAMERA_ZOOM_MIN;
+    viewportScaleRef.current = neutralScale;
+    // Camera Feel pass: targetScaleRef must reset alongside
+    // viewportScaleRef -- leaving it at a visitor's prior zoom target
+    // would make the very next animation frame immediately start easing
+    // back AWAY from this reset, toward whatever stale target was still
+    // sitting there, undoing the reset within a few frames.
+    targetScaleRef.current = neutralScale;
     viewportPanXRef.current = CAMERA_NEUTRAL_PAN;
+    // True 2D Cursor Zoom pass: resets alongside viewportPanXRef, same
+    // reasoning -- a reset must not leave a stale vertical correction for
+    // the very next frame to visibly snap away from.
+    viewportPanYRef.current = CAMERA_NEUTRAL_PAN;
   }, []);
 
   const handleExitFocus = useCallback(() => {
@@ -2896,7 +3868,7 @@ function App() {
     setCommittedSearch(null);
     setActiveFilterQuery(EMPTY_FILTER_QUERY);
     setHasNoSearchResults(false);
-    setRelatedArchiveNumbers([]);
+    clearRelatedArchiveNumbersImmediately();
     activeImagePoolRef.current = DEFAULT_LIVE_IMAGE_POOL;
     setHeaderResetKey((key) => key + 1);
     regenerateGallery();
@@ -3117,7 +4089,13 @@ function App() {
       // resting on it never dispatches mouseleave -- but the clear
       // belongs here regardless of that specific trigger: a commit
       // should always supersede a preview, whatever left it active.)
-      setRelatedArchiveNumbers([]);
+      // Relationship Transition Refinement pass: a commit is a hard
+      // boundary, not an ordinary hover-end -- goes through
+      // clearRelatedArchiveNumbersImmediately() (cancels any pending
+      // clear-bridge timer too) rather than the bridged
+      // handleRelatedArchiveNumbersChange path, so it always wins
+      // instantly.
+      clearRelatedArchiveNumbersImmediately();
       if (field === "theme") {
         // Site-wide fade transition system: arms themeMetadataFadeRef
         // (see its own comment above) so the applyMetadataQuery call this
@@ -3152,6 +4130,17 @@ function App() {
 
       galleryMovementRef.current.enabled = false;
       galleryMovementRef.current.velocity = 0;
+      // Precision Dial Pan Weight pass: zero every underlying channel too,
+      // not just the computed total -- otherwise a wheelVelocity/
+      // appliedWheelVelocity left mid-decay from just before this image
+      // was opened would still be sitting there (unlike the old single-
+      // field model, where zeroing movement.velocity directly WAS zeroing
+      // the only accumulator) and could resume contributing motion the
+      // instant enabled flips back to true on close, producing a stray
+      // post-close nudge that was never actually re-triggered by input.
+      galleryMovementRef.current.wheelVelocity = 0;
+      galleryMovementRef.current.appliedWheelVelocity = 0;
+      galleryMovementRef.current.touchVelocity = 0;
 
       const rect = wrapper.getBoundingClientRect();
       const focusedItem = galleryItems.find((item) => item.id === imageId);
@@ -3420,7 +4409,11 @@ function App() {
     const movement = galleryMovementRef.current;
     const animatedImages = animatedImagesRef.current;
     const preEntryDistance = 360;
-    const friction = 0.92;
+    // Weighted Dial Pan Feel pass: see CAMERA_PAN_FRICTION's own comment
+    // for the full reasoning (the one truly shared side effect this pass
+    // has on mobile touch-drag's own decay tail, since there is only one
+    // movement.velocity accumulator either input source decays through).
+    const friction = CAMERA_PAN_FRICTION;
     const browsingThreshold = 48;
     const renderWindowUpdateThreshold = Math.max(window.innerWidth * 0.35, 240);
     let animationFrame = null;
@@ -3468,6 +4461,11 @@ function App() {
     // SCROLL_IDLE_VELOCITY_EPSILON, cleared immediately if real motion
     // resumes before it fires -- see animateGallery below.
     let scrollIdleTimeout = null;
+    // High-End Motion/Transition Polish pass: chained off scrollIdleTimeout
+    // above -- armed only once that timer has already fired (isScrollingRef
+    // already false), cleared immediately if real motion resumes before it
+    // fires. See FIELD_SETTLE_GRACE_MS/isFieldSettledRef's own comments.
+    let fieldSettleTimeout = null;
 
     scrollContainer.style.height = "100vh";
 
@@ -3486,12 +4484,15 @@ function App() {
       viewportScaleRef,
       viewportDrawerScaleRef,
       viewportPanXRef,
+      viewportPanYRef,
       renderWindowRef,
       setRenderWindowState: setRenderWindow,
       focusedIdRef,
       preEntryDistance,
       renderWindowUpdateThreshold,
       openingHeight: openingGeometryRef.current.height,
+      isArchiveInMotionRef: isScrollingRef,
+      isFieldSettledRef,
     });
 
     galleryRenderer.primeEntranceState(galleryItems);
@@ -3655,6 +4656,41 @@ function App() {
           ? drawerScaleTarget
           : nextDrawerScale;
 
+      // Camera Feel pass: viewportScaleRef eases toward targetScaleRef
+      // every frame, same ease-toward-target idiom as the drawer-scale
+      // block immediately above (own tuned rate, CAMERA_ZOOM_EASE -- see
+      // its own comment for why). This is what turns handleZoomStep's
+      // discrete per-event target nudges into one continuous glide.
+      //
+      // Critically, applyZoomAnchor is called HERE, every frame scale
+      // actually changes, using zoomAnchorClientXRef (the last screen
+      // position a zoom gesture asked to hold fixed) and THIS frame's own
+      // old/new scale -- not once at the moment handleZoomStep fired. That
+      // is what keeps the cursor's world-space anchor point correct
+      // THROUGHOUT the animated ease instead of only at its start and end:
+      // each small per-frame scale step gets its own exact anchor
+      // correction, so the point under the cursor never drifts while the
+      // rest of the ease is still catching up, even across many frames.
+      const oldCameraScale = viewportScaleRef.current;
+      const cameraScaleTarget = targetScaleRef.current;
+      const nextCameraScale =
+        oldCameraScale +
+        (cameraScaleTarget - oldCameraScale) * CAMERA_ZOOM_EASE;
+      const settledCameraScale =
+        Math.abs(nextCameraScale - cameraScaleTarget) <
+        CAMERA_ZOOM_SETTLE_EPSILON
+          ? cameraScaleTarget
+          : nextCameraScale;
+      if (settledCameraScale !== oldCameraScale) {
+        applyZoomAnchor(
+          oldCameraScale,
+          settledCameraScale,
+          zoomAnchorClientXRef.current,
+          zoomAnchorClientYRef.current,
+        );
+        viewportScaleRef.current = settledCameraScale;
+      }
+
       galleryRenderer.applyTransform(movement.distance);
       extendGalleryIfNeeded();
       galleryRenderer.updateRenderWindow();
@@ -3680,55 +4716,196 @@ function App() {
       // than counting on a hover/pointer-events transition to imply it --
       // see relatedArchiveNumbers's own comment for why Gallery owns that
       // state.
+      //
+      // Motion-Stability pass: isMovingNow now also counts an in-progress
+      // ZOOM ease, not just pan velocity -- previously a pure zoom gesture
+      // (no pan) never flipped isScrolling, so Relationship Engine
+      // suppression and (see updateEntranceAnimations, which now reads
+      // this same isScrolling ref as its own "archive in motion" signal)
+      // entrance-pop suppression only ever responded to panning. Reads
+      // viewportScaleRef/targetScaleRef equality rather than a new
+      // epsilon: the zoom-ease step just above snaps
+      // viewportScaleRef.current to exactly targetScaleRef.current once
+      // within CAMERA_ZOOM_SETTLE_EPSILON, so inequality here already
+      // means "still actively easing toward a target," precisely and with
+      // no new constant to keep in sync. This is the whole
+      // "isArchiveInMotion" signal this pass asked for: real pan velocity
+      // OR an unsettled zoom, with the exact same on/off hysteresis
+      // (instant on, SCROLL_IDLE_DELAY_MS debounced off) the existing
+      // Browsing/Exploration mode already had -- no new state system, no
+      // per-frame chatter around zero.
+      const isZoomInMotion = viewportScaleRef.current !== targetScaleRef.current;
       const isMovingNow =
-        Math.abs(movement.velocity) > SCROLL_IDLE_VELOCITY_EPSILON;
+        Math.abs(movement.velocity) > SCROLL_IDLE_VELOCITY_EPSILON ||
+        isZoomInMotion;
       if (isMovingNow) {
         if (scrollIdleTimeout !== null) {
           clearTimeout(scrollIdleTimeout);
           scrollIdleTimeout = null;
         }
+        // High-End Motion/Transition Polish pass: real motion resuming
+        // cancels a pending settle exactly like it cancels a pending
+        // scrollIdleTimeout above, and resets isFieldSettledRef instantly
+        // (no grace on the way back INTO motion) -- see that ref's own
+        // comment.
+        if (fieldSettleTimeout !== null) {
+          clearTimeout(fieldSettleTimeout);
+          fieldSettleTimeout = null;
+        }
+        isFieldSettledRef.current = false;
         if (!isScrollingRef.current) {
           isScrollingRef.current = true;
           setIsScrolling(true);
-          setRelatedArchiveNumbers([]);
+          // Relationship Transition Refinement pass: motion beginning is
+          // the hard motion-safety clear -- goes through
+          // clearRelatedArchiveNumbersImmediately() so it always cancels
+          // any pending clear-bridge timer and wins instantly, never
+          // debounced by the Theme-to-Theme handoff bridge.
+          clearRelatedArchiveNumbersImmediately();
         }
       } else if (isScrollingRef.current && scrollIdleTimeout === null) {
         scrollIdleTimeout = setTimeout(() => {
           isScrollingRef.current = false;
           setIsScrolling(false);
           scrollIdleTimeout = null;
+          // High-End Motion/Transition Polish pass: the camera itself is
+          // now judged stopped (pointer-events/text-color hover already
+          // came back the instant is-scrolling's CSS class lifted, via
+          // this same setIsScrolling(false)) -- chain the shorter
+          // FIELD_SETTLE_GRACE_MS grace before the passive/visual systems
+          // (entrance, local transform resume, relationship hover-intent)
+          // become eligible. See FIELD_SETTLE_GRACE_MS's own comment.
+          fieldSettleTimeout = setTimeout(() => {
+            isFieldSettledRef.current = true;
+            fieldSettleTimeout = null;
+          }, FIELD_SETTLE_GRACE_MS);
         }, SCROLL_IDLE_DELAY_MS);
       }
     };
 
     const animateGallery = () => {
       const canMove = movement.enabled && focusedIdRef.current === null;
-      const currentVelocity = canMove ? movement.velocity : 0;
+      // Precision Dial Pan Weight pass: this frame's actual applied
+      // velocity is whatever last frame's decay/ease step (bottom of this
+      // function) already left sitting in the two channels -- touch's
+      // direct accumulator plus wheel's Stage-2 eased-applied value. This
+      // is the one and only place the two channels are summed; everything
+      // below this line (direction, worldDelta, distance) is completely
+      // unchanged from before this pass and has no idea wheel and touch
+      // are now separate accumulators upstream.
+      const currentVelocity = canMove
+        ? movement.touchVelocity + movement.appliedWheelVelocity
+        : 0;
 
       if (currentVelocity !== 0) {
         movement.direction = currentVelocity > 0 ? 1 : -1;
       }
 
-      movement.distance = Math.max(0, movement.distance + currentVelocity);
+      // Camera Feel pass: movement.velocity is deliberately treated as a
+      // SCREEN-space quantity (how many px/frame this pan should visibly
+      // read as) -- but movement.distance is WORLD-space, and
+      // projectWorldToScreenX multiplies world-space distance by the
+      // current scale to get screen pixels. Adding velocity to distance
+      // un-divided, as this used to, means the SAME velocity produces
+      // MORE screen movement at high zoom and LESS at low zoom -- measured
+      // directly in the previous pass: ~2.94x more screen-space pan speed
+      // at max zoom (2.5) than min zoom (0.8) for identical wheel input.
+      // That is exactly the "hyper-sensitive when zoomed in" /
+      // "sluggish when zoomed out" feel this pass was asked to remove.
+      //
+      // Dividing by the current effective scale here, at the one place
+      // velocity is actually converted into a world-space move, cancels
+      // that multiplication back out: screen movement this frame =
+      // (velocity / scale) * scale = velocity, invariant of scale. Reads
+      // last frame's scale (the zoom-ease step below hasn't run yet this
+      // frame) rather than this frame's -- scale only ever changes by a
+      // small per-frame ease fraction, so the one-frame lag here is well
+      // under a rendered frame's worth of visible difference, not a
+      // correctness issue. This does not change what movement.distance
+      // MEANS (still the same world-space position every render-window/
+      // DAPC/browsing-threshold consumer already reads) or how fast it
+      // decays (friction, below, is untouched) -- only how much WORLD
+      // distance a given SCREEN-space velocity impulse covers per frame.
+      const effectiveScale =
+        viewportScaleRef.current * viewportDrawerScaleRef.current;
+      const worldDelta =
+        effectiveScale > 0 ? currentVelocity / effectiveScale : currentVelocity;
 
-      if (movement.distance === 0 && movement.velocity < 0) {
-        movement.velocity = 0;
+      movement.distance = Math.max(0, movement.distance + worldDelta);
+
+      if (movement.distance === 0 && currentVelocity < 0) {
+        // Precision Dial Pan Weight pass: same hard-stop this boundary
+        // check always applied -- kill velocity outright rather than let
+        // it decay, so bottoming out at distance 0 doesn't leave a
+        // lingering phantom push. Now has to zero every underlying channel
+        // (not just the computed total below) so a still-decaying
+        // wheelVelocity/appliedWheelVelocity can't reawaken the blocked
+        // motion a few frames later once distance is no longer pinned at
+        // exactly 0.
+        movement.wheelVelocity = 0;
+        movement.appliedWheelVelocity = 0;
+        movement.touchVelocity = 0;
       } else {
-        movement.velocity *= friction;
+        // Stage 1: wheel's own target/force layer decays via its own
+        // dedicated CAMERA_PAN_WHEEL_FRICTION (see that constant's own
+        // comment for why this is now separate from touch's) -- the same
+        // decay behavior wheel always had, just no longer sharing the
+        // constant touch also uses.
+        movement.wheelVelocity *= CAMERA_PAN_WHEEL_FRICTION;
+        // Stage 2: applied wheel velocity eases toward the (just-decayed)
+        // target every frame -- the new acceleration-limiting step. See
+        // CAMERA_PAN_WHEEL_ACCEL_EASE's own comment for the rate and why.
+        movement.appliedWheelVelocity +=
+          (movement.wheelVelocity - movement.appliedWheelVelocity) *
+          CAMERA_PAN_WHEEL_ACCEL_EASE;
+        // Touch keeps its original single-stage direct decay, byte-
+        // identical to what movement.velocity's own decay used to do when
+        // touch was writing into that same shared field.
+        movement.touchVelocity *= friction;
       }
+
+      // Kept in sync purely for downstream readers that only ever expect
+      // "the current applied velocity" (its sign for movement.direction
+      // above, and any future consumer) -- not itself fed back into next
+      // frame's math; the two channels above are the actual state.
+      movement.velocity = currentVelocity;
 
       updateGalleryMotion();
       animationFrame = requestAnimationFrame(animateGallery);
     };
 
-    const addGalleryVelocity = (delta) => {
+    // Precision Dial Pan Weight pass: wheel input now lands in its own
+    // Stage-1 target accumulator (movement.wheelVelocity) rather than the
+    // value that directly drives motion -- animateGallery's Stage 2 is
+    // what actually eases that into applied velocity every frame. delta is
+    // still expected to already be fully shaped (soft-saturated and
+    // impulse-scaled) by the caller; this function itself applies no
+    // multiplier of its own, same as before.
+    const addWheelPanVelocity = (delta, cap = CAMERA_PAN_WHEEL_VELOCITY_CAP) => {
       if (!movement.enabled || focusedIdRef.current !== null) return;
 
       if (delta !== 0) {
         movement.direction = delta > 0 ? 1 : -1;
       }
 
-      movement.velocity = clamp(movement.velocity + delta * 0.16, -42, 42);
+      movement.wheelVelocity = clamp(movement.wheelVelocity + delta, -cap, cap);
+    };
+
+    // Precision Dial Pan Weight pass: touch-drag deliberately keeps the
+    // OLD single-stage direct-injection model, writing straight into its
+    // own movement.touchVelocity -- no Stage 2, no added latency. This is
+    // the one and only change touch's own physics gets from this pass: a
+    // dedicated field instead of a field shared with wheel, which has no
+    // observable effect on touch's own behavior since it was already the
+    // sole other writer of the old shared value between wheel events.
+    const addTouchPanVelocity = (delta, cap = CAMERA_PAN_TOUCH_VELOCITY_CAP) => {
+      if (!movement.enabled || focusedIdRef.current !== null) return;
+
+      if (delta !== 0) {
+        movement.direction = delta > 0 ? 1 : -1;
+      }
+
+      movement.touchVelocity = clamp(movement.touchVelocity + delta, -cap, cap);
     };
 
     const handleWheel = (event) => {
@@ -3758,27 +4935,62 @@ function App() {
       // as they would from an actual Ctrl+scroll.
       event.preventDefault();
 
+      // Camera Feel pass: normalize deltaMode once, up front, so every
+      // branch below reads pixel-equivalent values regardless of what this
+      // particular browser/OS/input-driver combination actually reported
+      // -- see normalizeWheelAxisDelta's own comment.
+      const deltaY = normalizeWheelAxisDelta(
+        event.deltaY,
+        event.deltaMode,
+        window.innerHeight,
+      );
+      const deltaX = normalizeWheelAxisDelta(
+        event.deltaX,
+        event.deltaMode,
+        window.innerWidth,
+      );
+
       // Browsers report a trackpad pinch gesture as a wheel event with
       // ctrlKey set to true (a deliberate synthesized signal, the same one
       // browsers use internally to distinguish "the user is pinch-zooming"
       // from "the user is two-finger-scrolling") -- so this one check
       // covers both real Ctrl+wheel and a natural trackpad pinch, with no
-      // separate gesture-detection logic of its own. handleZoomStep is
-      // reused as-is: same clamp, same range, no new mutation path for
-      // viewportScaleRef. event.clientX (Phase 3A) is the cursor's actual
-      // screen position at the moment of this gesture -- the point
-      // handleZoomStep will keep visually anchored, horizontally only; the
-      // vertical composition stays fixed to the OpeningViewport regardless
-      // of where this gesture occurred.
+      // separate gesture-detection logic of its own. event.clientX/clientY
+      // is the cursor's actual screen position at the moment of this
+      // gesture -- the exact point the per-frame zoom-ease step (see
+      // updateGalleryMotion) will keep visually anchored, on BOTH axes as
+      // of the True 2D Cursor Zoom pass (previously X only).
       if (event.ctrlKey) {
+        // Desktop Zoom + Motion Polish pass: clamp this one event's own
+        // magnitude to CAMERA_ZOOM_WHEEL_STEP_MAX (see that constant's own
+        // comment for why a discrete wheel notch needs this and trackpad
+        // pinch normally never engages it) before handleZoomStep ever sees
+        // it -- clamp(..., -MAX, MAX) rather than a one-sided cap so a fast
+        // zoom-out notch (positive deltaY) is bounded exactly as
+        // symmetrically as a fast zoom-in one. Camera Feel pass: this now
+        // nudges targetScaleRef, not viewportScaleRef directly -- the
+        // per-frame ease step is what actually moves the visible scale
+        // (and re-anchors every frame it does), turning what used to be an
+        // instant per-event snap into one continuous glide.
+        const rawDelta = -deltaY * CAMERA_ZOOM_WHEEL_SENSITIVITY;
         handleZoomStep(
-          -event.deltaY * CAMERA_ZOOM_WHEEL_SENSITIVITY,
+          clamp(rawDelta, -CAMERA_ZOOM_WHEEL_STEP_MAX, CAMERA_ZOOM_WHEEL_STEP_MAX),
           event.clientX,
+          event.clientY,
         );
         return;
       }
 
-      addGalleryVelocity(event.deltaY + event.deltaX);
+      // Weighted Dial Pan Feel pass: raw (deltaMode-normalized) delta goes
+      // through the soft-saturation curve first (see softenWheelPanDelta),
+      // THEN gets scaled into a velocity contribution by the wheel-side
+      // coefficient, THEN clamped to the wheel-side cap -- see
+      // CAMERA_PAN_WHEEL_SATURATION_PX/CAMERA_PAN_WHEEL_IMPULSE_COEFF's
+      // own comments for why each of these three numbers is what it is.
+      addWheelPanVelocity(
+        softenWheelPanDelta(deltaY + deltaX) * CAMERA_PAN_WHEEL_IMPULSE_COEFF,
+        CAMERA_PAN_WHEEL_VELOCITY_CAP,
+      );
     };
 
     // Mobile Baseline Pass -- Task 3: two small, stateless read-outs of a
@@ -3794,6 +5006,10 @@ function App() {
       );
     const getTouchMidpointX = (touches) =>
       (touches[0].clientX + touches[1].clientX) / 2;
+    // True 2D Cursor Zoom pass: Y counterpart, same shape as
+    // getTouchMidpointX -- used only by pinch's own applyZoomAnchor call.
+    const getTouchMidpointY = (touches) =>
+      (touches[0].clientY + touches[1].clientY) / 2;
 
     const handleTouchStart = (event) => {
       // Project Filter Composition: same guard handleWheel/handleTouchMove
@@ -3884,33 +5100,52 @@ function App() {
       // finger landed) means this frame is a pinch, not a pan -- branch
       // here and return before any of the single-finger pan logic below
       // ever runs, so a pinch never also accumulates gallery pan velocity
-      // from whichever finger happens to be touches[0]. Reusing
-      // handleZoomStep as-is (same function the +/- buttons and
-      // Ctrl+wheel/trackpad-pinch already share, see handleWheel above) --
-      // no new mutation path for viewportScaleRef/viewportPanXRef. The
-      // desired scale is computed directly from the fixed gesture-start
-      // distance/scale in pinchState (not the previous frame's scale), so
-      // it tracks finger separation exactly with no compounding drift;
-      // handleZoomStep receives that as a single delta (desired minus
-      // current) and, same as every other caller, does its own clamping
-      // to CAMERA_ZOOM_MIN/MAX. anchorClientX is the live midpoint between
-      // the two fingers -- handleZoomStep's existing X-only anchor
-      // support (already exercised by cursor-anchored wheel-zoom) keeps
-      // that midpoint visually stationary as scale changes, same as it
-      // already does for the cursor. No Y anchor is passed, matching this
-      // architecture's deliberate opening-viewport-only vertical
-      // composition (see getVerticalScaleCompensation's own comment) --
-      // this pass does not introduce cursor/touch-derived vertical drift.
+      // from whichever finger happens to be touches[0]. The desired scale
+      // is computed directly from the fixed gesture-start distance/scale
+      // in pinchState (not the previous frame's scale), so it tracks
+      // finger separation exactly with no compounding drift.
+      //
+      // Camera Feel pass: this no longer goes through handleZoomStep (that
+      // now only nudges targetScaleRef for the EASED wheel/button path --
+      // see its own comment). A pinch is already a live,
+      // continuously-updating direct-manipulation gesture firing on every
+      // touchmove frame, tracking real finger separation 1:1 -- routing it
+      // through the ease as well would add perceptible lag between finger
+      // and image, which is exactly wrong for a gesture the visitor is
+      // physically driving in real time. So this calls applyZoomAnchor
+      // directly (the same exact anchor math the ease step uses, just
+      // applied once per touchmove instead of once per animation frame)
+      // and writes viewportScaleRef immediately -- byte-identical to this
+      // gesture's behavior before this pass. targetScaleRef is kept in
+      // lockstep with viewportScaleRef on every one of these frames too,
+      // so there is no stale target left behind for the ease step to
+      // "catch up" to (and produce a spurious glide) once the pinch ends.
+      //
+      // True 2D Cursor Zoom pass: now also passes the two fingers' own
+      // midpointY, the same shared applyZoomAnchor call the desktop wheel
+      // ease step uses -- true midpoint X+Y anchoring for pinch was
+      // explicitly requested where it can be added safely, and this is
+      // the same direct, un-eased, per-touchmove-frame call it already
+      // was, just with one more argument. No new latency, no change to
+      // when/how often this runs.
       if (event.touches.length === 2 && pinchState) {
         event.preventDefault();
         const distance = getTouchDistance(event.touches);
         const midpointX = getTouchMidpointX(event.touches);
+        const midpointY = getTouchMidpointY(event.touches);
         const desiredScale = clamp(
           pinchState.startScale * (distance / pinchState.distance),
           CAMERA_ZOOM_MIN,
           CAMERA_ZOOM_MAX,
         );
-        handleZoomStep(desiredScale - viewportScaleRef.current, midpointX);
+        applyZoomAnchor(
+          viewportScaleRef.current,
+          desiredScale,
+          midpointX,
+          midpointY,
+        );
+        viewportScaleRef.current = desiredScale;
+        targetScaleRef.current = desiredScale;
         return;
       }
 
@@ -3943,7 +5178,16 @@ function App() {
       // so this never diverges from what the visitor's finger actually
       // did.
       touchTotalMovement += Math.hypot(deltaX, deltaY);
-      addGalleryVelocity(deltaX + deltaY);
+      // Weighted Dial Pan Feel pass: explicitly applies the exact prior
+      // shared coefficient/cap (CAMERA_PAN_TOUCH_IMPULSE_COEFF = 0.16,
+      // CAMERA_PAN_TOUCH_VELOCITY_CAP = 42) rather than the new wheel-side
+      // defaults -- see that constant's own comment. Finger-drag stays
+      // exactly as directly responsive as it already was; only the shared
+      // friction decay tail (below, in animateGallery) is different now.
+      addTouchPanVelocity(
+        (deltaX + deltaY) * CAMERA_PAN_TOUCH_IMPULSE_COEFF,
+        CAMERA_PAN_TOUCH_VELOCITY_CAP,
+      );
     };
 
     // Mobile Archive Interaction Pass -- Stage 0 (Gesture Correctness
@@ -4087,6 +5331,7 @@ function App() {
       focusTimelineRef.current?.kill();
       cancelAnimationFrame(animationFrame);
       if (scrollIdleTimeout !== null) clearTimeout(scrollIdleTimeout);
+      if (fieldSettleTimeout !== null) clearTimeout(fieldSettleTimeout);
       window.removeEventListener("wheel", handleWheel);
       window.removeEventListener("touchstart", handleTouchStart);
       window.removeEventListener("touchmove", handleTouchMove);
@@ -4170,6 +5415,34 @@ function App() {
       relatedArchiveNumbers,
       activeGalleryArchiveNumbers,
     );
+
+  // Relationship Field Recede pass: the spatial origin variants (B/C) need
+  // to know WHICH tile the visitor's cursor is still resting over when the
+  // dwell commits -- reuses hoveredGalleryItemId as-is (the plain-image
+  // hover ref this file already tracks via handleGalleryImageHoverStart/
+  // End on every wrapper's own onMouseEnter/onMouseLeave, untouched by
+  // this pass) rather than threading a new value through HoverOverlay's
+  // callback, per the "don't couple these systems unless there's a
+  // compelling reason" instruction. A theme's dwell only ever commits
+  // while the cursor is still physically inside that same tile's wrapper
+  // (leaving cancels the dwell -- HoverOverlay's own mechanism, untouched),
+  // so hoveredGalleryItemId reliably names the committing tile at the
+  // moment relatedArchiveNumbers actually changes. Computed only while
+  // Relationship Mode is active -- zero cost on every ordinary render.
+  const relationshipOriginItem = isRelationshipModeActive
+    ? (renderedGalleryItems.find((item) => item.id === hoveredGalleryItemId) ??
+      null)
+    : null;
+  const relationshipOriginLayout = relationshipOriginItem
+    ? {
+        cx:
+          Number.parseFloat(relationshipOriginItem.layout.left) +
+          Number.parseFloat(relationshipOriginItem.layout.width) / 2,
+        cy:
+          Number.parseFloat(relationshipOriginItem.layout.top) +
+          Number.parseFloat(relationshipOriginItem.layout.height) / 2,
+      }
+    : null;
 
   return (
     <div className="app-shell">
@@ -4325,6 +5598,17 @@ function App() {
                   item.archiveNumber &&
                   relatedArchiveNumbers.includes(item.archiveNumber)
                 );
+              // Relationship Field Recede pass: computed unconditionally
+              // (cheap, deterministic) but only ever has a visible effect
+              // on a tile that's actually isDimmed this render -- see
+              // .gallery-image--dimmed's own transition-delay in
+              // styles.css, which is the only rule that reads this custom
+              // property. Related tiles and any tile outside Relationship
+              // Mode carry the property but never consume it.
+              const relationshipRecedeDelayMs = getRelationshipRecedeDelayMs(
+                item,
+                relationshipOriginLayout,
+              );
 
               return (
                 <button
@@ -4426,6 +5710,12 @@ function App() {
                     left: item.layout.left,
                     top: item.layout.top,
                     zIndex: item.layout.zIndex,
+                    // Relationship Field Recede pass: read by
+                    // .gallery-image--dimmed's transition-delay in
+                    // styles.css only. A plain CSS custom property, not a
+                    // timer -- see getRelationshipRecedeDelayMs's own
+                    // comment for why this is the whole mechanism.
+                    "--relationship-recede-delay": `${relationshipRecedeDelayMs}ms`,
                   }}
                 >
                   <picture>
@@ -4519,9 +5809,19 @@ function App() {
                     }
                     itemId={item.id}
                     generation={galleryGenerationRef.current}
-                    onRelatedArchiveNumbersChange={setRelatedArchiveNumbers}
+                    onRelatedArchiveNumbersChange={
+                      handleRelatedArchiveNumbersChange
+                    }
+                    onThemeHoverIntentStart={handleThemeHoverIntentStart}
                     onMetadataCommit={handleMetadataFilterCommit}
                     relationshipEngineEnabled={isRelationshipEngineEnabled}
+                    // Relationship Hover Intent pass: see this callback's
+                    // own comment at its declaration -- the fire-time
+                    // re-check HoverOverlay's dwell timer uses before
+                    // actually committing a relationship activation.
+                    isRelationshipActivationBlocked={
+                      isRelationshipActivationBlocked
+                    }
                     // Discovery Mask (the only editorial gate): carried
                     // straight through from the tile's own layout.discovery
                     // (see createGalleryBatch above). Discovery decides

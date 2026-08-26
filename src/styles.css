@@ -982,14 +982,31 @@ body {
      class toggle there would just get overwritten on the next frame.
      .hover-overlay is unaffected either way -- it's a sibling of this
      element, not a descendant, so this dim never touches its own opacity
-     or timing. 180ms ease-out reuses .hover-overlay's own existing
-     transition value (see below) rather than introducing a new one; filter
-     rides the same transition so the blur added below (client note: reuse
-     the entrance/loading blur's visual language for Relationship Mode)
-     fades in and out in lockstep with the opacity dim, on the one element
-     GSAP never touches, instead of being a second, separately-timed
-     effect. */
-  transition: opacity 180ms ease-out, filter 180ms ease-out;
+     or timing. filter rides the same transition as opacity so the blur
+     below (client note: reuse the entrance/loading blur's visual language
+     for Relationship Mode) fades in and out in lockstep with the opacity
+     dim, on the one element GSAP never touches, instead of being a
+     second, separately-timed effect.
+     High-End Motion/Transition Polish pass: this base rule's transition
+     now governs DEACTIVATION only -- the case where .gallery-image--dimmed
+     is removed and the element falls back to this rule. CSS resolves an
+     asymmetric transition duration this way: the rule that becomes active
+     AFTER a class toggle is the one whose own `transition` declaration
+     governs that change, so entering the dimmed state reads
+     .gallery-image--dimmed's own (slower) transition below, and leaving it
+     reads this one. 170ms here (was a symmetric 180ms both ways) --
+     "clean, graceful, slightly quicker" per this pass's brief; barely
+     changed from before since the prior single value already sat close to
+     the deactivation end of the target range, just no longer shared with
+     activation.
+     Relationship Field Recede pass: explicit 0ms delay here (was implicit
+     0 before) -- deactivation stays deliberately uniform across every
+     tile, never reading --relationship-recede-delay. The brief was
+     explicit that leaving should "gather itself back together... not
+     simply reverse the propagation sequence," so only the activation rule
+     below varies its delay per tile; the field always returns as one
+     cohesive motion. */
+  transition: opacity 170ms ease-out 0ms, filter 170ms ease-out 0ms;
 }
 
 /* Applied only to the <img>, only while something else is hovered and this
@@ -1016,6 +1033,43 @@ body {
 .gallery-image--dimmed {
   opacity: 0.1;
   filter: blur(6px);
+  /* High-End Motion/Transition Polish pass: this rule's own transition
+     governs ACTIVATION (entering the dimmed state, per the base rule's
+     comment above) -- deliberately slower than the deactivation
+     transition below, inside this pass's own ~220-300ms activation
+     target. Slower-in/quicker-out is the asymmetry the brief asked for:
+     unrelated imagery recedes with a touch more weight (it's the Archive
+     shifting its attention, not a UI element toggling), while leaving that
+     state is quick and clean so there's no lingering "stuck filtered"
+     feeling. Still comfortably brief on top of the 325ms hover-intent
+     dwell that already gated getting here -- this is the resolve of an
+     already-earned state change, not a second wait.
+     Relationship Transition Refinement pass: raised 260ms -> 360ms (this
+     pass's own suggested starting point, tested against 340-380ms and
+     against the still-clean-feeling 170ms deactivation below). The
+     reported abruptness was real on its own merits, separate from the
+     Theme-to-Theme rollover flash (see App.jsx's
+     handleRelatedArchiveNumbersChange/clearRelatedArchiveNumbersImmediately
+     for that fix) -- even a single, deliberate hover-and-hold read as a
+     slightly hard snap at 260ms once the field-recede spatial stagger
+     (unchanged, still 0-130ms on top of this) was accounted for. 360ms
+     softens the resolve without turning it into a slow fade -- still
+     well under a second all-in on top of the 325ms dwell that already
+     gated getting here.
+     Relationship Field Recede pass: the transition-delay component (third
+     value in each shorthand) reads --relationship-recede-delay, the
+     deterministic per-tile custom property App.jsx sets on this tile's
+     wrapper (see getRelationshipRecedeDelayMs). This is the entire
+     mechanism -- no JS timer, nothing to cancel: if the dimmed class is
+     removed before this tile's own delay has elapsed, the browser simply
+     abandons the pending delayed transition (falls back to the base
+     rule's 0-delay one instead) with nothing left running. `0ms` fallback
+     keeps every other consumer of .gallery-image--dimmed (if any existed
+     outside the relationship engine) exactly as before if the custom
+     property is ever absent. */
+  transition:
+    opacity 360ms ease-out var(--relationship-recede-delay, 0ms),
+    filter 360ms ease-out var(--relationship-recede-delay, 0ms);
 }
 
 /* HoverOverlay -- Phase 1 (presentation only). A translucent metadata layer
@@ -1236,6 +1290,20 @@ body {
          rather than silently re-deriving 11.5207cqw, per instruction; a
          visual check of the worst-case strings above is the reliable way
          to confirm whether this still fits without clipping.
+         Theme Labels Uppercase pass: text-transform: uppercase below
+         (.hover-overlay__themes li) changes the actual rendered glyphs
+         this budget was calibrated against. Measured directly
+         (Playwright, rendered scrollWidth vs container width, the same
+         technique used throughout this engagement) rather than assumed:
+         the three worst-case strings above, uppercased, overflowed the
+         existing 11.5207cqw/0.78rem pair by up to ~9% at the exact floor
+         size this formula guarantees a fit at. 11.5207cqw -> 10.37cqw and
+         the ceiling below (0.78rem -> 0.702rem, same ~0.90 factor,
+         re-verified at zero overflow with a small margin) is the minimal
+         compensating change that restores the "worst-case theme string
+         never clips" guarantee under uppercase -- not a general resize,
+         just this one coefficient pair tracking the transform now applied
+         to the text it measures.
        - height budget (45.4545cqh - 9.8182px): how large the font can be
          before one theme line, at this same 2.2 line-height, plus the
          Archive Number's own footprint and the flex gap above it (16.0px
@@ -1244,14 +1312,15 @@ body {
          One line costs 2.2 * font-size, so solving
          (100cqh - 21.6px) / 2.2 for font-size gives 45.4545cqh - 9.8182px.
      Whichever budget is tighter wins; clamp() then holds it to [9px,
-     0.78rem]. At and above the container size this codebase has always
-     required for one theme (120px width / 60px height), both budgets
-     already exceed 12.48px on their own, so this formula saturates at the
-     exact original 0.78rem for every card that already worked -- nothing
-     about their appearance changes. It only ever produces something
-     smaller than 0.78rem below that size, which is new territory the old
-     fixed-size system never rendered into at all (it was simply absent). */
-  font-size: clamp(9px, min(11.5207cqw, calc(45.4545cqh - 9.8182px)), 0.78rem);
+     0.702rem] (was [9px, 0.78rem] before the Theme Labels Uppercase
+     pass's own recalibration above). At and above the container size
+     this codebase has always required for one theme (120px width / 60px
+     height), both budgets already exceed 11.23px on their own, so this
+     formula saturates at 0.702rem for every card that already worked.
+     It only ever produces something smaller than 0.702rem below that
+     size, which is new territory the old fixed-size system never
+     rendered into at all (it was simply absent). */
+  font-size: clamp(9px, min(10.37cqw, calc(45.4545cqh - 9.8182px)), 0.702rem);
   line-height: 2.2;
   /* Calibrated down to 0.1em (was 0.18em, too pronounced on visual
      review; originally 0.02em before the tracking follow-up). See the
@@ -1266,6 +1335,13 @@ body {
   margin: 0;
   padding: 0;
   display: none;
+  /* Theme Labels Uppercase pass: presentation only -- the underlying
+     theme string (item.themes, matching, click-to-filter) is completely
+     untouched; this only changes the glyphs painted on screen. See the
+     font-size clamp() above for the compensating width-budget/ceiling
+     recalibration this required to keep the "never clips" guarantee
+     true for uppercase's wider worst-case rendered strings. */
+  text-transform: uppercase;
   /* Never wrap a theme, at any size: a two-word theme (e.g. "Adaptive
      Reuse") would otherwise be free to wrap at the space once a container
      gets tight, which would silently turn "one complete theme, one line"
@@ -3964,6 +4040,14 @@ html.is-browsing .zoom-controls {
   font-size: 0.86rem;
   font-weight: 400;
   color: #262626;
+  /* Theme Labels Uppercase pass: presentation only -- image.themes/
+     project.description underneath are untouched, this is the exact
+     same "existing __themes treatment" language the comment above
+     already establishes. No width-budget risk here (unlike
+     .hover-overlay__themes li): this is ordinary flowing text in a
+     normal-width info panel, not a tightly fitted nowrap/overflow:hidden
+     container, so no compensating size change was needed. */
+  text-transform: uppercase;
 }
 
 /* The one consolidated description line (image.caption, falling back to

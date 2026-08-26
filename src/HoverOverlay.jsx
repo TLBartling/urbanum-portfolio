@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { findRelatedArchiveItems } from "./relationshipEngine";
 import { hapticSelect } from "./haptics";
 // Content layer seam (Frontend <-> CMS handshake, Phase 1): no longer a
@@ -78,6 +78,33 @@ function mulberry32(seed) {
   };
 }
 
+// Relationship Hover Intent pass: how long the cursor must genuinely dwell
+// on a single Theme element before the Relationship Engine actually
+// activates -- previously zero (handleThemeHoverStart fired on the raw
+// onMouseEnter, so a cursor fly-by across several themes while just
+// moving through the Archive could flash the Archive-wide dim/highlight
+// state on and off several times in a row).
+//
+// Dwell Timing Refinement pass: raised from the first pass's 180ms to
+// 325ms. The `.hover-overlay__themes li:hover` CSS rule (this file's own
+// styles.css, untouched by this pass) already gives the visitor immediate
+// text-color feedback the instant the cursor enters a Theme -- that
+// affordance is instant and unconditional, has nothing to do with this
+// timer, and was never the thing that needed dwell-gating. Because that
+// immediate feedback already exists, the Relationship Engine itself (a
+// much bigger, Archive-wide visual event -- dim/highlight across
+// potentially dozens of tiles) can afford to wait longer before firing:
+// there's no longer any risk the visitor reads "nothing happened" during
+// the wait, since the hover state itself already told them their cursor
+// landed. 325ms is comfortably past an ordinary cursor pass-through
+// (measured well under 100ms per target when the Archive is being browsed
+// rather than deliberately inspected) while still registering as "the
+// Archive responded to my pause" rather than a separate, noticeable
+// timeout, per this pass's own brief. If drive-by activation is still
+// observed at 325ms, the brief allows nudging up to ~350ms -- go no
+// further without reporting back first.
+const HOVER_INTENT_DWELL_MS = 325;
+
 function hashSeed(key) {
   let hash = 0;
   for (let i = 0; i < key.length; i += 1) {
@@ -139,6 +166,27 @@ function HoverOverlay({
   // decides whether the "View Project" control below renders at all, so
   // there is exactly one thing this component needs to check.
   onEnterProject,
+  // Relationship Hover Intent pass: App.jsx's own single fire-time check
+  // (isScrollingRef.current || isProjectFilterActiveRef.current ||
+  // isOverlayActiveRef.current -- see its own declaration comment) --
+  // called only once, right when this component's dwell timer is about to
+  // commit an activation, never on every mouse event. Optional (defaults
+  // to a function that always returns false) so this component still
+  // behaves exactly as before for any hypothetical call site that doesn't
+  // pass it.
+  isRelationshipActivationBlocked = () => false,
+  // Relationship Transition Refinement pass: fires synchronously the
+  // instant a theme's hover intent BEGINS (top of handleThemeHoverStart,
+  // before its own dwell timer is even scheduled) -- deliberately
+  // separate from onRelatedArchiveNumbersChange, which only ever reports
+  // an actual RESULT (a commit at the end of the dwell, or a clear on
+  // leave). This is a much cheaper, purely informational "something is
+  // now pending here" signal App.jsx uses to bridge the Theme-to-Theme
+  // handoff gap (see handleThemeHoverIntentStart's own comment there) --
+  // it carries no theme/archive data and never itself changes gallery
+  // state. Optional, defaults to a no-op so this stays a no-behavior-
+  // change addition for any call site that doesn't pass it.
+  onThemeHoverIntentStart = () => {},
 }) {
   // Metadata-budget prototype: the first entry in `themes` is always the
   // Archive Item's designated primary theme (item.theme, the singular
@@ -169,6 +217,27 @@ function HoverOverlay({
   // image's hover, and not automatically for "the first theme" the way an
   // earlier commit did. Leaving a theme reports [] immediately, same as
   // leaving the image used to.
+  // Relationship Hover Intent pass: pendingIntentRef holds AT MOST one
+  // setTimeout id at a time -- the one and only cancellation mechanism
+  // this whole feature needs (per this pass's own "avoid multiple
+  // overlapping timers" instruction). clearPendingIntentTimer is called
+  // from every place a previously-started intent needs to stop counting:
+  // the start of a NEW theme's hover (so switching targets before the
+  // dwell completes cancels the old one, never runs both), leaving the
+  // element entirely, and this component instance unmounting (the
+  // gallery's own filter/content-recomposition and navigation flows both
+  // remount/unmount tiles rather than mutating them in place, so an
+  // unmount here already IS "content recomposition/navigation occurred" --
+  // no separate signal needed for those two cases).
+  const pendingIntentRef = useRef(null);
+  const clearPendingIntentTimer = () => {
+    if (pendingIntentRef.current !== null) {
+      clearTimeout(pendingIntentRef.current);
+      pendingIntentRef.current = null;
+    }
+  };
+  useEffect(() => clearPendingIntentTimer, []);
+
   const handleThemeHoverStart = (theme) => {
     // Mobile Baseline Pass -- Task 2: when the Relationship Engine is
     // disabled (touch devices, see relationshipEngineEnabled above), this
@@ -176,13 +245,42 @@ function HoverOverlay({
     // never runs at all, not just its result being discarded/ignored
     // downstream. findRelatedArchiveItems and the engine itself are
     // untouched; this is the one and only place that decides whether they
-    // ever get called.
+    // ever get called. Hover intent below only ever gates WHEN a query
+    // fires, never whether it's reachable at all on touch -- this early
+    // return still comes first.
     if (!relationshipEngineEnabled) return;
-    onRelatedArchiveNumbersChange?.(
-      findRelatedArchiveItems("theme", theme, getArchiveItems()),
-    );
+    // Relationship Transition Refinement pass: fire the lightweight
+    // "something is pending" signal before anything else below -- this is
+    // what lets App.jsx's clear-bridge distinguish "the visitor's cursor
+    // is already on its way to a new theme" from "the cursor genuinely
+    // left with nothing following it," without waiting for this theme's
+    // own dwell to actually commit.
+    onThemeHoverIntentStart();
+    // Cancel any earlier pending intent -- covers both "pointer left this
+    // element and re-entered" and "pointer moved directly from one theme
+    // element to another" (a plain onMouseEnter/onMouseLeave pair on
+    // sibling elements), so only the MOST RECENT target's timer is ever
+    // running.
+    clearPendingIntentTimer();
+    pendingIntentRef.current = setTimeout(() => {
+      pendingIntentRef.current = null;
+      // Fire-time re-check: the brief pause is over, but the cursor's
+      // context may have changed in the meantime in a way that never
+      // triggered clearPendingIntentTimer above (Archive motion
+      // beginning, a zoom starting, Search/Menu opening, the
+      // Project-filter composition activating) -- see
+      // isRelationshipActivationBlocked's own comment in App.jsx. A
+      // blocked check here is a silent no-op, exactly like an ordinary
+      // cursor fly-by that never dwelled at all -- no relationship state
+      // is set, nothing to clean up.
+      if (isRelationshipActivationBlocked()) return;
+      onRelatedArchiveNumbersChange?.(
+        findRelatedArchiveItems("theme", theme, getArchiveItems()),
+      );
+    }, HOVER_INTENT_DWELL_MS);
   };
   const handleMetadataHoverEnd = () => {
+    clearPendingIntentTimer();
     onRelatedArchiveNumbersChange?.([]);
   };
 

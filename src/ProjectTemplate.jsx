@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Header from "./Header";
+import ProjectBreadcrumb from "./ProjectBreadcrumb";
 import ImageViewer from "./ImageViewer";
 import ImageNavigation from "./ImageNavigation";
 import ProjectArchiveIndex from "./ProjectArchiveIndex";
@@ -219,6 +220,7 @@ export default function ProjectTemplate({ slug, imageId }) {
           onDrawerHeightChange={setIndexDrawerHeight}
         />
         <div className="about-content">
+          <ProjectBreadcrumb />
           <p className="project-not-found">Project not found.</p>
         </div>
       </div>
@@ -310,6 +312,7 @@ export default function ProjectTemplate({ slug, imageId }) {
             : undefined,
         }}
       >
+        <ProjectBreadcrumb />
         {currentImage ? (
           // Josh review, final correction pass: a Fragment, not a single
           // wrapper div, since Image Navigation/the Archive Number are no

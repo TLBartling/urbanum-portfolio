@@ -1017,6 +1017,186 @@ function pickImage(pickerState, orientation, imagePool = DEFAULT_IMAGE_POOL) {
   return { src, nextPickerState };
 }
 
+// Curated Large-Tile Variety (Archive-generation polish): companions to
+// pickImage, used only for `discovery` (large) tile slots -- see
+// COLUMN_PATTERNS' own comment for why `discovery` is the existing "large
+// tile" signal this reuses rather than inventing a new size taxonomy.
+//
+// PURE, same idiom as pickImage/pickerState: neither function mutates its
+// arguments. nearbyLargeTiles is a plain array of { centerX, project },
+// bounded (see pruneLargeTilesForVariety) so it only ever holds large tiles
+// within roughly one viewport-width (plus a small, fixed per-column margin)
+// of the current generation frontier -- bounded by local large-tile density
+// plus one column's width, never by total archive size.
+//
+// Split into two pure steps, each with one job:
+//
+// pruneLargeTilesForVariety -- called ONCE per column, before that column's
+// tiles are processed, using the column's own leading edge as a monotonic
+// frontier (not any individual tile's centerX). This is the fix for a real
+// bug: `pattern.tiles` is visited in AUTHORED order, not left-to-right
+// spatial order, so a tile far to one side of a column can be processed
+// before a tile much closer to the other side of the SAME column. Pruning
+// per-tile (the original design) used whichever tile was just recorded as
+// the reference point, which could -- and did -- evict an entry that was
+// still genuinely within avoidancePx of a tile processed later in that same
+// column, simply because it happened to be recorded out of spatial order.
+// A column's own edge doesn't have that problem: every tile in a column is
+// bounded by that column's own left/right edge regardless of which order
+// its tiles are visited in (tile.left is always 0-100% of the column, so a
+// column's own left edge is a true lower bound on every one of its tiles'
+// centerX, and its right edge a true upper bound) -- so pruning against the
+// edge, once, before any of the column's tiles are looked at, can never
+// evict something a tile in this column (or a later one, in the same
+// direction) might still need.
+//
+// direction is +1 for a frontier that only ever increases (rightward
+// generation, and the center seed's own single column, whose own tiles
+// also never go below its columnLeft) or -1 for a frontier that only ever
+// decreases (leftward generation, walking toward more negative X). An
+// entry is safe to drop once the frontier has moved avoidancePx past it in
+// that direction -- no tile this column or any later one in the same
+// direction can ever come back within range.
+function pruneLargeTilesForVariety(nearbyLargeTiles, frontierX, avoidancePx, direction) {
+  return nearbyLargeTiles.filter((tile) => {
+    const distancePastFrontier =
+      direction === -1 ? tile.centerX - frontierX : frontierX - tile.centerX;
+    return distancePastFrontier < avoidancePx;
+  });
+}
+
+// recordLargeTileForVariety -- called once per discovery tile, exactly as
+// before. Appends only; performs no pruning of its own, so it no longer
+// matters what order a column's tiles are visited in -- every discovery
+// tile recorded during a column's own processing stays visible to every
+// other tile in that same column, regardless of authored order.
+function recordLargeTileForVariety(nearbyLargeTiles, centerX, project) {
+  if (!project) return nearbyLargeTiles;
+
+  return [...nearbyLargeTiles, { centerX, project }];
+}
+
+// Best-effort variant of pickImage for a `discovery` slot only: excludes
+// candidates whose Archive Item project already appears in
+// nearbyLargeTiles within avoidancePx of candidateCenterX. When there's
+// nothing nearby to avoid (the common case for most discovery tiles),
+// this is exactly pickImage.
+//
+// Three passes, widening only as far as each one actually needs to:
+//
+// PASS 1 -- scan the current bag (same bag/orientation mechanism pickImage
+// already uses) for a candidate whose project isn't excluded. Identical to
+// this function's original behavior, and still the common case: cheap,
+// preserves the bag exactly as pickImage would have.
+//
+// PASS 2 -- reached only when the current bag has nothing eligible. Widens
+// the search to the full per-orientation source pool (the exact same
+// derivation the bag-refill above already uses -- a fixed-size photo
+// catalog, not the infinite archive), because a project excluded from the
+// *current bag's* momentary slice is very often still available elsewhere
+// in that same pool (the bag is just whatever's left mid-shuffle-cycle).
+// Chooses uniformly at random among the pool's eligible candidates, so
+// this stays procedurally random rather than becoming round-robin.
+// Reconciles with the bag afterward: removes the chosen src from the bag
+// if it's still sitting there; if it was already drawn out of the bag
+// earlier this cycle, returns it as-is rather than trying to reconstruct
+// or reset bag state.
+//
+// PASS 3 -- true scarcity: not even the full pool has an eligible
+// project (every candidate belongs to a project already placed nearby).
+// Same graceful fallback as before: draw the bag's tail element rather
+// than force a duplicate-free result that doesn't exist -- no retry loop,
+// no reroll, no failure.
+function pickLargeAwareImage(
+  pickerState,
+  orientation,
+  imagePool,
+  nearbyLargeTiles,
+  avoidancePx,
+  candidateCenterX,
+) {
+  const excludedProjects = new Set();
+  nearbyLargeTiles.forEach((tile) => {
+    if (Math.abs(tile.centerX - candidateCenterX) < avoidancePx) {
+      excludedProjects.add(tile.project);
+    }
+  });
+
+  if (excludedProjects.size === 0) {
+    return pickImage(pickerState, orientation, imagePool);
+  }
+
+  let bag = pickerState.bags[orientation];
+  if (bag.length === 0) {
+    const source = imagePool.byOrientation[orientation].length
+      ? imagePool.byOrientation[orientation]
+      : imagePool.all;
+    bag = shuffleArray(source);
+  }
+
+  // PASS 1 -- bounded scan of the current bag.
+  let chosenIndex = -1;
+  for (let i = bag.length - 1; i >= 0; i--) {
+    const candidateProject = findArchiveItemBySrc(bag[i])?.project ?? null;
+    if (!candidateProject || !excludedProjects.has(candidateProject)) {
+      chosenIndex = i;
+      break;
+    }
+  }
+
+  if (chosenIndex !== -1) {
+    const src = bag[chosenIndex];
+    const nextBag = [
+      ...bag.slice(0, chosenIndex),
+      ...bag.slice(chosenIndex + 1),
+    ];
+    return {
+      src,
+      nextPickerState: {
+        bags: { ...pickerState.bags, [orientation]: nextBag },
+      },
+    };
+  }
+
+  // PASS 2 -- widen to the full per-orientation source pool.
+  const source = imagePool.byOrientation[orientation].length
+    ? imagePool.byOrientation[orientation]
+    : imagePool.all;
+  const poolEligible = source.filter((candidateSrc) => {
+    const candidateProject = findArchiveItemBySrc(candidateSrc)?.project ?? null;
+    return !candidateProject || !excludedProjects.has(candidateProject);
+  });
+
+  if (poolEligible.length > 0) {
+    const src = poolEligible[Math.floor(Math.random() * poolEligible.length)];
+    const idxInBag = bag.indexOf(src);
+    const nextBag =
+      idxInBag === -1
+        ? bag
+        : [...bag.slice(0, idxInBag), ...bag.slice(idxInBag + 1)];
+    return {
+      src,
+      nextPickerState: {
+        bags: { ...pickerState.bags, [orientation]: nextBag },
+      },
+    };
+  }
+
+  // PASS 3 -- graceful fallback: every candidate in the full pool
+  // collides with a nearby large tile's project, so draw the same tail
+  // element pickImage would have drawn.
+  const fallbackIndex = bag.length - 1;
+  const src = bag[fallbackIndex];
+  const nextBag = bag.slice(0, fallbackIndex);
+
+  return {
+    src,
+    nextPickerState: {
+      bags: { ...pickerState.bags, [orientation]: nextBag },
+    },
+  };
+}
+
 // --- Application Layout ---------------------------------------------------
 // Owns page composition: how much room the header and the bottom controls
 // need, and therefore where the gallery's viewing-window opening sits on
@@ -1146,6 +1326,14 @@ function createColumnState() {
     // can tell "consecutive modules with an abnormal cursor jump between
     // them" apart from "a real break in the module sequence itself."
     moduleIndex: 0,
+    // Curated Large-Tile Variety (Archive-generation polish): a small,
+    // self-pruning list of { centerX, project } for `discovery` (large)
+    // tiles placed within roughly one viewport-width behind the current
+    // cursor -- see pickLargeAwareImage/recordLargeTileForVariety below.
+    // Threaded across calls exactly like pickerState/cursorX already are.
+    // Empty by default; only ever grows to the handful of large tiles
+    // that fall within the avoidance window, never the whole archive.
+    nearbyLargeTiles: [],
   };
 }
 
@@ -1339,6 +1527,10 @@ function createGalleryBatch(
   let lastPatternIndex = columnState.lastPatternIndex;
   let pickerState = columnState.pickerState;
   let moduleIndex = columnState.moduleIndex;
+  // Curated Large-Tile Variety: threaded exactly like pickerState/cursorX
+  // above -- see createColumnState's own comment.
+  let nearbyLargeTiles = columnState.nearbyLargeTiles;
+  const largeTileAvoidancePx = viewportWidth;
   // DAPC interlock one-ahead lookahead: the tab tile in each column needs
   // to know which pattern comes immediately after it, so its reach can
   // respect that pattern's own receiving-side cap (see
@@ -1371,13 +1563,21 @@ function createGalleryBatch(
     moduleIndex += 1;
     moduleCount += 1;
 
+    // Curated Large-Tile Variety: prune once per column, before this
+    // column's tiles are visited, using the column's own leading (left)
+    // edge as a monotonic rightward frontier. Every tile in this or any
+    // later column has centerX >= columnLeft (tile.left is always >= 0%
+    // of the column's own box), so an entry is safe to drop exactly when
+    // the frontier has moved avoidancePx past it -- regardless of the
+    // authored (non-spatial) order tiles are visited in below.
+    nearbyLargeTiles = pruneLargeTilesForVariety(
+      nearbyLargeTiles,
+      columnLeft,
+      largeTileAvoidancePx,
+      1,
+    );
+
     pattern.tiles.forEach((tile) => {
-      const { src, nextPickerState } = pickImage(
-        pickerState,
-        tile.orientation,
-        imagePool,
-      );
-      pickerState = nextPickerState;
       const baseWidth = (tile.w / 100) * columnWidthPx;
       // DAPC interlock: this pattern's one designated tab tile
       // (tile.interlockTab === true) extends past its own authored width,
@@ -1397,12 +1597,38 @@ function createGalleryBatch(
       // remains responsible for where the canvas is placed on the page.
       const top = (tile.top / 100) * canvasHeight;
 
+      // Curated Large-Tile Variety: geometry above is computed before the
+      // image draw (a pure reordering -- none of it depends on `src`) so a
+      // `discovery` slot's world-space centerX is already known at pick
+      // time. Non-discovery tiles are completely unaffected -- same
+      // pickImage call, same bag mechanism, as always.
+      const centerX = left + width / 2;
+      const { src, nextPickerState } = tile.discovery
+        ? pickLargeAwareImage(
+            pickerState,
+            tile.orientation,
+            imagePool,
+            nearbyLargeTiles,
+            largeTileAvoidancePx,
+            centerX,
+          )
+        : pickImage(pickerState, tile.orientation, imagePool);
+      pickerState = nextPickerState;
+
       // Homepage -> Project navigation: an image only becomes clickable
       // (below, in the render) if it's also a mock Archive Item that
       // belongs to a Project -- most of these 34 stock photos aren't, and
       // stay exactly as inert as they are today. archiveItem is null for
       // those, and the fields below just carry that through.
       const archiveItem = findArchiveItemBySrc(src);
+
+      if (tile.discovery) {
+        nearbyLargeTiles = recordLargeTileForVariety(
+          nearbyLargeTiles,
+          centerX,
+          archiveItem?.project ?? null,
+        );
+      }
 
       items.push({
         id: `${batchIndex}-${itemIndex}`,
@@ -1470,6 +1696,7 @@ function createGalleryBatch(
       pickerState,
       moduleIndex,
       pendingPatternIndex: currentPatternIndex,
+      nearbyLargeTiles,
     },
     // TEMPORARY VISUAL DEBUG MODE -- returned instead of written to a
     // window side-channel, since this function's caller now always has
@@ -1546,16 +1773,29 @@ function createCenterSeedBatch(
   const columnLeft = viewportCenterX - columnWidthPx / 2;
 
   let pickerState = columnState.pickerState;
+  // Curated Large-Tile Variety: threaded exactly like pickerState above --
+  // see createColumnState's own comment.
+  let nearbyLargeTiles = columnState.nearbyLargeTiles;
+  const largeTileAvoidancePx = viewportWidth;
   const items = [];
   let itemIndex = 0;
 
+  // Curated Large-Tile Variety: prune once, before this (only) column's
+  // tiles are visited, using the same columnLeft/rightward-frontier
+  // convention as createGalleryBatch -- this is a single seed column, not
+  // a direction, so there's nothing directional to invent here. Pruning
+  // once up front (rather than per tile) also guarantees every discovery
+  // tile in this column sees every large tile recorded earlier in the
+  // same column regardless of authored order, since no pruning happens
+  // again until the next column (rightward or leftward) is processed.
+  nearbyLargeTiles = pruneLargeTilesForVariety(
+    nearbyLargeTiles,
+    columnLeft,
+    largeTileAvoidancePx,
+    1,
+  );
+
   pattern.tiles.forEach((tile) => {
-    const { src, nextPickerState } = pickImage(
-      pickerState,
-      tile.orientation,
-      imagePool,
-    );
-    pickerState = nextPickerState;
     const baseWidth = (tile.w / 100) * columnWidthPx;
     // DAPC interlock: this is the very first column ever placed, so its
     // outgoing tab (if this pattern's tab tile falls here) cannot yet know
@@ -1568,7 +1808,31 @@ function createCenterSeedBatch(
     const height = (tile.h / 100) * canvasHeight;
     const left = columnLeft + (tile.left / 100) * columnWidthPx;
     const top = (tile.top / 100) * canvasHeight;
+
+    // Curated Large-Tile Variety: see createGalleryBatch's identical
+    // comment -- geometry is computed before the image draw so a
+    // `discovery` slot's centerX is already known at pick time.
+    const centerX = left + width / 2;
+    const { src, nextPickerState } = tile.discovery
+      ? pickLargeAwareImage(
+          pickerState,
+          tile.orientation,
+          imagePool,
+          nearbyLargeTiles,
+          largeTileAvoidancePx,
+          centerX,
+        )
+      : pickImage(pickerState, tile.orientation, imagePool);
+    pickerState = nextPickerState;
     const archiveItem = findArchiveItemBySrc(src);
+
+    if (tile.discovery) {
+      nearbyLargeTiles = recordLargeTileForVariety(
+        nearbyLargeTiles,
+        centerX,
+        archiveItem?.project ?? null,
+      );
+    }
 
     items.push({
       id: `${batchIndex}-${itemIndex}`,
@@ -1607,6 +1871,7 @@ function createCenterSeedBatch(
       lastPatternIndex: patternIndex,
       pickerState,
       moduleIndex: columnState.moduleIndex + 1,
+      nearbyLargeTiles,
     },
   };
 }
@@ -1654,6 +1919,12 @@ function createLeftwardGalleryBatch(
   let lastPatternIndex = columnState.lastPatternIndex;
   let pickerState = columnState.pickerState;
   let moduleIndex = columnState.moduleIndex;
+  // Curated Large-Tile Variety: threaded exactly like pickerState above --
+  // see createColumnState's own comment.
+  let nearbyLargeTiles = columnState.nearbyLargeTiles;
+  const viewportWidth =
+    typeof window === "undefined" ? 1200 : window.innerWidth;
+  const largeTileAvoidancePx = viewportWidth;
 
   while (cursorX > -leftwardCompositionBudgetPx) {
     // DAPC interlock: this pass places columns walking leftward (each new
@@ -1679,13 +1950,21 @@ function createLeftwardGalleryBatch(
     const thisModuleIndex = moduleIndex;
     moduleIndex += 1;
 
+    // Curated Large-Tile Variety: prune once per column, before this
+    // column's tiles are visited, using the column's own leading (right)
+    // edge as a monotonic leftward frontier. Every tile in this or any
+    // later (further-left) column has centerX <= columnRight, so an entry
+    // is safe to drop exactly when the frontier has moved avoidancePx
+    // past it -- same reasoning as createGalleryBatch, mirrored for the
+    // opposite direction.
+    nearbyLargeTiles = pruneLargeTilesForVariety(
+      nearbyLargeTiles,
+      columnRight,
+      largeTileAvoidancePx,
+      -1,
+    );
+
     pattern.tiles.forEach((tile) => {
-      const { src, nextPickerState } = pickImage(
-        pickerState,
-        tile.orientation,
-        imagePool,
-      );
-      pickerState = nextPickerState;
       const baseWidth = (tile.w / 100) * columnWidthPx;
       const width = tile.interlockTab
         ? baseWidth +
@@ -1699,7 +1978,31 @@ function createLeftwardGalleryBatch(
       const height = (tile.h / 100) * canvasHeight;
       const left = columnLeft + (tile.left / 100) * columnWidthPx;
       const top = (tile.top / 100) * canvasHeight;
+
+      // Curated Large-Tile Variety: see createGalleryBatch's identical
+      // comment -- geometry is computed before the image draw so a
+      // `discovery` slot's centerX is already known at pick time.
+      const centerX = left + width / 2;
+      const { src, nextPickerState } = tile.discovery
+        ? pickLargeAwareImage(
+            pickerState,
+            tile.orientation,
+            imagePool,
+            nearbyLargeTiles,
+            largeTileAvoidancePx,
+            centerX,
+          )
+        : pickImage(pickerState, tile.orientation, imagePool);
+      pickerState = nextPickerState;
       const archiveItem = findArchiveItemBySrc(src);
+
+      if (tile.discovery) {
+        nearbyLargeTiles = recordLargeTileForVariety(
+          nearbyLargeTiles,
+          centerX,
+          archiveItem?.project ?? null,
+        );
+      }
 
       items.push({
         id: `${batchIndex}-${itemIndex}`,
@@ -1734,7 +2037,13 @@ function createLeftwardGalleryBatch(
 
   return {
     items,
-    nextColumnState: { cursorX, lastPatternIndex, pickerState, moduleIndex },
+    nextColumnState: {
+      cursorX,
+      lastPatternIndex,
+      pickerState,
+      moduleIndex,
+      nearbyLargeTiles,
+    },
   };
 }
 
@@ -3513,6 +3822,14 @@ function App() {
           lastPatternIndex: centerSeed.nextColumnState.lastPatternIndex,
           pickerState: centerSeed.nextColumnState.pickerState,
           moduleIndex: centerSeed.nextColumnState.moduleIndex,
+          // Curated Large-Tile Variety: seeded from the center seed's own
+          // large tiles (spatially adjacent to where this pass starts),
+          // not from any other direction's list -- pickerState above
+          // chains center -> leftward -> rightward for bag continuity,
+          // but large-tile avoidance is spatial, not sequential, so both
+          // leftward and rightward each start fresh from the one column
+          // that's actually next to them.
+          nearbyLargeTiles: centerSeed.nextColumnState.nearbyLargeTiles,
         },
         nextOpeningGeometry.height,
         activeImagePoolRef.current,
@@ -3524,6 +3841,10 @@ function App() {
           lastPatternIndex: leftwardResult.nextColumnState.lastPatternIndex,
           pickerState: leftwardResult.nextColumnState.pickerState,
           moduleIndex: leftwardResult.nextColumnState.moduleIndex,
+          // Curated Large-Tile Variety: seeded from the center seed's own
+          // large tiles too (spatially adjacent on this side), not from
+          // leftwardResult's -- see the identical comment just above.
+          nearbyLargeTiles: centerSeed.nextColumnState.nearbyLargeTiles,
         },
         initialGalleryBatches,
         nextOpeningGeometry.height,

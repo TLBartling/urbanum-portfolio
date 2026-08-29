@@ -944,7 +944,7 @@ export function ImportWorkspace() {
         if (!cancelled) {
           setAvailableThemes([])
           setRequiredLoadError(
-            'Could not load Themes -- check your connection and reopen this tool.',
+            'Could not load Lexicon -- check your connection and reopen this tool.',
           )
         }
       },
@@ -1406,7 +1406,7 @@ export function ImportWorkspace() {
       setRequiredThemeIds((prev) => [...prev, created._id])
     } catch (error) {
       console.error('[ImportWorkspace] Failed to create new Theme.', error)
-      setNewThemeError('Could not create Theme -- try again.')
+      setNewThemeError('Could not create Lexicon -- try again.')
     } finally {
       setIsSavingNewTheme(false)
     }
@@ -2234,11 +2234,11 @@ export function ImportWorkspace() {
             strictly forward-and-validated (unchanged, per the locked
             architecture), so this is orientation, not navigation. */}
         <Box className="urbanum-sidebar-left">
-          <Stack space={4}>
+          <Stack gap={4}>
             <Text size={0} style={kickerStyle}>
               Import Workflow
             </Text>
-            <Stack space={1}>
+            <Stack gap={1}>
               {STEP_SEQUENCE.map((entry, index) => {
                 const isActive = entry.key === indicatorStepKey
                 const isDone = step === 'complete' || index < currentStepIndex
@@ -2311,7 +2311,7 @@ export function ImportWorkspace() {
         <Box className="urbanum-workspace-center">
 
           {(step === 'upload' || step === 'archiveOrJournal') && (
-            <Stack space={5} key={step} style={{animation: 'urbanumStepIn 280ms ease-out'}}>
+            <Stack gap={5} key={step} style={{animation: 'urbanumStepIn 280ms ease-out'}}>
               {/* Round F ("Workflow hierarchy"): Upload keeps its full
                   kicker+Heading+description block exactly as before --
                   Step 1 is explicitly excluded from the heading
@@ -2324,7 +2324,7 @@ export function ImportWorkspace() {
                   stays here, matching the "STEP 2 OF 5" line in the
                   user's own example. Round E's space increase (2 -> 4)
                   is otherwise unchanged for Upload. */}
-              <Stack space={4}>
+              <Stack gap={4}>
                 <Text size={0} style={kickerStyle}>
                   Step {displayStepNumber} of {STEP_SEQUENCE.length}
                 </Text>
@@ -2376,13 +2376,13 @@ export function ImportWorkspace() {
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
               >
-                <Stack space={4}>
+                <Stack gap={4}>
                   <Flex justify="center">
                     <Text size={3} style={mutedTextStyle}>
                       <UploadIcon />
                     </Text>
                   </Flex>
-                  <Stack space={2}>
+                  <Stack gap={2}>
                     <Text size={1} style={{color: INK}}>
                       Drop photos here
                     </Text>
@@ -2418,7 +2418,7 @@ export function ImportWorkspace() {
                   in state. "Clear all" is the same setter called with an
                   empty array. */}
               {queueItems.length > 0 && (
-                <Stack space={3}>
+                <Stack gap={3}>
                   <Flex wrap="wrap" gap={3}>
                     {queueItems.map((item) => (
                       <Box key={item.id} style={{position: 'relative', width: 96, height: 96}}>
@@ -2523,7 +2523,7 @@ export function ImportWorkspace() {
               the same as before; only which Box renders each piece
               changed. */}
           {(step === 'required' || step === 'optional') && currentDraft && (
-            <Stack space={5} key={step} style={{animation: 'urbanumStepIn 280ms ease-out'}}>
+            <Stack gap={5} key={step} style={{animation: 'urbanumStepIn 280ms ease-out'}}>
               {/* Round F ("Workflow hierarchy"): "Required"/"Optional"
                   used to render here as a full Heading, directly under
                   this same kicker. That Heading (now worded "Required
@@ -2606,7 +2606,7 @@ export function ImportWorkspace() {
               // inside the Stack itself (typography/spacing/buttons all
               // unchanged).
               <Flex justify="center" style={{width: '100%', paddingTop: 50}}>
-                <Stack space={5} key="complete" style={{animation: 'urbanumStepIn 280ms ease-out'}}>
+                <Stack gap={5} key="complete" style={{animation: 'urbanumStepIn 280ms ease-out'}}>
                   {/* Visual polish pass ("Publish confirmation screen"): a
                       proper headline, so this reads as a destination
                       rather than a status line -- same Heading treatment
@@ -2617,7 +2617,7 @@ export function ImportWorkspace() {
                   <Heading size={3} style={titleStyle}>
                     Published
                   </Heading>
-                  <Stack space={2}>
+                  <Stack gap={2}>
                     <Text size={0} style={kickerStyle}>
                       {batchCount === 1 ? '1 photo published' : `${batchCount} photos published`}
                     </Text>
@@ -2661,7 +2661,7 @@ export function ImportWorkspace() {
             remain visually anchored toward the bottom of this column." */}
         <Box className="urbanum-sidebar-right">
           <Flex direction="column" className="urbanum-sidebar-right-inner">
-            <Stack space={4}>
+            <Stack gap={4}>
               {/* Round F ("Workflow hierarchy"): the instructional heading
                   for every step from Choose Type onward now lives here,
                   at the very top of the RIGHT SIDEBAR, instead of above
@@ -2707,7 +2707,7 @@ export function ImportWorkspace() {
                   this file rather than an arbitrary pixel value.
                   Font size, weight, and alignment are all unchanged. */}
               {(step === 'archiveOrJournal' || step === 'required' || step === 'optional') && (
-                <Stack space={5} style={{marginBottom: 8}}>
+                <Stack gap={5} style={{marginBottom: 8}}>
                   <Heading size={3} style={{...titleStyle, lineHeight: 1.4}}>
                     {step === 'archiveOrJournal'
                       ? 'Choose Type'
@@ -2740,7 +2740,7 @@ export function ImportWorkspace() {
                   conditions on both buttons are otherwise byte-for-byte
                   unchanged. */}
               {step === 'archiveOrJournal' && (
-                <Stack space={3}>
+                <Stack gap={3}>
                   <Button
                     text={isCreatingDrafts && pendingChooseType === 'archiveItem' ? 'Creating…' : 'Archive Item →'}
                     mode="default"
@@ -2781,7 +2781,7 @@ export function ImportWorkspace() {
                   tone="default"
                   style={{border: `1px solid ${HAIRLINE}`, backgroundColor: 'transparent'}}
                 >
-                  <Stack space={3}>
+                  <Stack gap={3}>
                     <Text size={0} style={kickerStyle}>
                       Tips
                     </Text>
@@ -2806,9 +2806,9 @@ export function ImportWorkspace() {
                   everything needed to finish the step is visible
                   together without scrolling past the photo. */}
               {(step === 'required' || step === 'optional') && currentDraft && (
-                <Stack space={7} key={step} style={{animation: 'urbanumStepIn 280ms ease-out'}}>
+                <Stack gap={7} key={step} style={{animation: 'urbanumStepIn 280ms ease-out'}}>
                   {step === 'required' ? (
-                    <Stack space={5}>
+                    <Stack gap={5}>
                       {requiredSaveError && <Text size={1} style={errorTextStyle}>{requiredSaveError}</Text>}
                       {requiredLoadError && <Text size={1} style={errorTextStyle}>{requiredLoadError}</Text>}
 
@@ -2847,7 +2847,7 @@ export function ImportWorkspace() {
                           it's a Project or a Theme; the label is still the
                           only thing telling the similarly-shaped
                           chip groups apart. */}
-                      <Stack space={2}>
+                      <Stack gap={2}>
                         <FieldLabel>Project</FieldLabel>
                         <AnnotationField
                           id="required-project"
@@ -2951,7 +2951,7 @@ export function ImportWorkspace() {
                           while no longer hiding the control behind
                           "brand-new Project" state. */}
                       {requiredProject && (
-                        <Stack space={2} style={{animation: 'urbanumStepIn 280ms ease-out'}}>
+                        <Stack gap={2} style={{animation: 'urbanumStepIn 280ms ease-out'}}>
                           <FieldLabel>Type</FieldLabel>
                           <AnnotationField
                             id="required-type"
@@ -3003,11 +3003,11 @@ export function ImportWorkspace() {
                           two genuinely are only ever set at Project-
                           creation time. */}
                       {requiredProject && isNewProject && (
-                        <Stack space={2} style={{animation: 'urbanumStepIn 280ms ease-out'}}>
+                        <Stack gap={2} style={{animation: 'urbanumStepIn 280ms ease-out'}}>
                           <SectionHeading>New Project</SectionHeading>
                           <Flex gap={6} wrap="wrap">
                             <Box style={{flex: 1, minWidth: 200}}>
-                              <Stack space={2}>
+                              <Stack gap={2}>
                                 <FieldLabel quiet>Location</FieldLabel>
                                 <TextInput
                                   {...noBrowserAutofillProps}
@@ -3020,7 +3020,7 @@ export function ImportWorkspace() {
                               </Stack>
                             </Box>
                             <Box style={{flex: 1, minWidth: 160}}>
-                              <Stack space={2}>
+                              <Stack gap={2}>
                                 <FieldLabel quiet>Project Date</FieldLabel>
                                 <TextInput
                                   {...noBrowserAutofillProps}
@@ -3057,8 +3057,8 @@ export function ImportWorkspace() {
                           the keyboard flow carries across the reveal
                           without any new code for it. */}
                       {requiredProject && (
-                      <Stack space={2} style={{animation: 'urbanumStepIn 280ms ease-out'}}>
-                        <FieldLabel>Theme</FieldLabel>
+                      <Stack gap={2} style={{animation: 'urbanumStepIn 280ms ease-out'}}>
+                        <FieldLabel>Lexicon</FieldLabel>
                         {/* Phase 5's "Recent in this batch" row --
                             recentThemeSuggestions is a frozen snapshot
                             seeded once when this photo opened (see
@@ -3103,8 +3103,8 @@ export function ImportWorkspace() {
                         )}
                         <AnnotationField
                           id="required-theme"
-                          label="Theme"
-                          placeholder="Type a theme…"
+                          label="Lexicon"
+                          placeholder="Type a Lexicon…"
                           items={requiredThemeIds.map((id) => {
                             const theme = (availableThemes || []).find((t) => t._id === id)
                             return {id, label: theme ? theme.title : id}
@@ -3134,7 +3134,7 @@ export function ImportWorkspace() {
                         )}
                         {availableThemes !== null && availableThemes.length === 0 && (
                           <Text size={1} style={hintTextStyle}>
-                            No Themes exist yet — type a name above to create one.
+                            No Lexicon exists yet — type a name above to create one.
                           </Text>
                         )}
                       </Stack>
@@ -3165,7 +3165,7 @@ export function ImportWorkspace() {
                     // cluster changed, only the space between them.
                     // Round E: reduced again, 4 (20px) -> 3 (12px) -- still
                     // reported as an unnecessary gap after the first pass.
-                    <Stack space={3}>
+                    <Stack gap={3}>
                       {optionalSaveError && <Text size={1} style={errorTextStyle}>{optionalSaveError}</Text>}
                       {publishError && <Text size={1} style={errorTextStyle}>{publishError}</Text>}
 
@@ -3183,10 +3183,10 @@ export function ImportWorkspace() {
                           than to administrative metadata, so it's
                           larger and unhurried, not one more field in
                           the stack. */}
-                      <Stack space={5}>
+                      <Stack gap={5}>
                         <Flex gap={6} wrap="wrap">
                           <Box style={{flex: 1, minWidth: 200}}>
-                            <Stack space={2}>
+                            <Stack gap={2}>
                               <FieldLabel quiet>Location</FieldLabel>
                               <TextInput
                                 {...noBrowserAutofillProps}
@@ -3199,7 +3199,7 @@ export function ImportWorkspace() {
                             </Stack>
                           </Box>
                           <Box style={{flex: 1, minWidth: 220}}>
-                            <Stack space={2}>
+                            <Stack gap={2}>
                               <FieldLabel quiet>Date</FieldLabel>
                               <Flex gap={3}>
                                 <Box flex={1}>
@@ -3272,7 +3272,7 @@ export function ImportWorkspace() {
                         <>
                           <Flex gap={6} wrap="wrap" style={{animation: 'urbanumStepIn 280ms ease-out'}}>
                             <Box style={{flex: 1, minWidth: 220}}>
-                              <Stack space={2}>
+                              <Stack gap={2}>
                                 <FieldLabel quiet>Featured</FieldLabel>
                                 <Flex gap={2}>
                                   {['Default', 'Featured', 'Hidden'].map((option) => {
@@ -3296,7 +3296,7 @@ export function ImportWorkspace() {
                             </Box>
 
                             <Box style={{flex: 1, minWidth: 200}}>
-                              <Stack space={2}>
+                              <Stack gap={2}>
                                 <FieldLabel quiet>Sort Order</FieldLabel>
                                 <TextInput
                                   {...noBrowserAutofillProps}
@@ -3311,7 +3311,7 @@ export function ImportWorkspace() {
                             </Box>
                           </Flex>
 
-                          <Stack space={2} style={{animation: 'urbanumStepIn 280ms ease-out'}}>
+                          <Stack gap={2} style={{animation: 'urbanumStepIn 280ms ease-out'}}>
                             <FieldLabel quiet>Internal Notes</FieldLabel>
                             <TextArea
                               {...noBrowserAutofillProps}
@@ -3337,7 +3337,7 @@ export function ImportWorkspace() {
                       )}
                     </Stack>
                   ) : (
-                    <Stack space={4}>
+                    <Stack gap={4}>
                       {optionalSaveError && <Text size={1} style={errorTextStyle}>{optionalSaveError}</Text>}
                       {publishError && <Text size={1} style={errorTextStyle}>{publishError}</Text>}
                       {/* Journal Entry's one Optional field: Image
@@ -3352,7 +3352,7 @@ export function ImportWorkspace() {
                           it needs a label to be legible on its own.
                           rows={2} matches the schema field's own
                           `rows: 2`. */}
-                      <Stack space={2}>
+                      <Stack gap={2}>
                         <FieldLabel quiet>Optional</FieldLabel>
                         <TextArea
                           {...noBrowserAutofillProps}
@@ -3398,7 +3398,7 @@ export function ImportWorkspace() {
                   decision sits directly under CENTER's own heading.
                   Nothing else about this bottom-anchored Box changed --
                   Continue/Cancel and Publish below are unaffected. */}
-              <Stack space={4}>
+              <Stack gap={4}>
                 {/* Round E ("Step 3 -- Continue / Cancel"): Cancel Import
                     moved here from underneath the image in CENTER (see
                     that region's own comment above) -- same handler
@@ -3410,7 +3410,7 @@ export function ImportWorkspace() {
                     action in this file already uses -- Continue stays the
                     only dark, primary control on this step. */}
                 {step === 'required' && currentDraft && (
-                  <Stack space={3}>
+                  <Stack gap={3}>
                     <Button
                       text={isSavingRequired ? 'Saving…' : 'Continue →'}
                       mode="default"
@@ -3441,7 +3441,7 @@ export function ImportWorkspace() {
                     treatment as every other secondary action in this
                     Box. */}
                 {step === 'optional' && currentDraft && currentDraft.type === 'archiveItem' && (
-                  <Stack space={3}>
+                  <Stack gap={3}>
                     <Button
                       text={isSavingOptional ? 'Saving…' : isPublishing ? 'Publishing…' : 'Publish →'}
                       mode="default"
@@ -3473,7 +3473,7 @@ export function ImportWorkspace() {
                     this screen, so returning to Choose Type is a dead
                     end, not a real "back." */}
                 {step === 'optional' && currentDraft && currentDraft.type !== 'archiveItem' && (
-                  <Stack space={3}>
+                  <Stack gap={3}>
                     <Button
                       text={isSavingOptional ? 'Saving…' : isPublishing ? 'Publishing…' : 'Publish →'}
                       mode="default"
@@ -3522,7 +3522,7 @@ export function ImportWorkspace() {
                     tone="default"
                     style={{border: `1px solid ${HAIRLINE}`, backgroundColor: 'transparent'}}
                   >
-                    <Stack space={3}>
+                    <Stack gap={3}>
                       <Text size={0} style={kickerStyle}>
                         Continue Previous
                       </Text>

@@ -1,6 +1,18 @@
 import {useCurrentUser, useWorkspace} from 'sanity'
 import {useRouterState} from 'sanity/router'
-import {Avatar, Box, Flex, Menu, MenuButton, MenuDivider, MenuItem, Stack, Text} from '@sanity/ui'
+import {Avatar, Box, Flex, Stack, Text} from '@sanity/ui'
+// Sanity 6.9 -> 6.11 compatibility pass: @sanity/ui's own dependency
+// jumped 3.5.1 -> 4.0.7 as part of that upgrade, and Menu/MenuButton/
+// MenuDivider/MenuItem moved out of '@sanity/ui''s main entry point into
+// their own '@sanity/ui/menu' subpath export in that major version --
+// confirmed directly against the installed package: `@sanity/ui/dist/
+// index.js` (the main entry) no longer contains them at all, while
+// `@sanity/ui/dist/menu.d.ts` declares all four with the exact same
+// props/behavior as before (MenuButtonProps' `popover` shape, the one
+// prop this file actually uses, is unchanged). This is an import-path
+// fix only -- nothing about how the account menu is built, styled, or
+// behaves changed.
+import {Menu, MenuButton, MenuDivider, MenuItem} from '@sanity/ui/menu'
 import {UrbanumToolMenu} from './UrbanumToolMenu'
 import {unstableSignOut} from '../unstableSignOut'
 
@@ -296,7 +308,7 @@ export function UrbanumNavbar() {
               // developer/admin menu."
               <Menu>
                 <Box padding={3} style={{minWidth: 220}}>
-                  <Stack space={2}>
+                  <Stack gap={2}>
                     <Text size={1} style={{fontWeight: 500, color: INK}}>
                       {currentUser.name}
                     </Text>

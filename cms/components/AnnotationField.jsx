@@ -129,7 +129,7 @@ export function AnnotationField({
   }
 
   return (
-    <Stack space={2}>
+    <Stack gap={2}>
       {/* Round F ("Metadata chip colors"): these were `tone="primary"` --
           the one place in this whole project (grepped to confirm) that
           still rendered Sanity's stock theme blue, missed by an earlier
@@ -194,7 +194,7 @@ export function AnnotationField({
                 marginTop: 4,
               }}
             >
-              <Stack as="ul" space={0} role="listbox">
+              <Stack as="ul" gap={0} role="listbox">
                 {rows.map((row, index) => (
                   <Box as="li" key={row.id} role="option" aria-selected={index === activeIndex}>
                     {/* Archive polish audit: the highlighted/active row here

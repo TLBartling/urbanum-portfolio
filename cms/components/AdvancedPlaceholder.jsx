@@ -77,7 +77,7 @@ const PORTFOLIO_COUNT_ROWS = [
   {key: 'projects', label: 'Projects'},
   {key: 'archiveImages', label: 'Archive Images'},
   {key: 'journalEntries', label: 'Journal Entries'},
-  {key: 'themes', label: 'Themes'},
+  {key: 'themes', label: 'Lexicon'},
 ]
 
 // Hardcoded per the brief ("current value can be hardcoded for now") --
@@ -142,12 +142,12 @@ export function AdvancedPlaceholder() {
     <Container width={1} padding={6}>
       <Flex justify="center">
         <Box paddingTop={5} style={{width: '100%', maxWidth: CONTENT_WIDTH}}>
-          <Stack space={6}>
+          <Stack gap={6}>
             <Card border radius={2} padding={5}>
-              <Stack space={6}>
-                <Stack space={3}>
+              <Stack gap={6}>
+                <Stack gap={3}>
                   <SectionLabel>Portfolio Overview</SectionLabel>
-                  <Stack space={2}>
+                  <Stack gap={2}>
                     {PORTFOLIO_COUNT_ROWS.map(({key, label}) => (
                       <InfoRow
                         key={key}
@@ -158,22 +158,22 @@ export function AdvancedPlaceholder() {
                   </Stack>
                 </Stack>
 
-                <Stack space={3}>
+                <Stack gap={3}>
                   <SectionLabel>Version</SectionLabel>
-                  <Stack space={2}>
+                  <Stack gap={2}>
                     <InfoRow label="Urbanum Studio" value="Prototype v0.9" />
                     <InfoRow label="Last Updated" value={LAST_UPDATED} />
                   </Stack>
                 </Stack>
 
-                <Stack space={3}>
+                <Stack gap={3}>
                   <SectionLabel>Documentation</SectionLabel>
                   <Box>
                     <Button text="Open Developer Notes" mode="ghost" tone="default" />
                   </Box>
                 </Stack>
 
-                <Stack space={3}>
+                <Stack gap={3}>
                   <SectionLabel>Support</SectionLabel>
                   <InfoRow label="Developer" value="TL Bartling" />
                 </Stack>

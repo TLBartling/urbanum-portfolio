@@ -50,17 +50,21 @@ const MOCK_TYPES = ["Residential", "Urban", "Commercial"];
 // a peer of Theme/Project/Year here -- same key/label shape, same row,
 // same everything below that maps over this array.
 //
-// Terminology/order pass (client-requested): only this array's own order
-// changed -- Type moved to the first column, Theme took its former slot,
-// Year and Project stayed put. Each entry's key/label, the values it
-// reads (entryValues/entryLabels below), and the filter behavior itself
-// are untouched; INDEX_ENTRIES.map() below renders whatever order this
-// array is in, so reordering the array is the entire change.
+// Terminology/order pass (client-requested, mockup-alignment round):
+// reordered again to match Josh's approved header mockup exactly -- Type,
+// Year, Project, Theme (last). Also renamed this last entry's *display*
+// label only, from "Theme" to "Lexicon" -- the internal key stays
+// `"theme"` (matches the CMS's own `theme` document type, the `themes`
+// prop/entryValues.theme, and every other internal reference untouched by
+// this pass), exactly the same key/label decoupling this codebase already
+// uses for Type (`key: "type"`, Studio-facing/internal name `projectType`,
+// display label `"Type"`). No filter behavior, CMS data, or selection
+// state changed -- purely the array's order and this one label string.
 const INDEX_ENTRIES = [
   { key: "type", label: "Type" },
-  { key: "theme", label: "Theme" },
   { key: "year", label: "Year" },
   { key: "project", label: "Project" },
+  { key: "theme", label: "Lexicon" },
 ];
 
 // Filter UX -- Clear All: the one shape "no active filters" means,
@@ -497,7 +501,11 @@ export default function Header({
     type: types,
   };
   const entryLabels = {
-    theme: "Theme",
+    // Mockup-alignment round: kept in sync with INDEX_ENTRIES' own label
+    // rename above -- this object only feeds the "View all ... options"
+    // aria-label (see its own comment further down), so it needs to say
+    // "lexicon" too rather than going stale against the visible label.
+    theme: "Lexicon",
     project: "Project",
     year: "Year",
     type: "Type",

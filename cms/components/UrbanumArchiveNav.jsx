@@ -50,11 +50,11 @@ const navItemStyle = {
 // archiveSections.js's own `group` field.
 function ArchiveNavGroup({label, sections, activeToolName, onNavigate}) {
   return (
-    <Stack space={2}>
+    <Stack gap={2}>
       <Text size={1} style={groupLabelStyle}>
         {label}
       </Text>
-      <Stack space={0}>
+      <Stack gap={0}>
         {sections.map((section) => {
           const isActive = section.name === activeToolName
           return (
@@ -132,7 +132,7 @@ export function UrbanumArchiveNav({activeToolName}) {
           Nothing below assumes a fixed number of children or a fixed
           height, so adding one later is a single new Stack child, not a
           restructure. */}
-      <Stack space={6}>
+      <Stack gap={6}>
         <ArchiveNavGroup
           label="ARCHIVE"
           sections={archiveSections}

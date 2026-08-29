@@ -6,7 +6,7 @@ import {defineField, defineType} from 'sanity'
 // immediately. The full Theme schema is a separate, later task.
 export const themeType = defineType({
   name: 'theme',
-  title: 'Theme',
+  title: 'Lexicon',
   type: 'document',
   fields: [
     defineField({
@@ -22,7 +22,7 @@ export const themeType = defineType({
     // generic "Untitled" placeholder text with something that names what
     // it is. Nothing about the `title` field itself changes.
     prepare({title}) {
-      return {title: title || 'New Theme'}
+      return {title: title || 'New Lexicon'}
     },
   },
 })

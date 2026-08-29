@@ -1,6 +1,15 @@
 import {useCallback, useState} from 'react'
 import {useClient} from 'sanity'
-import {Flex, Stack, Text, useToast} from '@sanity/ui'
+import {Flex, Stack, Text} from '@sanity/ui'
+// Sanity 6.9 -> 6.11 compatibility pass: same root cause as
+// UrbanumNavbar.jsx's own comment on this -- @sanity/ui 3.5.1 -> 4.0.7
+// moved useToast (along with Toast/ToastProvider) out of the main
+// '@sanity/ui' entry point into '@sanity/ui/toast'. Confirmed against
+// the installed package: absent from `dist/index.js`, present with an
+// identical signature (`useToast(): ToastContextValue`, same `.push()`
+// shape this file already calls) in `dist/toast.d.ts`. Import-path fix
+// only -- every `toast.push(...)` call below is unchanged.
+import {useToast} from '@sanity/ui/toast'
 import {TrashIcon} from '@sanity/icons/Trash'
 
 const API_VERSION = '2024-01-01'
@@ -64,9 +73,9 @@ function dedupedArchiveItemCount(referencingIds) {
 // already uses (see ImportWorkspace.jsx) rather than fighting the native
 // list element.
 const REMOVE_THEME_CONSEQUENCES = [
-  'Remove the theme from every Archive Item that references it.',
+  'Remove the Lexicon from every Archive Item that references it.',
   'Keep every Archive Item intact.',
-  'Remove the Theme from the CMS.',
+  'Remove the Lexicon from the CMS.',
 ]
 
 // Atomicity is the whole point of using a transaction here rather than
@@ -146,7 +155,7 @@ export function RemoveThemeAction(props) {
         setDialogOpen(false)
         toast.push({
           status: 'error',
-          title: 'Could not check Theme usage',
+          title: 'Could not check Lexicon usage',
           description: error.message,
         })
       })
@@ -164,7 +173,7 @@ export function RemoveThemeAction(props) {
       .then(() => {
         setIsRemoving(false)
         setDialogOpen(false)
-        toast.push({status: 'success', title: 'Theme removed'})
+        toast.push({status: 'success', title: 'Lexicon removed'})
         onComplete()
       })
       .catch((error) => {
@@ -176,7 +185,7 @@ export function RemoveThemeAction(props) {
         setIsRemoving(false)
         toast.push({
           status: 'error',
-          title: 'Could not remove Theme',
+          title: 'Could not remove Lexicon',
           description: error.message,
         })
       })
@@ -185,31 +194,31 @@ export function RemoveThemeAction(props) {
   const archiveItemLabel = archiveItemCount === 1 ? 'Archive Item' : 'Archive Items'
 
   return {
-    label: 'Remove Theme',
+    label: 'Remove Lexicon',
     icon: TrashIcon,
     tone: 'critical',
-    title: 'Remove Theme',
+    title: 'Remove Lexicon',
     disabled: isRemoving,
     onHandle: handleOpen,
     dialog: dialogOpen && {
       type: 'confirm',
       tone: 'critical',
-      confirmButtonText: isRemoving ? 'Removing…' : 'Remove Theme',
+      confirmButtonText: isRemoving ? 'Removing…' : 'Remove Lexicon',
       cancelButtonText: 'Cancel',
       onConfirm: handleConfirm,
       onCancel: handleClose,
       message: (
-        <Stack space={4}>
+        <Stack gap={4}>
           <Text size={1}>
-            This theme is currently assigned to{' '}
+            This Lexicon is currently assigned to{' '}
             <strong>
               {isCountLoading ? '…' : archiveItemCount} {archiveItemLabel}
             </strong>
             .
           </Text>
-          <Stack space={2}>
-            <Text size={1}>Removing this theme will:</Text>
-            <Stack space={2} paddingLeft={3}>
+          <Stack gap={2}>
+            <Text size={1}>Removing this Lexicon will:</Text>
+            <Stack gap={2} paddingLeft={3}>
               {REMOVE_THEME_CONSEQUENCES.map((line) => (
                 <Flex key={line} gap={2} align="flex-start">
                   <Text size={1} muted>

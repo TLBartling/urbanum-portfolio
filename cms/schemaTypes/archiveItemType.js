@@ -64,7 +64,7 @@ export const archiveItemType = defineType({
     }),
     defineField({
       name: 'themes',
-      title: 'Themes',
+      title: 'Lexicon',
       description: 'Select one or more recurring ideas that connect this image to the rest of the archive.',
       type: 'array',
       of: [{type: 'reference', to: [{type: 'theme'}]}],

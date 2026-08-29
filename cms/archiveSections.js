@@ -107,7 +107,7 @@ export const ARCHIVE_SECTIONS = [
   },
   {
     name: 'themes',
-    title: 'Themes',
+    title: 'Lexicon',
     schemaType: 'theme',
     icon: TagIcon,
     group: 'Archive',

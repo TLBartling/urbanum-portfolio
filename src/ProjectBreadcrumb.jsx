@@ -33,6 +33,21 @@ import { navigate } from "./navigation";
 // as a quiet piece of the page's own typography that happens to be
 // interactive, the same restraint ProjectArchiveIndex's own button already
 // established for this exact page.
+//
+// Desktop Project Page visual-matching pass (Josh review): two changes,
+// both purely presentational -- the navigate("/") mechanism above, and
+// everything about WHEN this renders, are completely untouched.
+//
+//   Glyph: the bare arrow "← " is replaced with "‹ ", a quieter chevron
+//   per explicit instruction ("‹ Archive" or an equally restrained
+//   equivalent) -- still aria-hidden, still purely decorative next to the
+//   real "Archive" label a screen reader announces.
+//
+//   Alignment: this control now lines up with the header's own "Filter"
+//   label, not with this page's own (deliberately wider) content padding.
+//   See .project-breadcrumb's own comment in styles.css for the exact
+//   mechanism -- a calc() pulling it back by the difference between the
+//   two padding formulas, scoped to desktop only.
 export default function ProjectBreadcrumb() {
   return (
     <div className="project-breadcrumb">
@@ -41,7 +56,7 @@ export default function ProjectBreadcrumb() {
         className="project-breadcrumb__control"
         onClick={() => navigate("/")}
       >
-        <span aria-hidden="true">{"← "}</span>
+        <span aria-hidden="true">{"‹ "}</span>
         Archive
       </button>
     </div>

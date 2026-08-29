@@ -1,3 +1,5 @@
+import RichText from "./RichText";
+
 // Project Information -- one of the four systems the Project Page
 // redesign explicitly separates out. Two pieces live in this one file
 // since they're two halves of a single toggle, but they render in two
@@ -167,9 +169,23 @@ export default function ProjectInfoPanel({ project, image, isOpen }) {
   // caption when it has one, otherwise the Project's own description.
   // Never both: the desired hierarchy has exactly one description-shaped
   // line, not a per-image one stacked on top of a per-project one.
-  const description = image?.caption || project?.description;
+  //
+  // CMS typography foundation pass: `image.caption` (Archive Item's own
+  // `description` field, aliased in cms/queries.js) is deliberately left
+  // out of this pass's rich-text upgrade -- Archive Item has no rich-text
+  // field of its own -- so it stays exactly the plain string it already
+  // was and keeps first priority here, unchanged. Only the Project-level
+  // fallback gains a rich option: `project.descriptionRichText` (new) is
+  // preferred over `project.description` (legacy plain, still the
+  // fallback of the fallback) when the image has no caption of its own.
+  const hasRichDescription =
+    !image?.caption &&
+    Array.isArray(project?.descriptionRichText) &&
+    project.descriptionRichText.length > 0;
+  const plainDescription = image?.caption || project?.description;
 
-  const hasDescriptiveMeta = themeList.length > 0 || Boolean(description);
+  const hasDescriptiveMeta =
+    themeList.length > 0 || hasRichDescription || Boolean(plainDescription);
 
   return (
     <div
@@ -192,10 +208,17 @@ export default function ProjectInfoPanel({ project, image, isOpen }) {
                 {themeList.join(" · ")}
               </p>
             )}
-            {description && (
-              <p className="project-info-panel__description">
-                {description}
-              </p>
+            {hasRichDescription ? (
+              <RichText
+                value={project.descriptionRichText}
+                paragraphClassName="project-info-panel__description"
+              />
+            ) : (
+              plainDescription && (
+                <p className="project-info-panel__description">
+                  {plainDescription}
+                </p>
+              )
             )}
           </div>
         )}

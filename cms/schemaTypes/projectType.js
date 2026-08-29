@@ -123,8 +123,23 @@ export const projectType = defineType({
       validation: (Rule) => Rule.integer().min(1800).max(2100),
     }),
     defineField({
-      name: 'description',
+      // CMS typography foundation pass: additive sibling to `description`
+      // below, same pattern as aboutPageType.js/contactPageType.js's own
+      // `bodyRichText` fields -- see aboutPageType.js's comment for the
+      // full non-destructive-migration rationale. src/ProjectInfoPanel.jsx
+      // prefers this field when it has content, falling back to
+      // `description` (and then `image.caption`, unchanged) otherwise.
+      name: 'descriptionRichText',
       title: 'Description (optional)',
+      description:
+        'The project’s body copy on its detail page. Use Bold / Medium / Italic and Links inline as needed. Start a new paragraph for a line break. If this is left empty, the legacy Description (plain text) field below is used instead.',
+      type: 'richText',
+    }),
+    defineField({
+      name: 'description',
+      title: 'Description (legacy plain text, optional)',
+      description:
+        'Superseded by the Description field above. Only used as a fallback when that field is empty.',
       type: 'text',
       rows: 3,
     }),

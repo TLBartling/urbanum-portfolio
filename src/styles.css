@@ -345,7 +345,14 @@ body {
   font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.18em;
-  text-transform: uppercase;
+  /* Desktop header casing pass (Josh review): FILTER/SEARCH/MENU now
+     render in natural title-style capitalization (Filter/Search/Menu)
+     instead of forced all-caps -- the JSX text itself was already
+     properly cased ("Filter", "Search", "Menu"), so this is a pure
+     presentation-layer change. Explicit `none` (not just omitting the
+     property) documents the decision was deliberate. Font family, size,
+     weight, and tracking above are all untouched. */
+  text-transform: none;
 
   color: #111;
   transition: opacity 0.25s ease;
@@ -606,7 +613,14 @@ body {
   font-size: 0.78rem;
   font-weight: 500;
   letter-spacing: 0.18em;
-  text-transform: uppercase;
+  /* Desktop header casing pass (Josh review): see .text-control's
+     identical comment above -- this is the drawer's first tier
+     (Type/Theme/Year/Project in the Filter row, Archive/Practice/
+     Journal/Contact in the Menu row), both already properly cased in
+     Header.jsx's own data (INDEX_ENTRIES/MENU_LINKS), so removing the
+     forced uppercase here is a pure presentation-layer change. Font
+     family, size, weight, and tracking above are all untouched. */
+  text-transform: none;
   color: #111;
 }
 
@@ -766,7 +780,16 @@ body {
   font-size: 0.72rem;
   font-weight: 400;
   letter-spacing: 0.13em;
-  text-transform: uppercase;
+  /* Desktop header casing pass (Josh review): see .text-control's
+     identical comment above -- this is the Filter drawer's value-list
+     tier (Residential/Retail/Interiors/etc., "View All", and the
+     committed Search chip, which all share this one class). Removing
+     the forced uppercase here also brings the committed Search chip in
+     line with the always-normal-case live typing input beside it
+     (.search-control__input has never forced uppercase), rather than
+     the two visibly disagreeing on casing as they did before. Font
+     family, size, weight, and tracking above are all untouched. */
+  text-transform: none;
   color: #9d9d9d;
   transition: color 0.25s ease, opacity 0.25s ease;
   white-space: nowrap;
@@ -2910,27 +2933,45 @@ html.is-browsing .zoom-controls {
   object-fit: cover;
 }
 
-/* The text box, centered as its own block below the image field --
-   "centered" here means the column itself is centered on the page
-   (margin-inline: auto against a fixed text measure), with everything
-   inside it -- title, subtitle, and body paragraphs alike -- left-
-   aligned, since centering every line of prose (headline included)
-   would hurt readability rather than express hierarchy. The larger
-   margin-top (vs. .about-layout's own tighter inter-section gap) is the
-   "intentional whitespace" pause between the image field and this box
-   -- visually subordinate to the image above it, not a hero
-   sub-headline directly under it.
-   Title/subtitle now live inside this same box (see .about-layout__intro
-   below) rather than as a separate element above the image -- "grouped
-   with the text box" means literally the same flex column, sharing this
-   rule's own centering and 56ch measure, not a visually adjacent but
-   structurally separate block. */
+/* The text box, centered as its own block on the page -- "centered" here
+   means the column itself is centered horizontally (margin-inline: auto
+   against a fixed text measure), with everything inside it -- title,
+   subtitle, and body paragraphs alike -- left-aligned, since centering
+   every line of prose (headline included) would hurt readability rather
+   than express hierarchy.
+   Title/subtitle live inside this same box (see .about-layout__intro
+   below) as its own opening -- "grouped with the text box" means
+   literally the same flex column, sharing this rule's own centering and
+   measure, not a visually adjacent but structurally separate block.
+
+   Practice mockup pass (Josh review): this is now .about-layout's only
+   child -- the image field that used to sit above it is retired from
+   the composition (see AboutPage.jsx's own comment). Its margin-top
+   used to be a large deliberate "pause after the image field" (48-88px
+   on top of .about-content--redesign's own header clearance); with
+   nothing above it any more, that stacked total read as too much dead
+   air above "Practice." .about-content--redesign's own padding-top
+   (clamp(92px, calc(7vw + 12px), 114px), the same shared header-
+   clearance formula .project-content already uses) is left completely
+   untouched -- still the base offset every child page shares -- and
+   this box's own margin-top is now a small additional page-specific
+   gap, measured directly against a real rendered screenshot of the
+   supplied mockup at the 1920x1080 reference desktop viewport (mockup's
+   own content started 49px lower than this page's own first render at
+   that same viewport before this value was added).
+   Measure widened from the original 56ch to 67ch, likewise measured
+   directly against the mockup rather than guessed: with only one column
+   on the page now (no image competing for width), the mockup's own line
+   lengths read wider than 56ch -- confirmed by comparing rendered
+   column edges pixel-for-pixel against the mockup at the same viewport
+   (679px in the mockup vs. 629px at 62ch, a first attempt already
+   corrected once here) before landing on this figure. */
 .about-layout__copy {
   display: flex;
   flex-direction: column;
   gap: 0.9em;
-  margin: clamp(48px, 6vw, 88px) auto 0;
-  max-width: 56ch;
+  margin: clamp(32px, 2.6vw, 50px) auto 0;
+  max-width: 67ch;
   text-align: left;
 }
 
@@ -2946,6 +2987,29 @@ html.is-browsing .zoom-controls {
    invented. */
 .about-layout__intro {
   margin-bottom: 0.4rem;
+}
+
+/* Practice mockup pass (Josh review): styles the rich-text renderer's
+   "Section Heading" block (RichText.jsx's h2, e.g. a CMS-authored
+   "Philosophy") specifically for this page, via the headingClassName
+   prop AboutPage.jsx now passes -- .rich-text__heading (styles.css's
+   own shared default for every other page's rich text) is completely
+   untouched by this, so Contact and the Project Info panel keep their
+   existing in-body subheading treatment. Deliberately matches
+   .about-hero__title--small's own figures (font-weight 700, the same
+   clamp(1.3rem, 1.7vw, 1.6rem)) rather than inventing a new size, so a
+   CMS-authored Section Heading reads at the same weight as "Practice"
+   itself, per the mockup -- Bold/Medium/Italic/Link/Section Heading
+   remain the only formatting controls; nothing new was added. The
+   larger margin-top (vs. .about-layout__copy's own 0.9em flex gap) is
+   the deliberate pause the mockup shows above "Philosophy" -- reads as
+   a new section starting, not just the next paragraph in the list. */
+.about-layout__heading {
+  margin: 0.9em 0 0;
+  font-size: clamp(1.3rem, 1.7vw, 1.6rem);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #111;
 }
 
 /* Same typography the previous intro column already used
@@ -3004,18 +3068,203 @@ html.is-browsing .zoom-controls {
    typographically-driven text, so it gets its own small, plain vertical
    stack instead. No cards, borders, animation, or decorative treatment
    anywhere in this section -- the content is the whole page. */
+/* Image-integration pass (Josh review, desktop): the new outer row
+   wrapping .contact-layout (text, completely unchanged below -- see
+   ContactPage.jsx's own comment) and a new right-hand image column,
+   per the supplied Contact mockup. Deliberately a separate wrapper
+   rather than a change to .contact-layout itself, so the text column's
+   own max-width/text-align/paragraph rules stay exactly as they always
+   were, regardless of whether an image is ever present beside them.
+
+   Geometry calibrated directly against the mockup at the 1920x1080
+   reference desktop viewport, the same pixel-measurement workflow used
+   for the Practice pass: text column and image both begin at the same
+   vertical offset there (measured y=250 vs y=248 -- effectively level,
+   both simply the top of this row), and .about-content's own existing
+   side padding is left completely untouched and reused as-is -- this
+   row does not introduce a second, competing max-width/container.
+   justify-content: space-between plus the image column's own 50% width
+   below reproduces the mockup's measured proportions (image ~905px,
+   text's own intrinsic 46ch ~424px, ~473px gutter between them, all
+   within ~1800px of usable content width at that viewport) without
+   hardcoding any of those three figures as a fixed pixel value --
+   .contact-layout keeps determining its own width exactly as before,
+   and the image column simply takes half of whatever content width
+   remains, so the composition still scales sensibly at viewports other
+   than the exact reference size.
+
+   Stacks to a single column below the same 900px breakpoint
+   .about-layout already uses above, for the same reason: a two-up row
+   would otherwise be squeezed uncomfortably tight well before any
+   actual mobile layout work is in scope. This pass is desktop-only --
+   the stacking rule below exists solely to keep a narrower viewport
+   from breaking, not as a designed mobile composition. */
+.contact-page-layout {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: clamp(28px, 3vw, 56px);
+}
+
+.contact-page-layout__image {
+  width: 50%;
+  flex-shrink: 0;
+}
+
+.contact-page-layout__image img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+@media (max-width: 900px) {
+  .contact-page-layout {
+    flex-direction: column;
+    gap: clamp(28px, 6vw, 44px);
+  }
+
+  .contact-page-layout__image {
+    width: 100%;
+  }
+}
+
+/* Visual-fidelity pass: 46ch -> 43ch. Measured indirectly against the
+   mockup rather than by eye: .contact-layout__paragraph is
+   text-align: justify, so a wrapped (non-last) line stretches its word
+   spacing to exactly fill this column's own width -- meaning a wrapped
+   line's own rendered pixel width in the mockup IS the mockup's real
+   column width. Measured that way (the "For employment inquiries..."
+   and "For inquiries related to owner respresentation..." lines, at the
+   1920px reference viewport) and compared against this column's own
+   previous rendered width (46ch measured via the same pipeline) gives
+   this new figure -- confirmed after the change by re-measuring and
+   checking the natural wrap points ("...and work / samples.",
+   "...services, / please send a request.") land in the same place the
+   mockup shows, with no manual line breaks introduced anywhere. */
 .contact-layout {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  max-width: 46ch;
+  max-width: 43ch;
 }
 
 .contact-layout__copy {
   display: flex;
   flex-direction: column;
-  gap: 1.1em;
+  /* Visual-fidelity pass: 1.1em -> 1.6em, calibrated against the approved
+     Contact mockup at the 1920px reference desktop viewport (Playwright,
+     deviceScaleFactor 2, directly comparable pixel-for-pixel against the
+     mockup's own 3840x2052 canvas). Governs the space between the
+     heading block and the address block, and between each later
+     paragraph -- the mockup's own gaps vary a little pair to pair
+     (roughly 25-33px CSS depending on which two elements are adjacent);
+     this single value is the calibrated middle ground, not a
+     per-pair-tuned figure -- see the Contact visual-fidelity pass
+     report for the small remaining variance this leaves.
+
+     Contact-header + typography fidelity pass: 1.6em -> 1.2em. The first
+     pass set this gap equal to the mockup's own ink-to-ink visual
+     spacing, but that conflated two different things: this `gap` sets
+     the space between each paragraph's own box edges, and the visible
+     ink-to-ink gap also includes each paragraph's line-height leading on
+     top of that -- so at 1.6em the rendered gap overshot the mockup by
+     ~15-20px CSS once line-height was also corrected below. Re-measured
+     paragraph-to-paragraph (address block -> email -> "For employment" ->
+     "Submissions") against the mockup's own ink bands at the same
+     reference viewport: 1.2em now lands within 0-3px CSS of every
+     measured pair, versus the prior ~15-20px CSS overshoot. */
+  gap: 1.2em;
   margin-top: clamp(28px, 3.2vw, 44px);
+}
+
+/* Visual-fidelity pass: when bodyRichText is present, .contact-layout__copy
+   is the ONLY child of .contact-layout (Title/Subtitle are suppressed --
+   authoring-architecture pass), so the margin-top above pushed the whole
+   rich-text block down from the top of .contact-layout with nothing
+   above it to separate from -- and, since .contact-page-layout's two
+   columns share align-items: flex-start, that same margin pushed
+   "Urbānum" noticeably below the image's own top edge (measured ~88px
+   CSS apart before this rule), where the mockup shows them essentially
+   level (image top and "Urbānum" top measured 2px apart). Zeroed only
+   when .contact-layout__copy is the first child -- i.e. only in
+   rich-text mode -- so the legacy fallback path (Title/Subtitle
+   rendering above .contact-layout__copy) keeps this same margin
+   separating that title block from the copy below it, exactly as
+   before. */
+.contact-layout__copy:first-child {
+  margin-top: 0;
+}
+
+/* Visual-fidelity pass: styles the rich-text renderer's "Section
+   Heading" block (RichText.jsx's h2 -- "Urbānum" and "Office For
+   Architecture" both) for this page, via the headingClassName prop
+   ContactPage.jsx passes -- .rich-text__heading (styles.css's own shared
+   default for every other page's rich text, still used by the Project
+   Info panel) is completely untouched by this.
+
+   Superseded from the authoring-architecture pass: that pass matched
+   .about-hero__title's old large figures (clamp(1.8rem, 2.6vw, 2.4rem))
+   since it wasn't yet doing visual-fidelity work. Measured directly
+   against the approved mockup (Playwright screenshot at the 1920px
+   reference viewport, deviceScaleFactor 2, same pixel-measurement
+   workflow as .contact-page-layout's own comment above): "Urbānum" and
+   "Office For Architecture" render at the SAME size in the mockup --
+   confirmed by measuring each line's own glyph-height band (32px at 2x,
+   i.e. 16px CSS, for both) -- so both share this one clamp rather than
+   About's own, unrelated `.about-layout__heading` figures. Working
+   backward from that measured glyph height to a font-size (assuming a
+   ~0.75 ascender-height/font-size ratio, confirmed against this same
+   render pipeline) lands on clamp(1.15rem, 1.3vw, 1.35rem).
+
+   letter-spacing is `normal` here (not the previous -0.01em) because
+   "Office For Architecture" reads with ordinary, untracked spacing in
+   the mockup -- the visible letter-spacing belongs to "Urbānum" alone
+   (see .rich-text__heading--first below), not to Section Heading as a
+   whole. margin is 0: .contact-layout__copy's own margin-top already
+   supplies the space above this block now that Title/Subtitle no longer
+   render above it (authoring-architecture pass), so a second margin
+   here would double up; spacing after a heading comes from the flex
+   `gap` above (paragraph-to-paragraph) or the adjacent-heading rule
+   below (heading-to-heading). */
+.contact-layout__heading {
+  margin: 0;
+  font-size: clamp(1.15rem, 1.3vw, 1.35rem);
+  font-weight: 700;
+  letter-spacing: normal;
+  color: #111;
+}
+
+/* "Urbānum" specifically (the first Section Heading -- see RichText.jsx's
+   own comment on how firstHeadingKey/rich-text__heading--first is
+   computed). The mockup's "Urbānum" carries visible letter-spacing
+   echoing the site's own wordmark (the header's [ u r b ā n u m ] logo)
+   -- but that wordmark is a fixed SVG asset, not live text with a
+   reusable letter-spacing token (checked: no CSS rule spaces it,
+   Logo.jsx renders the artwork directly), so this value is calibrated by
+   eye/measurement against the mockup specifically, not copied from an
+   existing token. Scoped to its own modifier class, not a bare
+   descendant selector, so "Office For Architecture" (and any later
+   heading) is never affected. */
+.contact-layout__heading.rich-text__heading--first {
+  letter-spacing: 0.22em;
+}
+
+/* Two Section Headings back to back -- "Urbānum" immediately followed by
+   "Office For Architecture" -- read as one tight title/subtitle pairing
+   in the mockup, closer together than this block is to the address text
+   that follows it. .contact-layout__copy's own flex `gap` (1.6em) applies
+   between EVERY pair of children uniformly, including this one, and a
+   plain margin-top: 0 on the second heading (tried first) still left the
+   full flex-gap distance between them -- flex `gap` isn't something a
+   child's own margin can opt out of, only counteract. This adjacent-
+   sibling rule (purely structural -- two consecutive
+   .contact-layout__heading paragraphs in the DOM, not a content match)
+   pulls the second heading up by roughly the flex gap's own contribution,
+   calibrated against the mockup's own measured title-to-subtitle
+   line-start distance (~27px CSS) at the 1920px reference viewport. */
+.contact-layout__heading + .contact-layout__heading {
+  margin-top: -1.05em;
 }
 
 /* Same restrained editorial type scale .about-layout__paragraph already
@@ -3044,10 +3293,105 @@ html.is-browsing .zoom-controls {
 .contact-layout__paragraph {
   margin: 0;
   font-size: clamp(0.9rem, 1.05vw, 1rem);
-  line-height: 1.6;
+  /* Visual-fidelity pass: 1.6 -> 1.35, calibrated against the mockup's
+     own address-block line spacing (measured line-start-to-line-start
+     delta at the 1920px reference viewport came out tighter than 1.6
+     produced). Applies uniformly to every Normal paragraph on this page
+     (address block, emails, employment/owner-representation copy) since
+     they all share this one class -- the mockup's own line-height reads
+     consistent across those too within measurement tolerance.
+
+     Contact-header + typography fidelity pass: 1.35 -> 1.2. Re-measured
+     directly against the mockup's own three-line address block (25 SE
+     2nd Avenue / Miami, Florida / T 305.209.1587 -- one paragraph, real
+     line breaks via white-space: pre-line, not three separate
+     paragraphs): the mockup's own line-start-to-line-start spacing within
+     that block reads as ~1.2x the 16px body font-size, not 1.35x. 1.35
+     was reachable-but-loose -- it read as "more air between lines than
+     the mockup" per this pass's own texture note, not as a wrong font or
+     opacity issue. Re-measured at 1.2, this line-height now matches the
+     mockup's within-paragraph line gaps pixel-for-pixel at the reference
+     viewport (both come out to 12px CSS at 2x device-pixel measurement).
+     Still shared by every Normal paragraph on this page, per the
+     reasoning above -- the mockup's rhythm reads consistently tighter
+     across all of them, not just the address block. */
+  line-height: 1.2;
   color: #333;
   white-space: pre-line;
   text-align: justify;
+}
+
+/* --- CMS typography foundation pass: rich-text elements -------------------
+   The three genuinely NEW elements src/RichText.jsx's shared renderer can
+   produce, styled here once and shared across every page that uses it
+   (About/Contact/Project description) -- the smallest sensible shared,
+   reusable set. The "Normal" style needs no rule at all: RichText.jsx
+   emits the calling page's own existing paragraph className for it
+   (.about-layout__paragraph/.contact-layout__paragraph/
+   .project-info-panel__description, all unchanged above), so plain
+   rich-text content inherits each page's current type scale
+   automatically, with zero new CSS.
+
+   Bold (<strong>) and Italic (<em>) also get no rule here -- browser
+   default styling plus the already-loaded GT America weight files
+   already do the right thing for Bold (font-weight: bolder resolves to
+   the real 700 file); Italic has no true italic GT America face to
+   resolve to and renders as a browser-synthesized slant, which is a
+   disclosed limitation (see RichText.jsx's own comment), not something
+   a CSS rule could fix. */
+
+/* Section Heading (an in-body heading like "Philosophy" sitting inline
+   within otherwise-flowing body copy). Sized as a small step up from
+   body copy, medium-weight rather than the page's own bold H1 weight --
+   reads as "a heading within this copy," not a second page title.
+   Inherits the surrounding paragraph color/measure from whichever
+   page-level class wraps it. */
+.rich-text__heading {
+  margin: 0.6em 0 0;
+  font-size: 1.05em;
+  font-weight: 500;
+  color: #111;
+}
+
+/* The Medium decorator -- GT America 500, the same weight
+   .index-drawer__label-text already uses for Tier 2 header typography
+   (see that class's own header-typography-pass comment), reused here for
+   consistency rather than picking a new numeric weight. */
+.rich-text__medium {
+  font-weight: 500;
+}
+
+/* The Muted decorator (Contact visual-fidelity pass) -- see
+   richTextType.js's own comment on exactly what it represents and why it
+   was added. One fixed color, #9d9d9d, reused verbatim from
+   .about-hero__location (the same muted gray this site already uses
+   everywhere else for a de-emphasized secondary line -- not a new value),
+   plus font-weight: 400 so it reads lighter than the bold Section
+   Heading it's typically nested inside (e.g. "Office For Architecture"
+   inside a Section Heading block sized to match "Urbānum"). Inherits
+   font-size from whatever block/paragraph class wraps it, same as every
+   other decorator here. */
+.rich-text__muted {
+  color: #9d9d9d;
+  font-weight: 400;
+}
+
+/* Links -- inherits the surrounding paragraph's own color/size rather
+   than introducing a separate link color, with an underline as the one
+   visual cue that this text is interactive (the site has no other
+   inline-link precedent to match, so this is the smallest legible
+   treatment). Hover reuses the exact opacity/transition language
+   .text-control:hover already establishes elsewhere in this file, rather
+   than inventing a second hover language just for rich-text links. */
+.rich-text__link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  transition: opacity 0.25s ease;
+}
+
+.rich-text__link:hover {
+  opacity: 0.55;
 }
 
 /* --- Journal page -------------------------------------------------------
@@ -3438,6 +3782,25 @@ html.is-browsing .zoom-controls {
    -- since the requirement is identical on both. */
 .project-breadcrumb {
   margin-bottom: clamp(14px, 1.8vw, 22px);
+}
+
+/* Desktop Project Page visual-matching pass (Josh review): "make it fully
+   left aligned with the filter in the header." Without this, the control
+   sits at .project-content's own left padding -- clamp(102px, 12vw,
+   180px), unchanged by this pass -- which is a real, visible ~50-120px
+   short of the header's OWN left padding, clamp(34px, 4vw, 60px) on
+   .site-header__row1, where "Filter" actually sits. calc() of the two
+   clamps' difference pulls this control back by exactly that gap at any
+   desktop viewport width, so its own left edge always lines up with
+   Filter's, without hardcoding either formula's value a second time or
+   touching .project-content itself. Scoped to the same ≥901px desktop
+   range .project-content's own tablet/mobile override (max-width: 900px)
+   already draws the line at, so mobile -- explicitly out of scope for
+   this pass -- keeps exactly the alignment it already had. */
+@media (min-width: 901px) {
+  .project-breadcrumb {
+    margin-left: calc(clamp(34px, 4vw, 60px) - clamp(102px, 12vw, 180px));
+  }
 }
 
 /* Same typography as the Archive Number (.project-archive-index__number
@@ -3978,7 +4341,28 @@ html.is-browsing .zoom-controls {
    language the rest of the site already uses, not a new one. Width
    capped (not full-bleed) so the metadata reads as a quiet column of
    text, matching the panel's own original reading width, not a
-   full-viewport wall of copy. */
+   full-viewport wall of copy.
+
+   Desktop Project Page visual-matching pass (Josh review): `margin: 0
+   auto` centers this block as a column on the page -- this block
+   previously had no horizontal margin at all, so as an ordinary block box
+   (this element has no flex/grid display of its own established by that
+   fact alone) it simply hugged the LEFT edge of .project-info-panel's
+   full-width box instead of sitting centered, which is what Josh
+   explicitly asked for.
+
+   `text-align: center` is a second, later addition: Josh confirmed the
+   Info overlay's own visible TEXT, not just this column, should read
+   center-justified -- this cascades to the identity block (title/
+   location/year) and Themes line below, none of which set their own
+   text-align. .project-info-panel__description has its own explicit
+   text-align override (see that rule's own comment) since an explicit
+   value there wins over this inherited one. This is scoped to the
+   Project Info overlay only (.project-info-panel__* classes) -- it does
+   not touch About/Contact's own left-flowing editorial paragraph classes
+   elsewhere on the site, which stay exactly as they were; Josh was
+   explicit that the Project Info overlay's centered text is distinct
+   from those longer editorial layouts. */
 .project-info-panel__inner {
   height: 100%;
   display: flex;
@@ -3987,6 +4371,8 @@ html.is-browsing .zoom-controls {
   gap: 0.5rem;
   max-width: min(420px, 60%);
   padding: clamp(24px, 3vw, 40px);
+  margin: 0 auto;
+  text-align: center;
 }
 
 .project-info-panel__title {
@@ -4055,32 +4441,40 @@ html.is-browsing .zoom-controls {
    its neighbors' shared 0.3rem gap gives it the "slightly more breathing
    room" its own paragraph-length text needs against the single-line
    Themes row above it.
-   Justified body copy (client-requested typography pass): text-align
-   only -- font size/weight/line-height/color and the panel's own
-   min(420px, 60%) measure (.project-info-panel__inner) are unchanged.
-   The identity block above (title/location/year) and the Themes line
-   right above this one keep their own untouched alignment -- each is
-   its own selector, none shared with this one. No text-align-last --
-   the description's last line still ends naturally.
-   MOBILE NOTE (flagged during verification, not silently designed
-   around per instruction): on narrow phone widths, .project-info-panel__
-   inner's own min(420px, 60%) measure resolves to roughly 230-240px,
-   narrow enough that a short caption can land only one or two words per
-   line -- confirmed via a real rendered screenshot showing visibly
-   excessive word-spacing on those lines (e.g. one word stretched most of
-   the way across the line to reach the measure). This is the one
-   genuinely poor case found in this pass; left justified as requested
-   rather than redesigned, since fixing the word-spacing would mean
-   changing .project-info-panel__inner's own width constraint, which is
-   a layout change outside this task's scope -- see the typography
-   pass's own report for the full callout. */
+
+   Desktop Project Page visual-matching pass (Josh review): Josh has
+   explicitly confirmed the Project Info overlay's own text should read
+   center-justified, so this line's text-align is `center` -- an explicit
+   override of the `text-align: center` this now inherits from
+   .project-info-panel__inner anyway (kept explicit here since every
+   other property on this rule is also explicit, and so a future edit to
+   the parent's alignment can't silently change this line without an
+   explicit signal here too).
+
+   History (superseded by the above, kept for context -- "Justified body
+   copy" pass): text-align only -- font size/weight/line-height/color and
+   the panel's own min(420px, 60%) measure (.project-info-panel__inner)
+   were unchanged. The identity block above (title/location/year) and the
+   Themes line right above this one kept their own untouched alignment --
+   each is its own selector, none shared with this one.
+   MOBILE NOTE (flagged during that pass's verification, kept as historical
+   context): on narrow phone widths, .project-info-panel__inner's own
+   min(420px, 60%) measure resolves to roughly 230-240px, narrow enough
+   that a short caption can land only one or two words per line -- under
+   `text-align: justify` this produced visibly excessive word-spacing on
+   those lines (one word stretched most of the way across the line to
+   reach the measure). `text-align: center` doesn't share that specific
+   failure mode (centering a short, ragged line doesn't stretch
+   word-spacing the way justify does), so this note is retained as
+   history rather than as an open issue -- worth a fresh look only if a
+   future alignment change reintroduces justify on narrow widths. */
 .project-info-panel__description {
   margin: 0.35rem 0;
   font-size: 0.85rem;
   font-weight: 400;
   line-height: 1.55;
   color: #5a5a5a;
-  text-align: justify;
+  text-align: center;
 }
 
 /* Project Navigation (Previous/current/Next), the "bottom text

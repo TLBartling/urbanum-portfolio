@@ -214,6 +214,7 @@ export const PROJECTS_QUERY = `
     year,
     "type": projectType->title,
     description,
+    descriptionRichText,
     sortOrder
   }
 `;
@@ -256,11 +257,23 @@ export const PROJECTS_QUERY = `
 // so `raw.type` arrives here as the same plain string it always was --
 // this mapping itself needs no change, through the naming correction or
 // before it.
+// CMS typography foundation pass: `descriptionRichText` is projected
+// alongside the existing `description` (unchanged) -- see
+// cms/schemaTypes/projectType.js's own comment on that additive sibling
+// field. Portable Text blocks are returned as-is (not dereferenced or
+// flattened here) -- @portabletext/react (via src/RichText.jsx) consumes
+// that raw block-array shape directly, same as ABOUT_PAGE_QUERY/
+// CONTACT_PAGE_QUERY's own `bodyRichText` below.
 export function normalizeProject(raw) {
   return {
     title: raw.title,
     slug: raw.slug,
     description: raw.description,
+    // CMS typography foundation pass: passed through as-is (an array of
+    // Portable Text blocks, or undefined when the field has never been
+    // set) -- ProjectInfoPanel.jsx decides whether to use it or fall back
+    // to `description` above.
+    descriptionRichText: raw.descriptionRichText,
     location: raw.location,
     year: raw.year,
     type: raw.type,
@@ -411,11 +424,15 @@ export async function fetchJournalEntries() {
 // already fetched via ARCHIVE_ITEMS_QUERY/getArchiveItems() -- no second
 // image pipeline, no new query needed for it.
 // -----------------------------------------------------------------------
+// CMS typography foundation pass: `bodyRichText` is projected alongside
+// the existing `body` (unchanged) -- see cms/schemaTypes/aboutPageType.js's
+// own comment on that additive sibling field.
 export const ABOUT_PAGE_QUERY = `
   *[_type == "aboutPage" && !(_id in path("drafts.**"))][0] {
     title,
     subtitle,
-    body
+    body,
+    bodyRichText
   }
 `;
 
@@ -433,6 +450,7 @@ export function normalizeAboutPage(raw) {
     title: raw.title,
     subtitle: raw.subtitle,
     body: raw.body,
+    bodyRichText: raw.bodyRichText,
   };
 }
 
@@ -455,11 +473,15 @@ export async function fetchAboutPage() {
 // instead of `aboutPage`. See cms/schemaTypes/contactPageType.js for why
 // Contact reuses this exact field shape rather than a new one.
 // -----------------------------------------------------------------------
+// CMS typography foundation pass: `bodyRichText` projected alongside the
+// existing `body`, same as ABOUT_PAGE_QUERY above -- see
+// cms/schemaTypes/contactPageType.js's own comment.
 export const CONTACT_PAGE_QUERY = `
   *[_type == "contactPage" && !(_id in path("drafts.**"))][0] {
     title,
     subtitle,
-    body
+    body,
+    bodyRichText
   }
 `;
 
@@ -470,6 +492,7 @@ export function normalizeContactPage(raw) {
     title: raw.title,
     subtitle: raw.subtitle,
     body: raw.body,
+    bodyRichText: raw.bodyRichText,
   };
 }
 

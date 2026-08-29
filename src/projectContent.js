@@ -63,6 +63,15 @@ export function getProjectBySlug(slug) {
     title: project.title,
     slug: project.slug,
     description: project.description,
+    // CMS typography foundation pass: this was a genuine gap, not new
+    // scope -- cms/queries.js's normalizeProject now carries
+    // descriptionRichText (added alongside the Project schema's own new
+    // richText field, see projectType.js), but this function (the one
+    // seam ProjectTemplate/ProjectInfoPanel actually read through) was
+    // never forwarding it, so the rich field could never reach the page
+    // no matter what an editor put in Sanity. Same plain pass-through
+    // treatment as every other field here.
+    descriptionRichText: project.descriptionRichText,
     location: project.location,
     dates: project.dates,
     // Data-flow correction (Josh review, final polish pass): Project.year

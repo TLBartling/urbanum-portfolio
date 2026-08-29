@@ -208,5 +208,11 @@
     "width": 6000,
     "height": 4000,
     "aspectRatio": 1.5
+  },
+  "/img/urbanum-office-exterior.jpg": {
+    "src": "/img/urbanum-office-exterior.jpg",
+    "width": 2248,
+    "height": 1428,
+    "aspectRatio": 1.5742296918767507
   }
 }

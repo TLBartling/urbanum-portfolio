@@ -2,6 +2,7 @@ import { useState } from "react";
 import Header from "./Header";
 import { getAboutPage, getArchiveItems } from "./content";
 import { getOptimizedImageSrc, getOptimizedImageSrcSet } from "./imageOptimization.js";
+import RichText from "./RichText";
 
 // About Page redesign (About Page CMS milestone): replaces the previous
 // six-image collage + Philosophy/Practice/Process + Contact footer with
@@ -49,6 +50,28 @@ import { getOptimizedImageSrc, getOptimizedImageSrcSet } from "./imageOptimizati
 // (.about-layout__copy) below it, as that block's own opening -- see
 // styles.css's own comments on .about-layout__copy/.about-layout__intro
 // for the reasoning. The image is now the first child of .about-layout.
+//
+// Practice mockup pass (Josh review, desktop): per the supplied Practice
+// mockup, the image field above is retired from this page's visible
+// composition entirely -- the page is now a single centered editorial
+// text column, title/intro/Philosophy heading/body and nothing else.
+// This is a rendering-only change: selectFeaturedImage(), the
+// featuredImage state, and the getOptimizedImageSrc/getOptimizedImageSrcSet
+// imports are all left completely in place below, unused by the JSX --
+// no Archive Item data, no image asset, and no CMS field was touched or
+// deleted anywhere in this pass. The former <div className=
+// "about-layout__image"> block is commented out immediately below the
+// component, in place, specifically so restoring the image later (should
+// a future mockup want it back) is a one-line uncomment, not a rebuild
+// of markup nobody kept. .about-layout now renders exactly one child,
+// .about-layout__copy -- see that rule's own comment in styles.css for
+// how its centering/measure/top-offset were recalibrated now that
+// nothing sits above it. Philosophy is not a second hardcoded heading:
+// it is the CMS body's own "Section Heading" rich-text block (already
+// one of the constrained formatting controls RichText.jsx supports),
+// styled to match the Practice title via the new headingClassName prop
+// below -- see aboutPageType.js/RichText.jsx, nothing new was added to
+// the rich-text formatting system for this.
 
 // Featured-image selection (IMAGE REQUIREMENT): reuses the exact Archive
 // Item field Project Pages already use for their own opening image
@@ -100,15 +123,27 @@ export default function AboutPage() {
   // behavior documented above.
   const [featuredImage] = useState(selectFeaturedImage);
 
+  // CMS typography foundation pass: prefer the new `bodyRichText` field
+  // when Josh has actually put content in it; fall back to the legacy
+  // blank-line-per-paragraph plain-text split (unchanged from before this
+  // pass) when it's empty -- see aboutPageType.js's own comment on the
+  // additive, non-destructive field pair this reflects. An About Page
+  // document that predates this pass, or one nobody has re-edited since,
+  // has no `bodyRichText` value at all and renders exactly as it always
+  // has.
+  const hasRichBody =
+    Array.isArray(aboutPage?.bodyRichText) && aboutPage.bodyRichText.length > 0;
+
   // One blank line between paragraphs in Sanity's plain-text field becomes
   // one <p> here -- the same lightweight convention the schema's own
   // field description asks the editor to follow (see aboutPageType.js).
-  const paragraphs = aboutPage?.body
-    ? aboutPage.body
-        .split(/\n\s*\n/)
-        .map((paragraph) => paragraph.trim())
-        .filter(Boolean)
-    : [];
+  const paragraphs =
+    !hasRichBody && aboutPage?.body
+      ? aboutPage.body
+          .split(/\n\s*\n/)
+          .map((paragraph) => paragraph.trim())
+          .filter(Boolean)
+      : [];
 
   return (
     <div className="about-page">
@@ -132,6 +167,12 @@ export default function AboutPage() {
         }}
       >
         <div className="about-layout">
+          {/* Practice mockup pass (Josh review): the large Featured image
+              is intentionally not rendered in this composition any more --
+              see the file-header comment above for the full reasoning.
+              Left in place, commented out rather than deleted, so a future
+              pass can restore it verbatim:
+
           {featuredImage && (
             <div className="about-layout__image">
               <picture>
@@ -159,12 +200,25 @@ export default function AboutPage() {
               </picture>
             </div>
           )}
+          */}
 
-          {(aboutPage?.title ||
+          {(hasRichBody ||
+            aboutPage?.title ||
             aboutPage?.subtitle ||
             paragraphs.length > 0) && (
             <div className="about-layout__copy">
-              {(aboutPage?.title || aboutPage?.subtitle) && (
+              {/* Authoring-architecture pass: when bodyRichText has
+                  content, it owns the ENTIRE visible text composition --
+                  including whatever stands in for "Practice" itself -- so
+                  the legacy Title/Subtitle intro block below is gated
+                  behind `!hasRichBody` and never renders alongside it.
+                  Without this gate, a document authored with the new rich
+                  field would show "Practice" twice: once here as the
+                  plain title, once again as the rich text's own opening
+                  Section Heading. See aboutPageType.js's own comment on
+                  why Title/Subtitle are no longer required now that this
+                  is possible. */}
+              {!hasRichBody && (aboutPage?.title || aboutPage?.subtitle) && (
                 <div className="about-layout__intro">
                   {aboutPage?.title && (
                     <h1 className="about-hero__title about-hero__title--small">
@@ -180,11 +234,19 @@ export default function AboutPage() {
                 </div>
               )}
 
-              {paragraphs.map((paragraph, index) => (
-                <p className="about-layout__paragraph" key={index}>
-                  {paragraph}
-                </p>
-              ))}
+              {hasRichBody ? (
+                <RichText
+                  value={aboutPage.bodyRichText}
+                  paragraphClassName="about-layout__paragraph"
+                  headingClassName="about-layout__heading"
+                />
+              ) : (
+                paragraphs.map((paragraph, index) => (
+                  <p className="about-layout__paragraph" key={index}>
+                    {paragraph}
+                  </p>
+                ))
+              )}
             </div>
           )}
         </div>

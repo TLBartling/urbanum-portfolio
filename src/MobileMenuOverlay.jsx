@@ -23,6 +23,7 @@ export default function MobileMenuOverlay({
   linkPaths,
   activePath,
   onSelect,
+  onSearchOpen,
 }) {
   // Same Escape-to-close convention MobileSearchOverlay already uses.
   useEffect(() => {
@@ -55,6 +56,27 @@ export default function MobileMenuOverlay({
       </div>
 
       <nav className="mobile-menu-overlay__links" aria-label="Site navigation">
+        {/* Mobile Header/Search/Menu Refinement Pass -- Section 8 (Mobile
+            Search Relocation): Search moved here from the mobile top
+            header (see Header.jsx's own Section 8 comment). Deliberately
+            NOT added to MENU_LINKS/linkPaths/onSelect above -- those are a
+            real page-navigation table (active-state highlighting, actual
+            routes) and Search isn't a page, it opens the existing mobile
+            Search/discovery overlay instead. onSearchOpen is the same
+            handleMobileSearchOpen the header's old visible Search button
+            used to call -- no new search logic, just a different trigger
+            surface. Reuses the exact .mobile-menu-overlay__link class the
+            page links below use (same type family/size/weight/spacing,
+            same generous touch target) so it reads as one consistent list,
+            not a bolted-on extra control -- just never gets
+            aria-current/--active since it isn't a "current page." */}
+        <button
+          type="button"
+          className="mobile-menu-overlay__link"
+          onClick={onSearchOpen}
+        >
+          Search
+        </button>
         {links.map((label) => {
           const isActive = activePath === linkPaths[label];
           return (

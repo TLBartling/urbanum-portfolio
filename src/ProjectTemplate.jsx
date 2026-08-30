@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Header from "./Header";
 import ProjectBreadcrumb from "./ProjectBreadcrumb";
 import ImageViewer from "./ImageViewer";
@@ -123,6 +123,41 @@ import { getOptimizedImageSrc } from "./imageOptimization.js";
 // themes, date, caption). See ProjectInfoPanel.jsx's own comment
 // for the full data-flow trace and the one field (the image's own
 // `location`) deliberately still excluded, and why.
+// Image swipe/trackpad navigation (surgical project-page interaction
+// pass): reuses the exact same handleSelectImage/currentImage/
+// project.images state Image Navigation's own Previous/Next buttons
+// already drive (see navigateByGestureRef below) -- this is not a second
+// navigation system, just two more ways to trigger the one that already
+// exists. Thresholds are deliberate, not defaults, so a gesture reads as
+// a real, purposeful swipe, never a hair-trigger on a small vertical
+// scroll or an incidental diagonal wheel delta.
+//
+// TOUCH_SWIPE_MIN_DISTANCE_PX: how far a touch must travel horizontally,
+// start to end, before it counts as a swipe at all -- filters out taps
+// and short accidental drags/thumb repositioning.
+// TOUCH_HORIZONTAL_DOMINANCE_RATIO: horizontal travel must exceed
+// vertical travel by this factor for the whole gesture to count as a
+// swipe rather than a vertical scroll or diagonal drag -- permissive
+// enough for a natural, not-perfectly-straight swipe, strict enough to
+// firmly reject anything closer to vertical.
+const TOUCH_SWIPE_MIN_DISTANCE_PX = 48;
+const TOUCH_HORIZONTAL_DOMINANCE_RATIO = 1.5;
+
+// WHEEL_HORIZONTAL_TRIGGER_PX: how large a single wheel event's own
+// deltaX must be, once it already dominates deltaY, before it counts as
+// the start of a deliberate trackpad swipe -- filters out the small
+// incidental deltaX noise an otherwise-vertical scroll can carry.
+// WHEEL_LOCKOUT_MS: once a swipe has navigated, further qualifying wheel
+// events are ignored for this long -- long enough to span the rest of
+// one continuous two-finger trackpad gesture's own rapid burst of wheel
+// events (a single physical swipe fires many in quick succession), short
+// enough that a genuinely new, separate swipe a moment later isn't
+// blocked. This is what turns "one physical swipe" into "one image
+// change" for trackpad input, the same guarantee touchend's own
+// once-per-lift firing already gives touch input for free.
+const WHEEL_HORIZONTAL_TRIGGER_PX = 24;
+const WHEEL_LOCKOUT_MS = 500;
+
 export default function ProjectTemplate({ slug, imageId }) {
   const [isIndexDrawerOpen, setIsIndexDrawerOpen] = useState(false);
   const [indexDrawerHeight, setIndexDrawerHeight] = useState(0);
@@ -212,6 +247,142 @@ export default function ProjectTemplate({ slug, imageId }) {
     });
   }, [project, currentImageId]);
 
+  // The image column's own DOM node, for the native touch/wheel
+  // listeners below -- attached via a real addEventListener (not React's
+  // onTouchMove/onWheel props, which React registers as passive by
+  // default) specifically so preventDefault actually works on the one
+  // qualifying event per gesture that needs it (see the effect below).
+  const imageColumnRef = useRef(null);
+
+  // Always the latest "advance by one image in this direction" callback,
+  // read fresh by the gesture listeners below (attached once, on mount)
+  // -- the same "read the ref, never a stale closure" shape
+  // ImageViewer.jsx's own imageRef already uses, so the listeners never
+  // need to be torn down and re-attached as currentImageId/project
+  // change. Reassigned on every render, just below, once currentImage/
+  // handleSelectImage exist.
+  const navigateByGestureRef = useRef(() => {});
+
+  useEffect(() => {
+    const node = imageColumnRef.current;
+    if (!node) return undefined;
+
+    // --- Touch: evaluated once, at touchend -- exactly like a single
+    // deliberate press of the existing Previous/Next controls -- never a
+    // running per-frame decision, so a slow or wandering drag still only
+    // ever fires (at most) once per finger contact ("one gesture = one
+    // image change"). Pinch/multi-touch is ignored outright (not a
+    // navigation gesture). ---
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchActive = false;
+    let touchLockedHorizontal = false;
+
+    const onTouchStart = (event) => {
+      if (event.touches.length !== 1) {
+        touchActive = false;
+        return;
+      }
+      touchActive = true;
+      touchLockedHorizontal = false;
+      touchStartX = event.touches[0].clientX;
+      touchStartY = event.touches[0].clientY;
+    };
+
+    const onTouchMove = (event) => {
+      if (!touchActive || event.touches.length !== 1) return;
+      const dx = event.touches[0].clientX - touchStartX;
+      const dy = event.touches[0].clientY - touchStartY;
+      // Swipe-lock: only claim the gesture as horizontal -- and only
+      // then suppress the page's own vertical scroll -- once it has
+      // ALREADY moved enough, and already clearly enough sideways, to
+      // be confident. Never on the first few pixels of any touch, which
+      // is what keeps ordinary vertical scrolling working normally for
+      // every touch that isn't a real horizontal swipe.
+      if (
+        !touchLockedHorizontal &&
+        Math.abs(dx) > 10 &&
+        Math.abs(dx) > Math.abs(dy) * TOUCH_HORIZONTAL_DOMINANCE_RATIO
+      ) {
+        touchLockedHorizontal = true;
+      }
+      if (touchLockedHorizontal) {
+        event.preventDefault();
+      }
+    };
+
+    const onTouchEnd = (event) => {
+      if (!touchActive) return;
+      touchActive = false;
+      const touch = event.changedTouches[0];
+      if (!touch) return;
+      const dx = touch.clientX - touchStartX;
+      const dy = touch.clientY - touchStartY;
+      if (
+        Math.abs(dx) >= TOUCH_SWIPE_MIN_DISTANCE_PX &&
+        Math.abs(dx) > Math.abs(dy) * TOUCH_HORIZONTAL_DOMINANCE_RATIO
+      ) {
+        // Swipe left (finger travels right-to-left, dx negative) reveals
+        // the next photo -- the same left=forward convention every
+        // mobile photo gallery already uses.
+        navigateByGestureRef.current(dx < 0 ? "next" : "prev");
+      }
+    };
+
+    const onTouchCancel = () => {
+      touchActive = false;
+      touchLockedHorizontal = false;
+    };
+
+    // --- Trackpad: a real two-finger horizontal swipe fires a rapid
+    // burst of wheel events, all carrying deltaX -- only the first
+    // qualifying tick in that burst navigates; WHEEL_LOCKOUT_MS ignores
+    // the rest, which is what keeps one physical swipe from racing
+    // through several images. A plain vertical mouse wheel never
+    // populates deltaX, so it can never reach the preventDefault/
+    // navigate branch below -- ordinary vertical scrolling is
+    // unaffected by construction, not by a special case for it. ---
+    let wheelLockedUntil = 0;
+
+    const onWheel = (event) => {
+      const absX = Math.abs(event.deltaX);
+      const absY = Math.abs(event.deltaY);
+      if (absX <= absY || absX < WHEEL_HORIZONTAL_TRIGGER_PX) {
+        // Not predominantly horizontal, or too small to be a deliberate
+        // swipe tick -- an ordinary vertical/diagonal scroll, left
+        // completely untouched (no preventDefault, no navigation).
+        return;
+      }
+      // From here this event IS a qualifying horizontal swipe tick --
+      // always prevent its default (stops some browsers' own
+      // horizontal-swipe-as-back/forward-navigation gesture from firing
+      // underneath this), but only actually change the image if not
+      // still inside a previous swipe's own lockout window.
+      event.preventDefault();
+      const now = Date.now();
+      if (now < wheelLockedUntil) return;
+      wheelLockedUntil = now + WHEEL_LOCKOUT_MS;
+      // Same forward-direction convention as deltaY's own down-equals-
+      // forward scroll semantics: deltaX > 0 (content pulled leftward,
+      // revealing what's to the right) advances to the next photo.
+      navigateByGestureRef.current(event.deltaX > 0 ? "next" : "prev");
+    };
+
+    node.addEventListener("touchstart", onTouchStart, { passive: true });
+    node.addEventListener("touchmove", onTouchMove, { passive: false });
+    node.addEventListener("touchend", onTouchEnd, { passive: true });
+    node.addEventListener("touchcancel", onTouchCancel, { passive: true });
+    node.addEventListener("wheel", onWheel, { passive: false });
+
+    return () => {
+      node.removeEventListener("touchstart", onTouchStart);
+      node.removeEventListener("touchmove", onTouchMove);
+      node.removeEventListener("touchend", onTouchEnd);
+      node.removeEventListener("touchcancel", onTouchCancel);
+      node.removeEventListener("wheel", onWheel);
+    };
+  }, []);
+
   if (!project) {
     return (
       <div className="about-page">
@@ -258,6 +429,17 @@ export default function ProjectTemplate({ slug, imageId }) {
   const handleSelectImage = (archiveNumber) => {
     setCurrentImageId(archiveNumber);
     navigate(`/projects/${project.slug}?image=${archiveNumber}`);
+  };
+
+  navigateByGestureRef.current = (direction) => {
+    const index = project.images.findIndex(
+      (item) => item.archiveNumber === currentImage.archiveNumber,
+    );
+    if (index === -1) return;
+    const target =
+      direction === "next" ? project.images[index + 1] : project.images[index - 1];
+    if (!target) return;
+    handleSelectImage(target.archiveNumber);
   };
 
   // Wired to ImageViewer's onImageLoaded -- fires once the currently
@@ -326,7 +508,7 @@ export default function ProjectTemplate({ slug, imageId }) {
                 `isInfoOpen` state), so .project-viewer only ever needs
                 its one, constant flex-row rule (see styles.css). */}
             <div className="project-viewer">
-              <div className="project-image-column">
+              <div className="project-image-column" ref={imageColumnRef}>
                 <ImageViewer
                   image={currentImage}
                   displayedImage={displayedImage}

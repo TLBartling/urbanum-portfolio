@@ -34,6 +34,19 @@ import { navigate } from "./navigation";
 // interactive, the same restraint ProjectArchiveIndex's own button already
 // established for this exact page.
 //
+// Typography refinement pass (surgical project-page interaction pass):
+// the shared Archive Number treatment above included uppercase, which
+// this control inherited too -- fine for the actual Archive Number (a
+// short numeric label), but visibly ALL-CAPS "ARCHIVE" here, which is
+// explicitly the conventional/generic look this pass moves away from.
+// text-transform is now `none` for this control specifically (see
+// styles.css), so "Archive" renders with its own natural JSX casing
+// (capital A, lowercase remainder) instead. letter-spacing also moves
+// off the shared 0.1em (calibrated for uppercase glyphs, where it reads
+// as normal tracking) onto a lighter, restrained value scoped to
+// .project-breadcrumb__label alone -- 0.1em on mixed-case text reads as
+// noticeably loose, not the "subtle... editorial" spacing asked for.
+//
 // Desktop Project Page visual-matching pass (Josh review): two changes,
 // both purely presentational -- the navigate("/") mechanism above, and
 // everything about WHEN this renders, are completely untouched.
@@ -56,8 +69,21 @@ export default function ProjectBreadcrumb() {
         className="project-breadcrumb__control"
         onClick={() => navigate("/")}
       >
-        <span aria-hidden="true">{"‹ "}</span>
-        Archive
+        {/* Chevron + label typography pass: split into two spans so the
+            gap between them is a real, tunable CSS gap (see
+            .project-breadcrumb__control's own flex `gap` in styles.css)
+            rather than a literal space character baked into the
+            chevron's own text -- and so ARCHIVE's own uppercase (from
+            the shared Archive Number treatment this control's typography
+            otherwise still reuses) can be turned off for this label
+            alone without touching that shared rule or the chevron glyph
+            it doesn't apply to anyway. "Archive" keeps its own natural
+            capital-A/lowercase casing here in the JSX -- previously
+            invisible either way while the CSS forced it fully uppercase. */}
+        <span aria-hidden="true" className="project-breadcrumb__chevron">
+          ‹
+        </span>
+        <span className="project-breadcrumb__label">Archive</span>
       </button>
     </div>
   );

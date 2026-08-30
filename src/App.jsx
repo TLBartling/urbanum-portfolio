@@ -672,13 +672,32 @@ const FILTER_DRAWER_ZOOM_FLOOR = 0.7;
 // Archive previously opened/reset at CAMERA_ZOOM_MIN (0.8x, the zoom-out
 // floor) on every device -- on mobile this is what the investigation found
 // contributing to "images too small," independent of the header/footer
-// clearance fix below. A conservative value just above CAMERA_NEUTRAL_SCALE
-// (1x): immersed enough to read as a deliberate mobile-native starting
-// point, not so far in that it reads as an arbitrary jump. CAMERA_ZOOM_MIN/
-// MAX are untouched -- a mobile visitor can still pinch/zoom-button all the
-// way out to the same 0.8x floor as desktop if they choose; only where the
-// Archive STARTS (and what a regeneration resets to) changes on mobile.
-const MOBILE_DEFAULT_CAMERA_SCALE = 1.15;
+// clearance fix below.
+//
+// Mobile Archive Zoom Correction: re-audited against a supplied visual
+// target ("still see a substantial portion of the field, many images at
+// once, NOT an overly close/cropped view") after 1.4 (a prior pass's
+// 1.15 -> 1.4, +CAMERA_ZOOM_STEP) read as too far in. The math that pass
+// used compounded an already mobile-specific starting point (1.15, itself
+// already a deliberate bump above neutral) instead of the real canonical
+// base -- resetCameraToNeutral's own comment below is explicit that
+// CAMERA_ZOOM_MIN (0.8), not CAMERA_NEUTRAL_SCALE (1x), is the actual
+// "normal/default Archive overview" every visitor (desktop and, before
+// any mobile override existed, mobile too) starts at and returns to on
+// reset. "One press of the existing + control from the normal/default
+// overview" is therefore CAMERA_ZOOM_MIN + CAMERA_ZOOM_STEP = 0.8 + 0.25
+// = 1.05 (handleZoomStep below applies CAMERA_ZOOM_STEP as a plain
+// additive delta to the current scale, clamped to CAMERA_ZOOM_MIN/MAX --
+// no other transformation), not 1.4. 1.05 is only barely above
+// CAMERA_NEUTRAL_SCALE (1x) -- a small, deliberate nudge in from the
+// zoomed-OUT floor, not a jump toward a closer/cropped view, which
+// matches the supplied target's own "substantial portion of the field,
+// many images visible" description far better than 1.4 did.
+// CAMERA_ZOOM_MIN/MAX/CAMERA_ZOOM_STEP are untouched -- a mobile visitor
+// can still pinch/zoom-button all the way out to the same 0.8x floor as
+// desktop if they choose; only where the Archive STARTS (and what a
+// regeneration resets to) changes on mobile.
+const MOBILE_DEFAULT_CAMERA_SCALE = 1.05;
 
 // Mobile Archive Interaction Pass -- Stage 1 (Header/Footer Clearance):
 // the investigation found the Archive's top/bottom clearance on mobile
@@ -702,7 +721,18 @@ const MOBILE_DEFAULT_CAMERA_SCALE = 1.15;
 // paint already reserves the correct clearance instead of a brief
 // undershoot before the real ResizeObserver measurement lands a moment
 // later.
-const MOBILE_HEADER_HEIGHT_FALLBACK_PX = 132;
+//
+// Mobile Header Compaction Pass: row1 itself dropped again, from 120px to
+// 64px (see .site-header__row1's own comment in styles.css -- .top-menu no
+// longer needs a taller box to contain a second, lower offset row now
+// that it shares the logo's own row instead), so this fallback is updated
+// to match the header's new real height one more time: 12px top padding +
+// row1's own new 64px = 76px. Same purpose as before -- only the number
+// changes, so the very first paint (before headerRef's ResizeObserver has
+// measured anything real) already reserves the correct, now much smaller,
+// clearance instead of briefly over-reserving space for the old, taller
+// header.
+const MOBILE_HEADER_HEIGHT_FALLBACK_PX = 76;
 const MOBILE_ZOOM_CONTROLS_HEIGHT_FALLBACK_PX = 44;
 
 // Small, deliberate breathing margin added on top of each real measurement

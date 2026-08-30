@@ -145,6 +145,86 @@ export default function AboutPage() {
           .filter(Boolean)
       : [];
 
+  // Launch fidelity pass: renders CMS `title` as the text block's own
+  // first heading (Josh's mockup shows "Practice" this way, not the old
+  // title/subtitle hero) -- guarded against duplicating a future
+  // rich-text "Practice" Section Heading. `subtitle` ("Miami, FL") is
+  // intentionally never read; the Sanity fields stay untouched.
+  const firstRichHeadingText = hasRichBody
+    ? (aboutPage.bodyRichText.find((b) => b?.style === "h2")?.children ?? [])
+        .map((s) => s?.text ?? "")
+        .join("")
+        .trim()
+    : "";
+  const showPracticeTitle =
+    Boolean(aboutPage?.title) &&
+    firstRichHeadingText.toLowerCase() !== aboutPage.title.trim().toLowerCase();
+
+  // Practice micro-refinement: the mockup shows the FIRST inline
+  // "Urbanum" (opening sentence) emphasized against the rest of the
+  // intro copy. Splits that one span around the word and adds the same
+  // "medium" mark RichText.jsx/richTextType.js already render (GT
+  // America 500, via the existing .rich-text__medium rule) -- no
+  // RichText.jsx change, no CMS edit, every other word untouched.
+  function emphasizeFirstWord(blocks, word) {
+    let done = false;
+    return blocks.map((block) => {
+      if (done || block?.style !== "normal" || !Array.isArray(block.children)) {
+        return block;
+      }
+      const children = [];
+      for (const span of block.children) {
+        const idx = done ? -1 : (span?.text ?? "").indexOf(word);
+        if (idx === -1) {
+          children.push(span);
+          continue;
+        }
+        const before = span.text.slice(0, idx);
+        const after = span.text.slice(idx + word.length);
+        if (before) children.push({ ...span, _key: `${span._key}-a`, text: before });
+        children.push({
+          ...span,
+          _key: `${span._key}-b`,
+          text: word,
+          marks: [...(span.marks ?? []), "medium"],
+        });
+        if (after) children.push({ ...span, _key: `${span._key}-c`, text: after });
+        done = true;
+      }
+      return { ...block, children };
+    });
+  }
+
+  const emphasizedBody = hasRichBody
+    ? emphasizeFirstWord(aboutPage.bodyRichText, "Urbānum")
+    : [];
+
+  // Final Practice desktop refinement: "Philosophy" is still a bold-
+  // marked Normal paragraph in the CMS, not a real Section Heading, so
+  // rendering it through RichText as-is leaves it visually dependent on
+  // browser <strong> resolution instead of sharing Practice's own actual
+  // heading element/class. This finds that one block by its exact text
+  // and splits the stream around it -- every other block (the intro
+  // paragraph, all seven Philosophy statements) still passes through
+  // RichText completely unchanged, just as two calls instead of one.
+  const philosophySplit = (() => {
+    if (!hasRichBody) return null;
+    const index = emphasizedBody.findIndex((block) => {
+      if (block?.style !== "normal") return false;
+      const text = (block.children ?? [])
+        .map((span) => span?.text ?? "")
+        .join("")
+        .trim();
+      return text.toLowerCase() === "philosophy";
+    });
+    return index === -1
+      ? null
+      : {
+          before: emphasizedBody.slice(0, index),
+          after: emphasizedBody.slice(index + 1),
+        };
+  })();
+
   return (
     <div className="about-page">
       <Header
@@ -207,39 +287,37 @@ export default function AboutPage() {
             aboutPage?.subtitle ||
             paragraphs.length > 0) && (
             <div className="about-layout__copy">
-              {/* Authoring-architecture pass: when bodyRichText has
-                  content, it owns the ENTIRE visible text composition --
-                  including whatever stands in for "Practice" itself -- so
-                  the legacy Title/Subtitle intro block below is gated
-                  behind `!hasRichBody` and never renders alongside it.
-                  Without this gate, a document authored with the new rich
-                  field would show "Practice" twice: once here as the
-                  plain title, once again as the rich text's own opening
-                  Section Heading. See aboutPageType.js's own comment on
-                  why Title/Subtitle are no longer required now that this
-                  is possible. */}
-              {!hasRichBody && (aboutPage?.title || aboutPage?.subtitle) && (
-                <div className="about-layout__intro">
-                  {aboutPage?.title && (
-                    <h1 className="about-hero__title about-hero__title--small">
-                      {aboutPage.title}
-                    </h1>
-                  )}
-
-                  {aboutPage?.subtitle && (
-                    <p className="about-hero__location">
-                      {aboutPage.subtitle}
-                    </p>
-                  )}
-                </div>
+              {/* Launch fidelity pass: superseded the old
+                  `!hasRichBody`-only gate above `showPracticeTitle`'s own
+                  definition, once launch required "Practice" to render
+                  even while bodyRichText has no real Section Heading of
+                  its own for it yet -- see that const's comment. */}
+              {showPracticeTitle && (
+                <p className="about-layout__heading">{aboutPage.title}</p>
               )}
 
               {hasRichBody ? (
-                <RichText
-                  value={aboutPage.bodyRichText}
-                  paragraphClassName="about-layout__paragraph"
-                  headingClassName="about-layout__heading"
-                />
+                philosophySplit ? (
+                  <>
+                    <RichText
+                      value={philosophySplit.before}
+                      paragraphClassName="about-layout__paragraph"
+                      headingClassName="about-layout__heading"
+                    />
+                    <p className="about-layout__heading">Philosophy</p>
+                    <RichText
+                      value={philosophySplit.after}
+                      paragraphClassName="about-layout__paragraph"
+                      headingClassName="about-layout__heading"
+                    />
+                  </>
+                ) : (
+                  <RichText
+                    value={emphasizedBody}
+                    paragraphClassName="about-layout__paragraph"
+                    headingClassName="about-layout__heading"
+                  />
+                )
               ) : (
                 paragraphs.map((paragraph, index) => (
                   <p className="about-layout__paragraph" key={index}>

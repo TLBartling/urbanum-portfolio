@@ -343,7 +343,12 @@ body {
 
   font-family: "GT America", "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-size: 0.78rem;
-  font-weight: 700;
+  /* Global GT America weight calibration: 700 read too heavy on screen
+     once tested against Josh's mockups (the same finding that drove
+     Contact/Practice/Journal to 500) -- Filter/Search/Menu now load the
+     real GT America Medium face (the @font-face at 500 above), not
+     synthesized, same reasoning as before, just the calibrated weight. */
+  font-weight: 500;
   letter-spacing: 0.18em;
   /* Desktop header casing pass (Josh review): FILTER/SEARCH/MENU now
      render in natural title-style capitalization (Filter/Search/Menu)
@@ -659,6 +664,23 @@ body {
 .index-drawer__row--menu .index-drawer__label-text:hover {
   opacity: 0.72;
   transform: translateY(-1px);
+}
+
+/* Contact secondary row (Instagram / Office) -- see Header.jsx's
+   CONTACT_SECONDARY_LINKS comment. Plain text, not links, until a
+   verified real URL exists for either one. */
+.index-drawer__row--contact-links {
+  justify-content: flex-end;
+  padding-top: 0;
+  gap: clamp(18px, 2vw, 28px);
+}
+
+.contact-secondary-link {
+  font-family: "GT America", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  color: #9d9d9d;
 }
 
 /* The Context Panel no longer shows individual selected values -- only how
@@ -1233,7 +1255,13 @@ body {
      actual removable whitespace around the number lived. */
   padding: 0.2rem 0.5rem;
   font-family: "GT America", "Helvetica Neue", Helvetica, Arial, sans-serif;
-  font-weight: 300;
+  /* Archive metadata typography pass: Archive Number is the site's
+     calibrated "visually Bold" role, which in the GT America weight
+     system this site has now standardized on means the real Medium
+     face (500), not a literal 700 Bold -- consistent with the global
+     weight calibration pass (Filter/Search/Menu, Archive tile/heading
+     emphasis, etc., all already 500 for this same role). Was 300. */
+  font-weight: 500;
   /* Dominance-reduction pass: clamp scaled down ~10-15% at every point
      (floor 0.65rem->0.6rem, cqmin coefficient 7->6, ceiling 1.15rem->1rem)
      -- a proportional shrink of the whole responsive curve, not just the
@@ -1343,7 +1371,19 @@ body {
      It only ever produces something smaller than 0.702rem below that
      size, which is new territory the old fixed-size system never
      rendered into at all (it was simply absent). */
-  font-size: clamp(9px, min(10.37cqw, calc(45.4545cqh - 9.8182px)), 0.702rem);
+  /* Archive metadata typography pass: the "#" prefix now added to each
+     displayed Lexicon term (see HoverOverlay.jsx) makes the worst-case
+     string one character longer than this clamp()'s own width budget was
+     derived against (14 -> 15, e.g. "Adaptive Reuse" -> "#Adaptive
+     Reuse"). Scaling both the cqw coefficient and the ceiling by the same
+     14/15 ratio the rest of this budget already uses (rounded down, i.e.
+     toward a smaller/safer font-size rather than up) is the minimal,
+     same-method compensation that preserves the existing "never clips"
+     guarantee for one added glyph -- not a new formula, not a general
+     resize. This coefficient was already flagged above as a carried-over
+     approximation pending a live visual check against the worst-case
+     strings; that flag now also covers this one-character adjustment. */
+  font-size: clamp(9px, min(9.67cqw, calc(45.4545cqh - 9.8182px)), 0.655rem);
   line-height: 2.2;
   /* Calibrated down to 0.1em (was 0.18em, too pronounced on visual
      review; originally 0.02em before the tracking follow-up). See the
@@ -1358,13 +1398,16 @@ body {
   margin: 0;
   padding: 0;
   display: none;
-  /* Theme Labels Uppercase pass: presentation only -- the underlying
+  /* Lexicon hashtag lowercase pass: presentation only -- the underlying
      theme string (item.themes, matching, click-to-filter) is completely
-     untouched; this only changes the glyphs painted on screen. See the
-     font-size clamp() above for the compensating width-budget/ceiling
-     recalibration this required to keep the "never clips" guarantee
-     true for uppercase's wider worst-case rendered strings. */
-  text-transform: uppercase;
+     untouched, same as the uppercase treatment this replaces; this only
+     changes the glyphs painted on screen. No width-budget change needed:
+     lowercase glyphs are never wider than their uppercase counterparts
+     for GT America's own worst-case Lexicon strings, so the existing
+     "never clips" clamp()/container-query budget (already sized for the
+     wider uppercase + "#" prefix case) stays safely conservative here,
+     not tight. */
+  text-transform: lowercase;
   /* Never wrap a theme, at any size: a two-word theme (e.g. "Adaptive
      Reuse") would otherwise be free to wrap at the space once a container
      gets tight, which would silently turn "one complete theme, one line"
@@ -1429,7 +1472,13 @@ body {
    display to anything else. Theme selection, ordering, and deduplication
    (HoverOverlay.jsx/relationshipEngine.js) are untouched -- this is a
    presentation-only cap. */
-@container hover-overlay (min-width: 79px) and (min-height: 42px) {
+/* Archive metadata typography pass: min-width raised 79px -> 84px, the
+   same 14 -> 15 worst-case-character compensation as the font-size
+   clamp() above (15 * 0.62 * 9px = 83.7px, rounded up), so the physical
+   "can this container hold even the smallest floor-size line" guarantee
+   still holds now that each line carries one more glyph (the "#"
+   prefix). min-height is unrelated to string width and is unchanged. */
+@container hover-overlay (min-width: 84px) and (min-height: 42px) {
   .hover-overlay__themes {
     display: flex;
   }
@@ -1933,8 +1982,29 @@ html.is-browsing .zoom-controls {
      second value to keep in sync. The logo is unaffected: .brand-button
      is centered via `left: 50%` against row1's own BORDER-box width,
      which padding never changes. */
+  /* Mobile Header Compaction Pass: 120px (this file's own prior "Mobile
+     Header/Search/Menu Refinement Pass" comment, immediately above)
+     existed specifically to fully contain .top-menu's own `top: 60px`
+     downward offset -- a real second, visually-lower row underneath the
+     logo, not a shared row with it. That offset is gone now (see the
+     .top-menu rewrite below, which centers it on the SAME row as the
+     logo instead) -- 64px is a compact, conventional single mobile-nav-
+     row height, comfortably containing both the shrunk logo (see .brand
+     below) and the hamburger's own icon, vertically centered against
+     each other. This is the confirmed root cause of both reported
+     symptoms at once: the oversized vertical gap (row1 was reserving
+     120px for content that, once un-offset, only needs a fraction of
+     that) and the logo-above-hamburger two-tier look (row1's extra
+     height was literally the room the second, lower row occupied).
+     App.jsx's own mobile Archive top-clearance formula
+     (getViewportOpeningGeometry) reads this box's REAL measured height
+     live via headerRef's ResizeObserver, not a hardcoded number -- so
+     shrinking it here also shrinks the Archive's own reserved top
+     clearance automatically, with no separate change needed there (only
+     its first-paint bootstrap fallback constant needed updating to
+     match -- see MOBILE_HEADER_HEIGHT_FALLBACK_PX in App.jsx). */
   .site-header__row1 {
-    height: 120px;
+    height: 64px;
     padding-left: 0;
     padding-right: 0;
   }
@@ -1968,14 +2038,64 @@ html.is-browsing .zoom-controls {
      way the height/padding-top pair did, so none of them needed
      touching. */
   html.is-browsing .site-header__row1 {
-    height: 120px;
+    height: 64px;
     padding-top: 34px;
     padding-left: 0;
     padding-right: 0;
   }
 
+  /* Mobile Final Pass -- Mobile Logo: subtly smaller (~15% off both terms
+     of the previous clamp, proportionally, so it still scales the same way
+     across narrow widths) per feedback that it should read a touch more
+     restrained on phone. */
+  /* Mobile Header Compaction Pass: reduced again, from min(213px, 62vw)
+     to roughly 47% of that (same clamp shape, both terms scaled by the
+     same factor) -- the previous pass's value still read as a
+     hero-scale wordmark dominating the viewport rather than a compact
+     identity mark sharing a row with the hamburger, per direct
+     comparison against the Thomas Phifer reference. Artwork/proportions
+     (Logo.jsx, the SVG itself) are completely untouched -- only this
+     frame's own size. Desktop's own .brand width clamp (base rule, far
+     above this media query) is unaffected. */
   .brand {
-    width: min(251px, 73vw);
+    width: min(100px, 29vw);
+  }
+
+  /* Mobile Final Pass -- Mobile Logo Alignment: .brand-button's base rule
+     (top of this file) centers the logo via `left: 50%` against
+     .site-header__row1's own border-box width -- on mobile, row1's
+     horizontal padding is zeroed (see the padding-left/right: 0 override
+     just above), so that border-box spans the full mobile header width,
+     putting the logo dead center rather than reading as left-aligned.
+     Overriding to `left: 0` (keeping the existing vertical centering,
+     `translate(0, -50%)` in place of the base rule's `translate(-50%,
+     -50%)`) pins it to row1's own left edge instead -- which lands at the
+     same real inset the hamburger/Search controls already sit at on their
+     own side (row1's zeroed padding plus .site-header's own symmetric
+     20px mobile padding, both untouched), so the logo now reads as
+     properly left-aligned against the same edge the rest of the mobile
+     header already uses, not an arbitrary new offset. Desktop's own
+     centered .brand-button (base rule, outside this media query) is
+     completely unaffected. */
+  .brand-button {
+    left: 0;
+    transform: translate(0, -50%);
+  }
+
+  /* html.is-browsing .brand-button (base rule, far above this media query)
+     shares this same 0-2-0 specificity and would otherwise win on source
+     order alone, silently reverting the left-alignment above back to
+     `translate(-50%, -50%)` -- i.e. re-centering the logo -- the instant a
+     visitor starts panning the mobile Archive (`is-browsing` flips on past
+     a small movement threshold, so this is the ordinary state within a
+     second or two of any real use, exactly the same class-order pitfall
+     already documented and fixed for .site-header__row1's own is-browsing
+     override just above). Restated here, later in the file, with the
+     mobile left-alignment kept and only the browsing-state scale folded
+     in, so the two states (left-aligned always, subtly scaled down while
+     browsing) compose instead of one silently overwriting the other. */
+  html.is-browsing .brand-button {
+    transform: translate(0, -50%) scale(0.9);
   }
 
   /* Mobile Header Alignment Refinement: `left: 24px; right: 24px;` used to
@@ -1999,8 +2119,39 @@ html.is-browsing .zoom-controls {
      construction, with no compensating pixel value needed on either
      side. top: 60px (unrelated to this bug -- see the "Mobile nav fix"
      comment immediately below) is unchanged. */
+  /* Mobile Header Compaction Pass: this is the real root cause of "logo
+     sitting substantially above the hamburger rather than sharing its
+     row." .top-menu's base rule (far above this media query) is
+     `position: relative` with a desktop-only `top: calc(...)` offset
+     that visually lines it up under the desktop logo's own bottom edge
+     -- this mobile override previously replaced only that offset's
+     VALUE (`top: 60px`), while still leaving .top-menu in normal
+     document flow, relatively shifted 60px further down from wherever
+     it would otherwise sit. .brand-button (this file's own rule, above)
+     is `position: absolute; top: 50%` -- vertically centered against
+     row1's own box -- so the two were never on a shared axis: the logo
+     tracked row1's vertical center while the hamburger tracked "flow
+     position plus 60px," two unrelated references that only ever
+     happened to end up in the same 120px box, not the same row.
+     Switching .top-menu to the SAME absolute-and-centered mechanism
+     .brand-button already uses -- `position: absolute; top: 50%;
+     transform: translateY(-50%)` -- puts both on the exact same
+     reference (row1's own vertical center), which is what actually
+     makes them share one row and visually align, not just fit inside
+     one taller box together. `left: 0` (matching .brand-button's own
+     mobile `left: 0`) combined with the base rule's untouched `width:
+     100%` keeps .top-menu's horizontal footprint and insets pixel-
+     identical to before (still purely a function of row1's own zeroed
+     horizontal padding plus .site-header's 20px mobile padding, per
+     the "Second refinement pass" comment above) -- only the vertical
+     mechanism changes. .top-menu__group's own justify-content:
+     space-between (base rule) still holds the hamburger at this row's
+     own right edge exactly as before. */
   .top-menu {
-    top: 60px;
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
   }
 
 .top-menu{
@@ -2469,7 +2620,10 @@ html.is-browsing .zoom-controls {
 
     font-family: "GT America", "Helvetica Neue", Helvetica, Arial, sans-serif;
     font-size: clamp(1.6rem, 9vw, 2.1rem);
-    font-weight: 700;
+    /* Global GT America weight calibration: same typography family as
+       .text-control (see that rule's comment above this pass) -- kept
+       in lockstep with it rather than left at the old heavier value. */
+    font-weight: 500;
     letter-spacing: 0.02em;
     text-transform: uppercase;
     color: #111;
@@ -2562,9 +2716,36 @@ html.is-browsing .zoom-controls {
    tablet, 641px+) is completely untouched: it still correctly tracks
    row1's original clamp(80px, 7vw, 102px) formula, which this pass never
    changes outside the 640px breakpoint. */
+/* Mobile Header Compaction Pass -- Contact/Shared-Shell Clearance Fix:
+   this flat 144px (this rule's own comment above documents it as
+   "132 + 12," i.e. the mobile header's real total height at the time --
+   .site-header's own 12px top padding + .site-header__row1's then-120px
+   height -- plus the same 12px gap the desktop-range formula already
+   uses) went stale the moment that same pass shrank row1 to 64px (see
+   .site-header__row1's own mobile rule -- "Mobile Header Compaction
+   Pass"): the header's new real total is 12 + 64 = 76px, not 132px, so
+   this value was never re-derived to match. On top of that, this flat
+   number never tracked --safe-area-inset-top at all, unlike
+   .site-header's own padding (which adds it directly) -- on a real
+   notched/Dynamic-Island device this clearance stayed frozen regardless
+   of how much taller the header's own real box grows for the inset,
+   while the header itself kept growing with it, closing (and on a deep
+   enough inset, potentially erasing) the buffer between them. Re-derived
+   using this file's own established "real header height + 12px gap"
+   method (see .project-content's own identical-in-spirit formula), now
+   explicitly including --safe-area-inset-top the same way .site-header
+   itself already does, via the same existing custom property, rather
+   than another flat guess: 12px (site-header's own top padding) + 64px
+   (row1's new height) + 12px (gap) = 88px, plus the real safe-area inset
+   on top. This is the shared .about-content shell (Practice/Journal/
+   Contact/Projects all reuse it), so this single corrected formula fixes
+   top clearance for all of them at once, consistent with the rest of
+   this pass -- not a Contact-only patch. Desktop/tablet's own
+   .about-content padding-top (base rule, 641px+, completely untouched)
+   is unaffected either way. */
 @media (max-width: 640px) {
   .about-content {
-    padding-top: 144px;
+    padding-top: calc(var(--safe-area-inset-top) + 88px);
   }
 }
 
@@ -2572,10 +2753,16 @@ html.is-browsing .zoom-controls {
   margin-bottom: clamp(28px, 3vw, 44px);
 }
 
+/* Global GT America weight calibration: 700 read too heavy on screen
+   (same finding as Contact/Practice/Journal) -- this shared base now
+   loads the real Medium face, matching .contact-layout .about-hero__title
+   below (already 500) instead of diverging from it. Affects the Archive
+   index ("Urbānum Studio") and individual Project page titles, which
+   both use this base rule; Contact's own override is untouched. */
 .about-hero__title {
   margin: 0;
   font-size: clamp(1.8rem, 2.6vw, 2.4rem);
-  font-weight: 700;
+  font-weight: 500;
   letter-spacing: -0.01em;
   color: #111;
 }
@@ -2586,11 +2773,37 @@ html.is-browsing .zoom-controls {
   color: #9d9d9d;
 }
 
+/* Global GT America weight calibration: this project has no real 600
+   face, so 600 was resolving to the full 700 Bold file -- moved to the
+   real 500 Medium face for the same reason as the rest of this pass. */
 .about-hero__established {
   margin: 0.3rem 0 0;
   font-size: 0.85rem;
-  font-weight: 600;
+  font-weight: 500;
   color: #1a1a1a;
+}
+
+/* Contact typography pass: Contact's title/subtitle read much smaller and
+   more generously tracked in Josh's mockup than About/Projects' own use
+   of these same shared classes, so this scopes new values to Contact only.
+   0.235em reuses the tracking already measured against this mockup for
+   the rich-text heading path (.contact-layout__heading), which takes over
+   automatically once bodyRichText is populated. */
+.contact-layout .about-hero__title {
+  font-size: clamp(1.15rem, 1.3vw, 1.35rem);
+  letter-spacing: 0.235em;
+  font-weight: 500;
+}
+
+.contact-layout .about-hero__location {
+  margin-top: 0.2rem;
+  font-size: clamp(1.15rem, 1.3vw, 1.35rem);
+  font-weight: 300;
+  letter-spacing: 0.02em;
+}
+
+.contact-layout__paragraph strong {
+  font-weight: 500;
 }
 
 .about-columns {
@@ -2667,9 +2880,11 @@ html.is-browsing .zoom-controls {
   font-family: "GT America", "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
+/* Global GT America weight calibration: the Archive tile number reads
+   too heavy at true Bold -- moved to the real Medium face. */
 .about-tile__number {
   font-size: 0.85rem;
-  font-weight: 700;
+  font-weight: 500;
   letter-spacing: 0.04em;
 }
 
@@ -2754,9 +2969,12 @@ html.is-browsing .zoom-controls {
   gap: clamp(10px, 1.2vw, 14px);
 }
 
+/* Global GT America weight calibration: no real 600 face exists, so this
+   was resolving to full 700 Bold -- moved to the real 500 Medium face,
+   consistent with the rest of the site's archive-metadata emphasis. */
 .about-meta__field dt {
   font-size: 0.68rem;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: #9d9d9d;
@@ -2773,10 +2991,12 @@ html.is-browsing .zoom-controls {
   border-left: 1px solid rgba(0, 0, 0, 0.1);
 }
 
+/* Global GT America weight calibration: same 600-has-no-real-face issue
+   as .about-meta__field dt above -- moved to the real 500 Medium face. */
 .about-meta__tags-label {
   display: block;
   font-size: 0.68rem;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: #9d9d9d;
@@ -2867,7 +3087,9 @@ html.is-browsing .zoom-controls {
    page-scale heading. Only font-size is overridden; color, weight,
    letter-spacing, and margin all still come from the shared rule. */
 .about-hero__title--small {
-  font-size: clamp(1.3rem, 1.7vw, 1.6rem);
+  font-size: clamp(1.05rem, 1.35vw, 1.3rem);
+  font-weight: 500;
+  letter-spacing: 0.05em;
 }
 
 /* Second composition pass (Josh review: title/subtitle move below the
@@ -2971,7 +3193,7 @@ html.is-browsing .zoom-controls {
   flex-direction: column;
   gap: 0.9em;
   margin: clamp(32px, 2.6vw, 50px) auto 0;
-  max-width: 67ch;
+  max-width: clamp(460px, 39vw, 750px);
   text-align: left;
 }
 
@@ -2989,27 +3211,40 @@ html.is-browsing .zoom-controls {
   margin-bottom: 0.4rem;
 }
 
-/* Practice mockup pass (Josh review): styles the rich-text renderer's
-   "Section Heading" block (RichText.jsx's h2, e.g. a CMS-authored
-   "Philosophy") specifically for this page, via the headingClassName
-   prop AboutPage.jsx now passes -- .rich-text__heading (styles.css's
-   own shared default for every other page's rich text) is completely
-   untouched by this, so Contact and the Project Info panel keep their
-   existing in-body subheading treatment. Deliberately matches
-   .about-hero__title--small's own figures (font-weight 700, the same
-   clamp(1.3rem, 1.7vw, 1.6rem)) rather than inventing a new size, so a
-   CMS-authored Section Heading reads at the same weight as "Practice"
-   itself, per the mockup -- Bold/Medium/Italic/Link/Section Heading
-   remain the only formatting controls; nothing new was added. The
-   larger margin-top (vs. .about-layout__copy's own 0.9em flex gap) is
-   the deliberate pause the mockup shows above "Philosophy" -- reads as
-   a new section starting, not just the next paragraph in the list. */
+/* Final Practice desktop refinement: the ONE shared heading treatment
+   for both "Practice" and "Philosophy" -- AboutPage.jsx now renders both
+   through the exact same element/class (a plain <p>, matching how
+   RichText's own Section Heading renders), so this rule is what
+   guarantees their face/weight/size/line-height/tracking/margin-bottom
+   are identical, rather than relying on two different code paths to
+   coincidentally agree. font-size/weight/tracking unchanged from the
+   previous pass (already transfers the "GT America renders heavier live
+   than a flat Photoshop mockup suggests" lesson Contact's own Urbanum
+   heading was corrected with); line-height added explicitly so it's
+   guaranteed rather than inherited by coincidence.
+   margin-bottom is the shared heading-to-body gap (Practice -> intro,
+   Philosophy -> first statement) -- margin-top stays 0 here since
+   Practice (the copy box's first child) needs none of its own, and
+   Philosophy's own larger leading gap is handled by the adjacent-sibling
+   rule below instead of duplicating it here. */
 .about-layout__heading {
-  margin: 0.9em 0 0;
-  font-size: clamp(1.3rem, 1.7vw, 1.6rem);
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  margin: 0 0 clamp(16px, 1.3vw, 22px);
+  font-size: clamp(1.05rem, 1.35vw, 1.3rem);
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
   color: #111;
+}
+
+/* The section break before "Philosophy" specifically: a heading
+   immediately preceded by a body paragraph (structural, not a content
+   match) gets a visibly larger leading gap than the uniform heading-to-
+   body margin-bottom above, per the mockup's own "Philosophy" reading as
+   a new section starting rather than the next paragraph in the list.
+   Never matches "Practice" -- the copy box's first child has no
+   preceding .about-layout__paragraph sibling at all. */
+.about-layout__paragraph + .about-layout__heading {
+  margin-top: clamp(36px, 2.9vw, 48px);
 }
 
 /* Same typography the previous intro column already used
@@ -3027,10 +3262,15 @@ html.is-browsing .zoom-controls {
    to the full measure. */
 .about-layout__paragraph {
   margin: 0;
-  font-size: clamp(0.9rem, 1.05vw, 1rem);
-  line-height: 1.7;
+  font-size: clamp(0.85rem, 1vw, 0.95rem);
+  font-weight: 300;
+  line-height: 1.2;
   color: #333;
-  text-align: justify;
+  text-align: left;
+}
+
+.about-layout__paragraph strong {
+  font-weight: 500;
 }
 
 /* Reuses the same 900px stacking breakpoint .about-columns/.about-layout
@@ -3100,16 +3340,44 @@ html.is-browsing .zoom-controls {
    the stacking rule below exists solely to keep a narrower viewport
    from breaking, not as a designed mobile composition. */
 .contact-page-layout {
-  display: flex;
-  flex-direction: row;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: clamp(28px, 3vw, 56px);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: start;
+  margin-top: -24px;
+}
+
+/* Mobile Header Compaction Pass -- Contact Overlap Fix (empirically
+   verified against a real render, not derived by inspection alone --
+   this file's own prior "recalibrate the padding-top number" attempt
+   didn't actually fix the reported overlap, so this pass instead staged
+   the app in an isolated sandbox and measured real getBoundingClientRect
+   values for .site-header and .contact-page-layout at 390px width):
+   this rule's own margin-top: -24px above is a DESKTOP-only alignment
+   pull -- calibrated (see this rule's own comment further up, "Image-
+   integration pass") to level "Urbānum" with the photograph's own top
+   edge when the two sit side by side as a real two-column row. Below the
+   900px breakpoint (see the stacking override further down) they're no
+   longer side by side at all -- text stacks above the image in a single
+   column -- so this pull no longer aligns anything; it was simply still
+   subtracting 24px off whatever top clearance .about-content's own
+   padding-top supplied. Measured directly: with .about-content's real
+   88px mobile padding-top (see that rule's own comment) and this
+   uncanceled -24px, .contact-page-layout's real rendered top was 64px --
+   below .site-header's own real rendered bottom edge at 76px, a genuine
+   12px overlap, confirmed by direct measurement in a real render, not
+   just arithmetic. Canceling it here (mobile only; the 900px-and-wider
+   range keeps the original -24px, still doing real alignment work there)
+   is the actual fix: content now starts at the full 88px .about-content
+   supplies, a clean 12px below the real 76px header -- reverified the
+   same way after this change. */
+@media (max-width: 640px) {
+  .contact-page-layout {
+    margin-top: 0;
+  }
 }
 
 .contact-page-layout__image {
-  width: 50%;
-  flex-shrink: 0;
+  width: 100%;
 }
 
 .contact-page-layout__image img {
@@ -3120,7 +3388,7 @@ html.is-browsing .zoom-controls {
 
 @media (max-width: 900px) {
   .contact-page-layout {
-    flex-direction: column;
+    grid-template-columns: 1fr;
     gap: clamp(28px, 6vw, 44px);
   }
 
@@ -3146,7 +3414,7 @@ html.is-browsing .zoom-controls {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  max-width: 43ch;
+  max-width: 37ch;
 }
 
 .contact-layout__copy {
@@ -3227,10 +3495,14 @@ html.is-browsing .zoom-controls {
    here would double up; spacing after a heading comes from the flex
    `gap` above (paragraph-to-paragraph) or the adjacent-heading rule
    below (heading-to-heading). */
+/* Global GT America weight calibration: this in-body Section Heading
+   (e.g. "Office For Architecture") plays the same role as Practice's own
+   .about-layout__heading, which is already calibrated to 500 -- this
+   rule had not been brought in line with that yet. Moved to match. */
 .contact-layout__heading {
   margin: 0;
   font-size: clamp(1.15rem, 1.3vw, 1.35rem);
-  font-weight: 700;
+  font-weight: 500;
   letter-spacing: normal;
   color: #111;
 }
@@ -3276,23 +3548,14 @@ html.is-browsing .zoom-controls {
    contactPageType.js's own field description), and this is what makes
    those single newlines render as real line breaks instead of being
    collapsed the way plain text normally is.
-   Justified body copy (client-requested typography pass): text-align
-   only -- everything above (font, line-height, color, white-space:
-   pre-line, the 46ch measure inherited from .contact-layout) is
-   unchanged. No text-align-last -- the last line of each blank-line-
-   delimited paragraph still ends naturally rather than being stretched.
-   Verified against a manually-broken address-style block (name/street/
-   city, one per line, same shape contactPageType.js's own field
-   description documents): browsers treat a forced line break from
-   white-space: pre-line the same way they treat a block's true last
-   line -- it's excluded from justification, not stretched -- so a short
-   address line reads at its own natural width instead of being spread
-   to fill the 46ch measure. Confirmed via a real rendered screenshot
-   (desktop and mobile) before this rule shipped, not assumed from the
-   spec alone. */
+   Visual polish pass: reverts the earlier justify experiment back to
+   left-aligned -- justify was producing visibly stretched word-gaps on
+   this narrow (43ch) column, which reads as typewriter-ish rather than
+   the mockup's own lighter editorial texture. */
 .contact-layout__paragraph {
   margin: 0;
-  font-size: clamp(0.9rem, 1.05vw, 1rem);
+  font-size: clamp(0.85rem, 1vw, 0.95rem);
+  font-weight: 300;
   /* Visual-fidelity pass: 1.6 -> 1.35, calibrated against the mockup's
      own address-block line spacing (measured line-start-to-line-start
      delta at the 1920px reference viewport came out tighter than 1.6
@@ -3318,7 +3581,7 @@ html.is-browsing .zoom-controls {
   line-height: 1.2;
   color: #333;
   white-space: pre-line;
-  text-align: justify;
+  text-align: left;
 }
 
 /* --- CMS typography foundation pass: rich-text elements -------------------
@@ -3426,6 +3689,87 @@ html.is-browsing .zoom-controls {
    narrower/wider rows are a direct, continuous result of the same
    algorithm re-solving for whatever width the ResizeObserver reports,
    not a small number of fixed column-count steps. */
+/* Journal intro (launch fidelity pass): a fixed, hardcoded block of copy
+   (see JournalPage.jsx's own comment on why it isn't a CMS field) sitting
+   above the grid, inside .about-content's existing padding -- no extra
+   horizontal offset needed, since it and .journal-grid share the same
+   left edge by construction (neither has its own left margin/inset).
+   Reuses the body type scale already locked on Contact/Practice (GT
+   America Light 300, same font-size) rather than inventing a fourth
+   body-copy scale for this page. Justified with a right-aligned final
+   line, per Josh's own mockup.
+
+   Exact-geometry pass, then final responsive refinement: the grid is not
+   a fixed 3-column layout -- each row's real tile widths are solved from
+   that row's own images' aspect ratios (buildJustifiedRows/finalizeRow
+   in JournalPage.jsx), so a CSS-only nominal fraction could still drift
+   from the grid's actual rendered width at any tier. --journal-intro-
+   width is JournalPage.jsx's own introWidth -- already computed by the
+   existing row-layout math for whichever of the three tiers that row's
+   real solved item count puts it in (wide desktop/intermediate/mobile,
+   see introWidth's own comment in JournalPage.jsx) -- set here as an
+   inline custom property, no duplication of that math in CSS. Width now
+   equals it exactly by construction whenever it's available; the old
+   nominal one-third calc() is kept only as the var() fallback, for the
+   one frame before the gallery's first ResizeObserver callback (rows is
+   still [] then) and for the no-entries case. Because introWidth itself
+   already resolves to "100%" for the true mobile/single-column tier
+   (mirroring getColumnCount, not a separate viewport guess), the
+   @media(max-width:640px) rule below no longer needs its own width
+   override -- see that rule's own updated comment. */
+.journal-intro {
+  /* Vertical position (Josh review): a small negative top margin, scoped
+     to this rule alone (no shared .about-content padding touched, no
+     other page affected) -- pulls the intro/grid composition up modestly
+     to close the gap against the mockup, without moving the header. */
+  margin: clamp(-20px, -1.4vw, -14px) 0 clamp(22px, 1.6vw, 30px);
+  width: var(
+    --journal-intro-width,
+    calc((100% - 2 * clamp(14px, 1.6vw, 24px)) / 3)
+  );
+  /* Final responsive refinement: -4% off the previous clamp (both the
+     floor and the ceiling; the 1vw preferred value scales with it too)
+     -- a tiny reduction against Josh's mockup, not a new scale. */
+  font-size: clamp(0.82rem, 0.96vw, 0.91rem);
+  font-weight: 300;
+  line-height: 1.3;
+  color: #333;
+  text-align: justify;
+  text-align-last: right;
+}
+
+.journal-intro strong {
+  font-weight: 500;
+}
+
+/* Small-width collision fix: below the same 640px breakpoint
+   .about-content's own mobile header-clearance override already lives at
+   (see that rule's "Mobile Header/Search/Menu Refinement Pass" comment --
+   .about-content's padding-top already correctly tracks the real mobile
+   header height there), the negative top margin above still pulled the
+   intro up by its own fixed -14px ceiling regardless of viewport, risking
+   pushing it back underneath that already-correct clearance. Resetting it
+   to 0 here removes that risk without touching the shared .about-content
+   rule itself.
+
+   Final responsive refinement: this rule no longer also resets width.
+   640px is the real breakpoint for the site's header/nav behavior (and
+   for .about-content's own mobile padding-top above), but it is NOT the
+   grid's own column-collapse point -- .about-content's side padding
+   (clamp(34px,4vw,60px)) means a 640px viewport still leaves a container
+   width around ~570px, which getColumnCount still treats as 2-column,
+   not 1. Forcing width:100% here would have fought JournalPage.jsx's own
+   introWidth (which already yields "100%" only once that row genuinely
+   solves down to a single item) in that intermediate range. Width is now
+   driven entirely by introWidth/--journal-intro-width at every viewport;
+   this rule keeps only the margin reset, which is the one part that is
+   genuinely tied to this breakpoint. */
+@media (max-width: 640px) {
+  .journal-intro {
+    margin-top: 0;
+  }
+}
+
 .journal-grid {
   width: 100%;
 }
@@ -3807,10 +4151,22 @@ html.is-browsing .zoom-controls {
    below) -- deliberately not a new type treatment -- and the same bare-
    button reset (.project-archive-index__button below) so this reads as
    quiet page typography that happens to be interactive, never as a
-   conventional button/CTA. */
+   conventional button/CTA.
+
+   Typography refinement pass: text-transform/letter-spacing no longer
+   come straight from that shared treatment -- see the two child rules
+   below. `gap` replaces the old literal space character baked into the
+   chevron's own text (ProjectBreadcrumb.jsx now renders the chevron and
+   "Archive" as two separate spans) with a real, tunable CSS gap; this
+   row was already `display: inline-flex`, so no layout mechanism
+   changed, only how the space between the two is produced. 0.35em reads
+   as a deliberate, designed gap -- close to what a plain space glyph
+   already occupied at this font-size, not a dramatic change -- rather
+   than a much wider, more conspicuous separation. */
 .project-breadcrumb__control {
   display: inline-flex;
   align-items: center;
+  gap: 0.35em;
   border: 0;
   background: none;
   padding: 0;
@@ -3818,8 +4174,6 @@ html.is-browsing .zoom-controls {
   font: inherit;
   font-size: 0.68rem;
   font-weight: 400;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   color: #9d9d9d;
   cursor: pointer;
   transition: color 0.25s ease, opacity 0.25s ease;
@@ -3828,6 +4182,28 @@ html.is-browsing .zoom-controls {
 .project-breadcrumb__control:hover {
   color: #111;
   opacity: 0.85;
+}
+
+/* The chevron alone -- no letter-spacing (a single glyph has no internal
+   kerning for it to affect, and applying it here would only add stray
+   trailing space to the RIGHT of the chevron, fighting the deliberate
+   `gap` above rather than complementing it) and no text-transform
+   (uppercase has no visible effect on "‹" either way, but explicit
+   `none` documents this was considered, not just omitted). */
+.project-breadcrumb__chevron {
+  text-transform: none;
+}
+
+/* "Archive" itself: explicitly NOT uppercase (see this file's own top
+   comment on the shared-treatment regression this corrects) -- renders
+   with its own natural capital-A/lowercase-remainder JSX casing. A
+   lighter letter-spacing than the shared 0.1em (calibrated for uppercase
+   glyphs), restrained enough to read as ordinary editorial tracking on
+   mixed-case text rather than the widely-letterspaced, all-caps
+   convention this pass explicitly moves away from. */
+.project-breadcrumb__label {
+  text-transform: none;
+  letter-spacing: 0.03em;
 }
 
 .project-image-viewer {
@@ -3888,6 +4264,26 @@ html.is-browsing .zoom-controls {
 .project-image-column {
   flex: 1 1 auto;
   min-width: 0;
+  /* Swipe-containment pass: this is the exact element ProjectTemplate.jsx
+     attaches its touch/wheel gesture listeners to (imageColumnRef -- see
+     that file's own "Image swipe/trackpad navigation" comment), so it's
+     also the correct, smallest-possible scope for asking the browser to
+     contain scroll/navigation chaining here rather than letting a strong
+     horizontal trackpad gesture escape to the browser's own back/forward
+     swipe. overscroll-behavior-x only (not the shorthand, and not
+     -behavior-y): this element has no horizontal scroll of its own to
+     "contain" in the traditional sense (the wheel listener already
+     handles horizontal gestures by navigating images, not by scrolling
+     anything), but Chromium is documented to also respect
+     overscroll-behavior-x as a signal to keep its own two-finger
+     back/forward navigation gesture from originating over an element
+     that declares it, independent of scroll chaining -- this asks for
+     exactly that, on exactly this element, without touching vertical
+     scroll behavior (still ordinary) or any other element on the page.
+     Deliberately not applied to .project-viewer/.project-content/
+     .about-content/body/html -- see this rule's own report for why a
+     wider scope was never tried. */
+  overscroll-behavior-x: contain;
 }
 
 /* Vertical stability correction (Josh review): this frame has a CONSTANT
@@ -4375,10 +4771,12 @@ html.is-browsing .zoom-controls {
   text-align: center;
 }
 
+/* Global GT America weight calibration: no real 600 face exists, so this
+   was resolving to full 700 Bold -- moved to the real 500 Medium face. */
 .project-info-panel__title {
   margin: 0;
   font-size: 1rem;
-  font-weight: 600;
+  font-weight: 500;
   color: #1a1a1a;
 }
 
@@ -4475,6 +4873,18 @@ html.is-browsing .zoom-controls {
   line-height: 1.55;
   color: #5a5a5a;
   text-align: center;
+}
+
+/* Global GT America weight calibration: this is the one RichText
+   paragraphClassName (see the CMS typography foundation pass comment
+   above) that had no explicit strong override, so any bold text in a
+   Project's rich-text description was falling through to plain browser
+   default bold -- font-weight: bolder off this rule's own 400 resolves
+   to the real 700 Bold file, the same "too heavy" issue found elsewhere.
+   Matches .about-layout__paragraph strong / .contact-layout__paragraph
+   strong / .journal-intro strong, all already 500. */
+.project-info-panel__description strong {
+  font-weight: 500;
 }
 
 /* Project Navigation (Previous/current/Next), the "bottom text

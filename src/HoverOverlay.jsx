@@ -396,7 +396,16 @@ function HoverOverlay({
               onClick={(event) => handleThemeClick(event, theme)}
               onKeyDown={(event) => handleThemeKeyDown(event, theme)}
             >
-              {theme}
+              {/* Lexicon "#" presentation rule (Archive metadata typography
+                  pass): display-only prefix, matching the Archive Number's
+                  own bracket treatment above -- `theme` itself (the value
+                  passed to handleThemeClick/handleThemeKeyDown/aria-label
+                  above, and used as this element's own `key`) is completely
+                  untouched, so click-to-filter/Relationship Engine matching
+                  and the stored Sanity value are unaffected. Guarded against
+                  a doubled "##" if a legacy Lexicon entry was ever authored
+                  with its own leading "#". */}
+              {theme.startsWith("#") ? theme : `#${theme}`}
             </li>
           ))}
         </ul>

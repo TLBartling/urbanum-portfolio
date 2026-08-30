@@ -3,7 +3,25 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Urbānum [u] favicon (bracket-and-lowercase-u mark, cropped/sized
+         from Josh's finalized master artwork): icon-only, no visible
+         header/logo change -- see src/Header.jsx's own wordmark SVG for
+         the actual site logo, untouched by this pass. The previous
+         favicon.svg reference (a plain Courier "u" placeholder, not part
+         of Josh's new artwork) is removed here rather than left alongside
+         this set: SVG favicons are generally preferred over PNG/ICO ones
+         by modern browsers when both are declared, which would have
+         silently kept the old placeholder showing in the tab despite this
+         whole pass. The favicon.svg file itself is left on disk,
+         unreferenced (see this pass's own report). apple-touch-icon.png
+         is the dedicated iOS/home-screen icon, unrelated to the tab
+         favicon. No manifest/PWA system exists on this site and none was
+         introduced for this task -- see this pass's own report for why
+         192x192/512x512 icons were skipped. -->
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <!-- Responsive Sanity Image Delivery: connection warm-up for the two
          hosts every page load depends on once the CMS handshake resolves.
          zxmuvik1.apicdn.sanity.io is the query API (useCdn: true's

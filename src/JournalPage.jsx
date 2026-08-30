@@ -202,6 +202,54 @@ export default function JournalPage({ entries = getJournalEntries() }) {
     [entries, galleryWidth],
   );
 
+  // Geometry fix, then final responsive refinement (three passes): the
+  // grid is not a fixed 3-column layout -- each row's real tile widths
+  // are solved from that row's own images' aspect ratios (see
+  // buildJustifiedRows/finalizeRow above) -- so a CSS-only nominal
+  // fraction approximation can drift from the grid's actual rendered
+  // width at any tier. Reusing the first row's own already-computed item
+  // widths and gutter (no row-layout math duplicated here) and handing
+  // the result to .journal-intro as a CSS custom property keeps the
+  // intro's width exact by construction rather than approximate.
+  //
+  // Surgical fix: the earlier first-tile-width heuristic (a minimum
+  // readable-width threshold on the solved tile itself) mis-fired twice
+  // -- it isn't a reliable proxy for "normal desktop vs. intermediate,"
+  // since a given tile width can arise at more than one real browser
+  // size depending on image aspect ratios in that row. Replaced with a
+  // simple, explicit viewport-state breakpoint on galleryWidth -- the
+  // gallery's own already-measured container width (the same
+  // ResizeObserver-driven state buildJustifiedRows itself consumes) --
+  // so the tier is driven by the actual browser/container size, not a
+  // tile-size guess:
+  //   - galleryWidth >= 1100   (normal desktop, Josh's mockup default)
+  //     -> first tile's own width alone.
+  //   - 640 < galleryWidth < 1100   (intermediate/tablet-like)
+  //     -> first tile + that row's own real gutter + second tile, so
+  //        the intro's right edge lines up with the second image's own
+  //        right edge exactly as its left edge lines up with the first.
+  //   - galleryWidth <= 640   (existing mobile state -- same threshold
+  //     already used for the header-clearance margin reset below, so
+  //     the intro's width and vertical-clearance behavior change at the
+  //     same real breakpoint) -> "100%".
+  // Tile widths and the gutter are still read directly from the
+  // already-computed rows array, never duplicated here. undefined before
+  // the gallery's first ResizeObserver callback fires (rows is still []
+  // then) -- styles.css's own var() fallback (the original nominal
+  // calc()) covers that one frame and the "no entries at all" case.
+  const firstTileWidth = rows[0]?.items[0]?.width;
+  const secondTileWidth = rows[0]?.items[1]?.width;
+  const introWidth =
+    firstTileWidth === undefined
+      ? undefined
+      : galleryWidth >= 1100
+        ? `${firstTileWidth}px`
+        : galleryWidth > 640
+          ? secondTileWidth !== undefined
+            ? `${firstTileWidth + rows[0].gutter + secondTileWidth}px`
+            : `${firstTileWidth}px`
+          : "100%";
+
   return (
     <div className="about-page">
       <Header
@@ -231,6 +279,31 @@ export default function JournalPage({ entries = getJournalEntries() }) {
             : undefined,
         }}
       >
+        {/* Journal intro (launch fidelity): Josh's approved copy, hard-
+            coded here rather than added as a new CMS field -- there is
+            only ever this one fixed block of text, not editable per-entry
+            content the way the grid below is. "Journal Of Curiosities" is
+            the one bold emphasis Josh's own mockup shows inline; nothing
+            else in the paragraph is bold. See introWidth's own comment
+            above for why its value is set here as an inline custom
+            property rather than in styles.css alone. */}
+        <p
+          className="journal-intro"
+          style={
+            introWidth
+              ? { "--journal-intro-width": introWidth }
+              : undefined
+          }
+        >
+          Driven by an ongoing interest in how architecture is perceived
+          and presented, the <strong>Journal Of Curiosities</strong> is a
+          place to document Urbānum's way of thinking about architecture
+          and the city through our work, ideas, and references. It serves
+          as an evolving space for research, reflection, and exchange,
+          allowing connections to emerge across projects, disciplines,
+          and ideas.
+        </p>
+
         <div className="journal-grid" ref={galleryRef}>
           {rows.map((row, rowIndex) => (
             <div

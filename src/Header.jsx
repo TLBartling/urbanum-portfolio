@@ -103,14 +103,14 @@ const MENU_LINKS = ["Archive", "Practice", "Journal", "Contact"];
 // Archive intentionally points at "/" -- the existing archive/home
 // landing page Router.jsx already serves there (via <App />) -- rather
 // than a new "/archive" route, per the "no duplicate page" requirement.
-// Practice intentionally still points at "/about": this is a label-only
-// rename of the public-facing link text, not a rename of the page --
-// AboutPage.jsx, its route, and its CMS content are all untouched, so the
-// existing About page keeps serving from the same path under its new
-// nav label.
+// Practice route consolidation: "/practice" is now the canonical public
+// URL for this link (see Router.jsx's own comment) -- AboutPage.jsx
+// itself, and its CMS content, are unchanged; only the route it's
+// reached at moved. "/about" still works (Router.jsx redirects it), but
+// this nav link always points at the canonical path.
 const MENU_LINK_PATHS = {
   Archive: "/",
-  Practice: "/about",
+  Practice: "/practice",
   Journal: "/journal",
   Contact: "/contact",
 };
@@ -1143,6 +1143,18 @@ export default function Header({
               </>
             )}
 
+            {/* Mobile Header/Search/Menu Refinement Pass -- Section 8
+                (Mobile Search Relocation): mirrors the !isMobileUiMode
+                wrapping the Filter control above already uses -- hidden
+                entirely (not just visually collapsed) on mobile UI mode,
+                NOT deleted, NOT behaviorally changed. Desktop keeps this
+                exact subtree, unconditionally, exactly as before. Mobile
+                UI mode's own entry point into Search now lives inside the
+                mobile Menu overlay instead (see MobileMenuOverlay.jsx's
+                new Search entry, wired to this same handleMobileSearchOpen
+                below) -- no new search logic, just a different trigger
+                location. */}
+            {!isMobileUiMode && (
             <div className="search-control">
               {/* Persistent Search Label (refinement): SEARCH itself is no
                   longer part of the committed/idle ternary below -- it's
@@ -1301,6 +1313,7 @@ export default function Header({
                 />
               )}
             </div>
+            )}
           </div>
           {/* Mobile Header/Search/Menu Refinement Pass -- Section 2: mobile
               UI mode replaces the visible "Menu" text control with a
@@ -1373,6 +1386,7 @@ export default function Header({
                separate hardcoded Contact field (its own handleAddClick("contact")
                button, opening the shared Active Panel as a static options
                list) is gone. */
+            <>
             <div className="index-drawer__row index-drawer__row--menu">
               {/* Navigation active-state (bracket treatment removed):
                   replaced the bracket UI language ([ ABOUT ]) with a plain
@@ -1424,6 +1438,18 @@ export default function Header({
                 );
               })}
             </div>
+            {path === MENU_LINK_PATHS.Contact && (
+              // CONTACT_SECONDARY_LINKS: Instagram/Office per the mockup.
+              // No verified real URL for either was found in current code
+              // or git history (searched), so both render as plain text,
+              // not links, per instruction -- swap to <a> once a real URL
+              // exists.
+              <div className="index-drawer__row index-drawer__row--contact-links">
+                <span className="contact-secondary-link">Instagram</span>
+                <span className="contact-secondary-link">Office</span>
+              </div>
+            )}
+            </>
           ) : (
           <div className="index-drawer__row">
             {/* Level 2 -- the Context row. Theme/Project/Year are pure
@@ -1796,6 +1822,7 @@ export default function Header({
           linkPaths={MENU_LINK_PATHS}
           activePath={path}
           onSelect={handleMobileMenuSelect}
+          onSearchOpen={handleMobileSearchOpen}
         />
       )}
     </header>

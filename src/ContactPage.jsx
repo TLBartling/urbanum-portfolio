@@ -54,6 +54,29 @@ import { getOptimizedImageSrc, getOptimizedImageSrcSet } from "./imageOptimizati
 // rounding) -- so no object-fit/object-position cropping is applied
 // anywhere below.
 const CONTACT_IMAGE_SRC = "/img/urbanum-office-exterior.jpg";
+
+// Bold emails (Contact refinement pass): the legacy plain-text `body`
+// field (see paragraphs below) has no markup, so an email address can't
+// carry its own bold styling the way a rich-text field could -- this
+// detects any email address in a paragraph's plain text at render time
+// and wraps just that substring in <strong>, rather than hardcoding the
+// two current addresses or adding a CMS/rich-text field for it. Doesn't
+// touch the RichText path above, which already has its own Bold control.
+const EMAIL_SPLIT_PATTERN = /([\w.+-]+@[\w-]+\.[\w.-]+)/g;
+const EMAIL_TEST_PATTERN = /^[\w.+-]+@[\w-]+\.[\w.-]+$/;
+
+function renderWithBoldEmails(text) {
+  return text
+    .split(EMAIL_SPLIT_PATTERN)
+    .map((segment, index) =>
+      EMAIL_TEST_PATTERN.test(segment) ? (
+        <strong key={index}>{segment}</strong>
+      ) : (
+        segment
+      ),
+    );
+}
+
 export default function ContactPage() {
   // Same drawer-height/opacity wiring every other child page (About,
   // Projects, Journal, Project) already uses for its own scroll-
@@ -150,7 +173,7 @@ export default function ContactPage() {
                 ) : (
                   paragraphs.map((paragraph, index) => (
                     <p className="contact-layout__paragraph" key={index}>
-                      {paragraph}
+                      {renderWithBoldEmails(paragraph)}
                     </p>
                   ))
                 )}

@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import App from "./App";
 import AboutPage from "./AboutPage";
 import ContactPage from "./ContactPage";
@@ -13,18 +14,31 @@ import { useCurrentPath } from "./navigation";
 const PROJECT_ROUTE = /^\/projects\/([^/]+)$/;
 
 // The entire routing surface this site needs right now: the gallery at
-// "/", the About page at "/about", the Contact page at "/contact", the
-// Projects index at "/projects", the dynamic Project Template at
-// "/projects/:slug", and the Journal at "/journal". Not a general-purpose
-// router -- just enough to pick one of a small number of top-level pages
-// (or one dynamic template) based on the current path. Another static
-// page later is one more path check here, not a new dependency -- Contact
-// (Contact drawer -> Contact page milestone) is exactly that: one more
-// check, mirroring About's own.
+// "/", the Practice page (AboutPage.jsx) at "/practice", the Contact page
+// at "/contact", the Projects index at "/projects", the dynamic Project
+// Template at "/projects/:slug", and the Journal at "/journal". Not a
+// general-purpose router -- just enough to pick one of a small number of
+// top-level pages (or one dynamic template) based on the current path.
+// Another static page later is one more path check here, not a new
+// dependency -- Contact (Contact drawer -> Contact page milestone) is
+// exactly that: one more check, mirroring About's own.
 export default function Router() {
   const path = useCurrentPath();
 
-  if (path === "/about") {
+  // Practice route consolidation (launch fidelity): "/about" was the
+  // page's only path before the nav label became "Practice"; "/practice"
+  // is now canonical (see Header.jsx's own MENU_LINK_PATHS comment).
+  // "/about" keeps working as a backward-compatible alias for old links/
+  // bookmarks -- this only rewrites the address bar (history.replaceState,
+  // no extra back-stack entry, no reload) once AboutPage has rendered for
+  // it below; the component and its CMS content are completely untouched.
+  useEffect(() => {
+    if (path === "/about") {
+      window.history.replaceState({}, "", "/practice");
+    }
+  }, [path]);
+
+  if (path === "/practice" || path === "/about") {
     return <AboutPage />;
   }
 

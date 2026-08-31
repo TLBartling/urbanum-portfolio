@@ -94,6 +94,22 @@ export function getOptimizedImageSrc(src, width = 800, extension = "jpg") {
   return `/img/optimized/${width}/${getImageName(src)}.${extension}`;
 }
 
+// Project-page full-resolution fix: a Sanity asset's real, uploaded
+// intrinsic width is embedded directly in its own CDN URL (Sanity's own
+// long-standing convention -- every resolved asset URL contains a
+// `-{width}x{height}-` segment before the extension, e.g.
+// `.../image-abc123-2048x1365-jpg`), so it can be read straight off the
+// URL string with no extra network request or metadata lookup. Returns
+// null (never a guess) if a URL doesn't match that shape, so callers can
+// fall back to the existing capped behavior rather than ever risk
+// requesting an unknown/invalid width.
+const SANITY_URL_DIMENSIONS_PATTERN = /-(\d+)x(\d+)-/;
+
+function getSanitySourceWidth(src) {
+  const match = SANITY_URL_DIMENSIONS_PATTERN.exec(src);
+  return match ? parseInt(match[1], 10) : null;
+}
+
 export function getOptimizedImageSrcSet(src, extension) {
   // Same guard shape as getOptimizedImageSrc above, extended to cover
   // both known-optimizable source kinds: for a live Sanity URL there IS a
@@ -104,7 +120,38 @@ export function getOptimizedImageSrcSet(src, extension) {
   // React drops it from the rendered <source>) rather than emit a set of
   // identical entries at different width descriptors.
   if (!isLocalImageAsset(src) && !isSanityImageAsset(src)) return undefined;
-  return optimizedImageWidths
+
+  // Local assets are untouched: the static optimizer only ever generated
+  // real files at these three widths (scripts/optimize-images.mjs), so
+  // this branch keeps requesting exactly optimizedImageWidths, exactly
+  // as before this pass.
+  if (isLocalImageAsset(src)) {
+    return optimizedImageWidths
+      .map((width) => `${getOptimizedImageSrc(src, width, extension)} ${width}w`)
+      .join(", ");
+  }
+
+  // Sanity branch (Project page only -- this function is never called
+  // for Archive Items, see getArchiveOptimizedImageSrcSet below, which
+  // this pass leaves completely untouched): keeps the same smaller
+  // responsive steps for smaller screens, and adds the source's own full
+  // intrinsic width as the largest candidate -- Sanity's CDN resizes on
+  // request, so no file needs generating ahead of time for this, unlike
+  // the local-asset branch above. Never requests a width larger than the
+  // source: candidateWidths only keeps the existing steps that are
+  // STRICTLY smaller than sourceWidth before appending it, so the source
+  // width is never duplicated (e.g. a 1200px-wide source still yields
+  // exactly 400/800/1200, identical to the old behavior) and a source
+  // narrower than a given step never has that step requested oversized.
+  // Falls back to the original capped list if the URL doesn't match the
+  // expected Sanity shape (getSanitySourceWidth returns null) -- the
+  // pre-existing, already-safe behavior, never a guessed width.
+  const sourceWidth = getSanitySourceWidth(src);
+  const candidateWidths = sourceWidth
+    ? [...optimizedImageWidths.filter((width) => width < sourceWidth), sourceWidth]
+    : optimizedImageWidths;
+
+  return candidateWidths
     .map((width) => `${getOptimizedImageSrc(src, width, extension)} ${width}w`)
     .join(", ");
 }

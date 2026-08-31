@@ -612,9 +612,24 @@ export default function ProjectTemplate({ slug, imageId }) {
   // atomic; there's nothing to animate) -- the browser's own per-frame
   // cursor compositing is what makes this feel immediate, not this code.
   useEffect(() => {
-    if (!isHoverCapableInput) return undefined;
     const node = trackpadScrollerRef.current;
     if (!node) return undefined;
+
+    // Project Info overlay fix: ProjectInfoPanel (isOpen=isInfoOpen) is a
+    // fully opaque layer that covers exactly this same image box while
+    // open (see .project-info-panel's own comment in styles.css) -- so
+    // clearing both cursor classes up front, and skipping listener
+    // attachment entirely while isInfoOpen is true, is what keeps the
+    // directional chevron (and, below, click-to-navigate) from ever
+    // applying to the overlay. isInfoOpen is a dependency of this effect,
+    // so it re-runs the moment the overlay opens or closes -- a cursor
+    // already showing at the instant the overlay opens is cleared
+    // immediately rather than lingering until the next pointermove.
+    node.classList.remove(
+      "project-trackpad-scroller--cursor-prev",
+      "project-trackpad-scroller--cursor-next",
+    );
+    if (!isHoverCapableInput || isInfoOpen) return undefined;
 
     // The always-present base <img> (see ImageViewer.jsx's own
     // .project-image-frame__inner) -- deliberately NOT the incoming
@@ -629,17 +644,22 @@ export default function ProjectTemplate({ slug, imageId }) {
       return img ? img.getBoundingClientRect() : null;
     };
 
-    const applyCursorForClientX = (clientX) => {
+    const getDirectionForClientX = (clientX) => {
       const rect = getImageRect();
-      if (!rect || rect.width === 0) return;
+      if (!rect || rect.width === 0) return null;
       const midpointX = rect.left + rect.width / 2;
-      const isLeftHalf = clientX < midpointX;
+      return clientX < midpointX ? "prev" : "next";
+    };
+
+    const applyCursorForClientX = (clientX) => {
+      const direction = getDirectionForClientX(clientX);
+      if (!direction) return;
       // classList.toggle's boolean-force form is a no-op when the class
       // already matches that state -- this never forces a write (or a
       // cursor re-decode) on every single mousemove tick, only on an
       // actual left/right half change.
-      node.classList.toggle("project-trackpad-scroller--cursor-prev", isLeftHalf);
-      node.classList.toggle("project-trackpad-scroller--cursor-next", !isLeftHalf);
+      node.classList.toggle("project-trackpad-scroller--cursor-prev", direction === "prev");
+      node.classList.toggle("project-trackpad-scroller--cursor-next", direction === "next");
     };
 
     // Handled on pointerenter (using that event's own clientX) as well
@@ -649,14 +669,30 @@ export default function ProjectTemplate({ slug, imageId }) {
     const onPointerEnter = (event) => applyCursorForClientX(event.clientX);
     const onPointerMove = (event) => applyCursorForClientX(event.clientX);
 
+    // Click-to-navigate (Project Info overlay fix): reuses the exact
+    // same navigateByGestureRef wheel/touch/trackpad-settle already call
+    // (see this file's own Image swipe/trackpad navigation comment) --
+    // not a new navigation system, just one more trigger for the
+    // existing one, sharing the same left/right-half math the chevron
+    // cursor above already computes. Only ever attached once the
+    // isInfoOpen guard above has already passed, so it can never fire
+    // while the overlay is open.
+    const onClick = (event) => {
+      const direction = getDirectionForClientX(event.clientX);
+      if (!direction) return;
+      navigateByGestureRef.current(direction);
+    };
+
     node.addEventListener("pointerenter", onPointerEnter);
     node.addEventListener("pointermove", onPointerMove);
+    node.addEventListener("click", onClick);
 
     return () => {
       node.removeEventListener("pointerenter", onPointerEnter);
       node.removeEventListener("pointermove", onPointerMove);
+      node.removeEventListener("click", onClick);
     };
-  }, [isHoverCapableInput]);
+  }, [isHoverCapableInput, isInfoOpen]);
 
   if (!project) {
     return (

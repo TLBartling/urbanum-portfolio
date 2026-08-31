@@ -262,6 +262,41 @@ const initialGalleryBatches = 3;
 const minRenderOverscan = 1200;
 const maxRenderOverscan = 3600;
 
+// Bounded Runtime Field pass: how much extra world-space margin, beyond
+// the render window's own edges, procedurally-generated content is kept
+// in React state / the DOM for -- in multiples of the current viewport
+// width. Deliberately generous (several full render-window-widths) so
+// ordinary back-and-forth panning and direction reversal never has to
+// re-derive the bounded set on every frame; only a long, sustained,
+// one-directional pan actually shrinks what's mounted. See
+// getGalleryRetentionWindow.
+const GALLERY_RETENTION_MARGIN_VIEWPORTS = 4;
+
+// Bounded Runtime Field pass (Round G refinement): how much extra
+// world-space margin, beyond the render window's own edges, a
+// procedurally-generated BATCH is kept in the bounded batch CACHE for
+// (see batchCacheRef) -- in the same "multiples of current viewport
+// width" units as GALLERY_RETENTION_MARGIN_VIEWPORTS above, but
+// Round H reversal-safety pass: Round G introduced a bounded batch
+// CACHE here (GALLERY_CACHE_MARGIN_VIEWPORTS + evictDistantBatches)
+// that actually deleted historical batches once the camera moved far
+// enough away. That was found, by direct stress testing, to have a
+// serious behavioral cost: the underlying generator is not
+// seeded/deterministic (see createGalleryBatch's own call sites and
+// pickImage/shuffleArray/getRandomBetween, all plain Math.random()),
+// so an evicted batch could never be regenerated identically -- and
+// extendGalleryIfNeeded only ever generates forward, never backward,
+// so an evicted batch was not regenerated AT ALL when revisited. A
+// long enough one-directional excursion followed by a full reversal
+// could evict enough contiguous batches (including the ones nearest
+// the world origin) that the Archive went completely empty -- 0
+// items, 0 mounted wrappers -- and stayed that way indefinitely, with
+// no self-recovery, until a full regeneration (resize or logo click).
+// That eviction has been removed entirely (see batchCacheRef's own
+// comment below): historical batches are now retained for the whole
+// session, so reversal into any previously-visited world position
+// always finds its original tiles again, never an empty result.
+
 // Desktop Zoom + Motion Polish pass: the margin that resets an
 // already-revealed tile back to its hidden pre-entrance state once it
 // drifts this far past the viewport edge (see isAwayFromViewport's own
@@ -910,6 +945,42 @@ function isItemInRenderWindow(item, renderWindow) {
   const right = left + Number.parseFloat(item.layout.width);
 
   return right >= renderWindow.left && left <= renderWindow.right;
+}
+
+// Bounded Runtime Field pass: shared shape behind
+// getGalleryRetentionWindow below -- widens getGalleryRenderWindow by a
+// margin, in viewport-width units, with the same guaranteedWorldReach
+// floor on the left. (Round H note: this used to also back a second,
+// wider getGalleryCacheWindow used for batch-cache eviction -- removed,
+// see batchCacheRef's own comment -- but is kept factored out here on
+// its own merits, and in case a future pass needs a second nested
+// window again.)
+function getGalleryWindowWithMargin(distance, marginViewports) {
+  const viewportWidth =
+    typeof window === "undefined" ? 1200 : window.innerWidth;
+  const renderWindow = getGalleryRenderWindow(distance);
+  const margin = viewportWidth * marginViewports;
+
+  return {
+    left: Math.max(-getGuaranteedWorldReach(), renderWindow.left - margin),
+    right: renderWindow.right + margin,
+  };
+}
+
+// Bounded Runtime Field pass: the single spatial promise "how much of
+// everything ever procedurally generated should currently be React
+// state / mounted DOM" answers. Deliberately just a wider version of
+// getGalleryRenderWindow's own window -- same guaranteedWorldReach
+// floor on the left, same distance-driven sliding-window shape -- so
+// every item inside the render window is always also inside the
+// retention window (the render window is always a strict subset), and
+// isItemInRenderWindow itself can be reused unchanged to test
+// membership in either.
+function getGalleryRetentionWindow(distance) {
+  return getGalleryWindowWithMargin(
+    distance,
+    GALLERY_RETENTION_MARGIN_VIEWPORTS,
+  );
 }
 
 function shuffleArray(array) {
@@ -2077,24 +2148,39 @@ function createLeftwardGalleryBatch(
   };
 }
 
-function getGalleryTrackWidth(items) {
-  const contentWidth = items.reduce((maxRight, item) => {
-    const left = Number.parseFloat(item.layout.left);
-    const width = Number.parseFloat(item.layout.width);
-
-    return Math.max(maxRight, left + width);
-  }, 0);
-
+// Bounded Runtime Field pass (Round G refinement): pure scalar version
+// of the old getGalleryTrackWidth(items) -- takes the already-tracked
+// rightmost generated world-X edge (frontierRightXRef.current) directly
+// instead of scanning every item ever generated to recompute it. Same
+// output for the same underlying frontier, O(1) instead of O(total
+// lifetime item count).
+function getGalleryTrackWidthFromFrontier(frontierRightX) {
   const viewportWidth =
     typeof window === "undefined" ? 1200 : window.innerWidth;
 
-  return Math.ceil(contentWidth + viewportWidth);
+  return Math.ceil(frontierRightX + viewportWidth);
 }
 
-function getNextGalleryBatchIndex(items) {
-  if (items.length === 0) return 0;
+// Bounded Runtime Field pass (Round G refinement): the bounds of a
+// single batch's own items, computed once (O(batch size), not O(total
+// lifetime item count)) at the moment that batch is created or loaded
+// into the cache -- used to maintain frontierRightXRef and to key
+// batchBoundsRef. Same left/right-edge math getGalleryTrackWidth /
+// isItemInRenderWindow always used, just scoped to one batch's own
+// items instead of the full history.
+function getBatchBounds(items) {
+  return items.reduce(
+    (bounds, item) => {
+      const left = Number.parseFloat(item.layout.left);
+      const right = left + Number.parseFloat(item.layout.width);
 
-  return Math.max(...items.map((item) => item.batchIndex)) + 1;
+      return {
+        left: Math.min(bounds.left, left),
+        right: Math.max(bounds.right, right),
+      };
+    },
+    { left: Infinity, right: -Infinity },
+  );
 }
 
 function clamp(value, min, max) {
@@ -2459,9 +2545,34 @@ function createGalleryRenderer({
     return (openingHeight / 2) * (1 - scale);
   };
 
+  // Bounded Runtime Field pass (Round G idle-work audit): applyTransform
+  // runs every RAF frame the archive's animation loop is alive,
+  // including every frame at rest (the RAF loop itself keeps running
+  // even once motion has fully settled -- see updateGalleryMotion's own
+  // call site). Previously each of the 4 GSAP quickSetter calls below
+  // ran unconditionally every frame regardless of whether the value
+  // being set had actually changed -- quickSetters do not skip
+  // identical-value writes internally. These closure-scoped
+  // lastApplied* values let applyTransform skip a given setter call
+  // when the newly-computed value is byte-identical to what was last
+  // actually applied, with no change to wake-up behavior or motion
+  // feel: the very next frame where any value differs (any real camera
+  // motion, including the first frame after idle) still calls every
+  // setter that needs it, exactly as before.
+  let lastAppliedTrackX = null;
+  let lastAppliedTrackY = null;
+  let lastAppliedTrackScaleX = null;
+  let lastAppliedTrackScaleY = null;
+
   const applyTransform = (distance) => {
     const scale = getEffectiveScale();
-    setTrackX(projectWorldToScreenX(0, distance, scale));
+
+    const nextTrackX = projectWorldToScreenX(0, distance, scale);
+    if (nextTrackX !== lastAppliedTrackX) {
+      setTrackX(nextTrackX);
+      lastAppliedTrackX = nextTrackX;
+    }
+
     // True 2D Cursor Zoom pass: viewportPanYRef.current is the ONLY change
     // here -- see its own declaration and applyZoomAnchor's comment. The
     // base opening-centered compensation is untouched and still runs every
@@ -2469,9 +2580,21 @@ function createGalleryRenderer({
     // relationship viewportPanXRef already has with projectWorldToScreenX.
     // No new wrapper transform, no new element -- same setTrackY call this
     // always was.
-    setTrackY(getVerticalScaleCompensation(scale) + viewportPanYRef.current);
-    setTrackScaleX(scale);
-    setTrackScaleY(scale);
+    const nextTrackY =
+      getVerticalScaleCompensation(scale) + viewportPanYRef.current;
+    if (nextTrackY !== lastAppliedTrackY) {
+      setTrackY(nextTrackY);
+      lastAppliedTrackY = nextTrackY;
+    }
+
+    if (scale !== lastAppliedTrackScaleX) {
+      setTrackScaleX(scale);
+      lastAppliedTrackScaleX = scale;
+    }
+    if (scale !== lastAppliedTrackScaleY) {
+      setTrackScaleY(scale);
+      lastAppliedTrackScaleY = scale;
+    }
   };
 
   const primeEntranceState = (galleryItems) => {
@@ -2757,28 +2880,46 @@ function createGalleryRenderer({
         const nextScale =
           smoothScale + (targetScale - smoothScale) * 0.14;
 
-        wrapper.dataset.smoothX = String(nextX);
-        wrapper.dataset.smoothY = String(nextY);
-        wrapper.dataset.smoothScale = String(nextScale);
-
-        // Convergence-skip (timeout/white-screen investigation follow-up):
-        // once a tile's smoothed x/y/scale have essentially reached their
-        // target, re-issuing gsap.set with the same values every single
-        // frame is pure waste -- confirmed via direct instrumentation to
-        // run ~5,000 times/second, forever, even at complete idle, since
-        // this loop has no exit condition tied to motion. The epsilon
-        // values are on the PER-FRAME DELTA (nextX - smoothX), not the
-        // remaining distance to target directly, but since
+        // Convergence-skip (timeout/white-screen investigation follow-up,
+        // extended by the Round H idle-cost audit): once a tile's
+        // smoothed x/y/scale have essentially reached their target,
+        // re-issuing gsap.set with the same values every single frame is
+        // pure waste -- confirmed via direct instrumentation to run
+        // ~5,000 times/second, forever, even at complete idle, since this
+        // loop has no exit condition tied to motion. The epsilon values
+        // are on the PER-FRAME DELTA (nextX - smoothX), not the remaining
+        // distance to target directly, but since
         // nextX - smoothX === (targetX - smoothX) * 0.14, a delta under
         // 0.02 means the tile is already within ~0.14px of its target (and
         // scale within ~0.0036% of its target) -- sub-pixel, well under
         // anything perceptible, so there is no visible snap when the skip
-        // engages. Only the redundant gsap.set call is skipped; the
-        // smoothX/Y/Scale dataset bookkeeping above still runs every frame
-        // unconditionally, so nothing about the interpolation itself, its
-        // rate, or its target changes -- a tile that later needs to move
-        // again (target changed, e.g. from further scrolling) simply fails
-        // this check on that frame and gsap.set resumes exactly as before.
+        // engages.
+        //
+        // Round H addendum: this comment used to say "only the redundant
+        // gsap.set call is skipped; the smoothX/Y/Scale dataset
+        // bookkeeping above still runs every frame unconditionally." That
+        // was true, and it was wrong to leave that way -- direct
+        // instrumentation during the Round H idle-RAF audit confirmed the
+        // dataset writes alone (3 DOM property writes per converged tile,
+        // per frame, for every visible/entered tile -- no gsap call
+        // needed to make a dataset write real DOM work) were still
+        // running at the same ~4,800/second rate this comment already
+        // knew about for the gsap.set path, indefinitely, even after 5
+        // full minutes of measured idle. The three dataset writes below
+        // are now ALSO gated behind hasConverged, moved down next to the
+        // gsap.set call they were always paired with -- a tile that has
+        // converged simply stops touching the DOM at all, every frame,
+        // until its target changes again (motion resumes, or
+        // relationshipMotion's own direction-driven target flips). A
+        // frozen dataset value is exactly as safe to read next frame as a
+        // freshly-rewritten identical one would have been -- nothing else
+        // in this file reads wrapper.dataset.smoothX/Y/Scale except this
+        // same block's own next-frame read (the only other writers are
+        // the fixed-value resets in the entrance/away-from-viewport
+        // branches elsewhere in this function) -- so this is a strict
+        // narrowing of an already-reviewed-and-shipped optimization, not
+        // a new one: it just stops doing the also-redundant write that
+        // used to happen right next to the now-already-skipped tween.
         //
         // Deliberately excludes any item with relationshipMotion outright,
         // rather than trying to also converge-check zIndex: zIndex here is
@@ -2802,6 +2943,9 @@ function createGalleryRenderer({
           Math.abs(nextScale - smoothScale) < 0.0005;
 
         if (!hasConverged) {
+          wrapper.dataset.smoothX = String(nextX);
+          wrapper.dataset.smoothY = String(nextY);
+          wrapper.dataset.smoothScale = String(nextScale);
           gsap.set(wrapper, {
             opacity: item.opacity,
             x: nextX,
@@ -3064,15 +3208,33 @@ function App() {
     hasBrowsed: false,
   });
   const isExtendingGalleryRef = useRef(false);
-  // TEMPORARY DIAGNOSTIC (extension-race verification pass -- see the
-  // duplicate-batch/duplicate-id console.warn checks inside
-  // extendGalleryIfNeeded and the standalone galleryItems-duplicate-id
-  // effect below). Tracks every batchIndex extendGalleryIfNeeded has ever
-  // generated for this mounted archive session. Write-only: nothing reads
-  // it for actual behavior, so it is safe to delete this declaration and
-  // every block that references it once the extension-race fix is
-  // verified.
-  const generatedBatchIndicesRef = useRef(new Set());
+  // Bounded Runtime Field pass (Round G refinement -- replaces the old
+  // TEMPORARY DIAGNOSTIC generatedBatchIndicesRef Set that used to live
+  // here): the highest batchIndex ever generated for this mounted
+  // archive session, a single scalar. This is what extendGalleryIfNeeded
+  // now reads to compute nextBatchIndex
+  // (highestGeneratedBatchIndexRef.current + 1) instead of scanning any
+  // item array -- O(1) instead of O(total lifetime item count) -- and it
+  // is also now the only duplicate-batch guard needed: since
+  // nextBatchIndex is always this scalar plus one, and this scalar is
+  // only ever advanced (never reset, never recomputed from data that
+  // could be stale or pruned), the same index can structurally never be
+  // computed twice. That makes the old Set-based "has this index already
+  // been generated" diagnostic redundant rather than merely superseded --
+  // it existed to catch a stale-closure race that this scalar-ref design
+  // makes impossible by construction, so it has been removed rather than
+  // kept as an ever-growing diagnostic Set whose only job was proving
+  // another now-removed structure was behaving.
+  const highestGeneratedBatchIndexRef = useRef(-1);
+  // The rightmost world-X edge of anything ever generated for this
+  // session -- the scalar frontier counterpart to
+  // highestGeneratedBatchIndexRef immediately above, maintained the same
+  // way (advanced via Math.max whenever a new batch's own bounds exceed
+  // it, in extendGalleryIfNeeded and regenerateGallery). This is what
+  // getGalleryTrackWidthFromFrontier and extendGalleryIfNeeded's own
+  // remainingTrack check now read instead of scanning a full item
+  // history or reading track.scrollWidth from the DOM.
+  const frontierRightXRef = useRef(0);
   const animatedImagesRef = useRef(new Set());
   // Registry ownership fix: a single persistent Map(item id -> wrapper DOM
   // node), maintained entirely by each wrapper's own callback ref (see the
@@ -3318,6 +3480,55 @@ function App() {
     }),
   );
   const columnStateRef = useRef(null);
+  // Reversal-safety pass (Round H -- supersedes both the original
+  // "complete history" galleryItemsRef array AND Round G's bounded,
+  // evicting batch CACHE that replaced it, in that order): the
+  // PERMANENT historical store of every gallery item ever
+  // procedurally generated this session, keyed by batchIndex ->
+  // items[]. Never evicted -- Round G's eviction (removed) could
+  // permanently delete a batch and leave no way to restore it later,
+  // since neither regeneration (createGalleryBatch is not
+  // seeded/deterministic -- see its own call sites and
+  // pickImage/shuffleArray/getRandomBetween) nor any backward
+  // extension path exists; direct testing showed that could empty the
+  // entire visible Archive with no self-recovery. This Map is what
+  // makes reversal into any previously-visited world position always
+  // find its original tiles again.
+  //
+  // This is still NOT the Round F anti-pattern: a Map keyed by
+  // batchIndex is append-friendly by construction --
+  // batchCacheRef.current.set(nextBatchIndex, newBatch) in
+  // extendGalleryIfNeeded is an O(1) insert, never a full-array copy
+  // (the old galleryItemsRef's `[...galleryItemsRef.current,
+  // ...newBatch]` spread was O(everything ever generated) on every
+  // single extension; this Map never does that). What Round G got
+  // right and this pass keeps: retention/collection reads
+  // (collectRetainedItems below) work at BATCH granularity via
+  // batchBoundsRef immediately below, not by scanning every
+  // individual historical tile. What Round G got wrong, that this
+  // pass undoes: batches were also being deleted from here, not just
+  // read from here. Plain JS objects only, never mounted -- cheap to
+  // keep in full for an entire session.
+  const batchCacheRef = useRef(new Map());
+  // Companion to batchCacheRef: the same batchIndex keys, mapped to
+  // that batch's own {left, right} world-X bounds (see getBatchBounds).
+  // Exists so retention/frontier bookkeeping (collectRetainedItems,
+  // frontierRightXRef maintenance) never has to re-scan a batch's own
+  // items to answer "does this batch's span intersect this window" or
+  // "what is this batch's own right edge" -- both O(1) Map lookups
+  // instead of an O(batch size) scan, computed once at generation
+  // time. Also never pruned, for the same reason batchCacheRef isn't
+  // -- see that ref's own comment.
+  const batchBoundsRef = useRef(new Map());
+  // Mirrors the CURRENT, bounded `galleryItems` state value -- kept in
+  // sync at every one of the (now three) call sites that call
+  // setGalleryItems, never via a separate effect, so it is exactly as
+  // fresh as the state it mirrors with no extra render-cycle lag. Exists
+  // so the main gesture/RAF effect below (Continuous-Effect Stability
+  // pass) can read "what's currently mounted" without depending on
+  // `galleryItems` itself, which is what lets that effect stop rebuilding
+  // on every extension.
+  const galleryItemsStateRef = useRef([]);
   // Metadata Query Wiring: which image pool the procedural generator
   // (buildGalleryItems/createGalleryBatch/pickImage, all untouched) should
   // draw from -- DEFAULT_IMAGE_POOL (the full library, byte-identical to
@@ -3387,6 +3598,15 @@ function App() {
   // sufficient on its own.
   const [headerResetKey, setHeaderResetKey] = useState(0);
   const [galleryItems, setGalleryItems] = useState([]);
+  // Continuous-Effect Stability pass: increments only on a genuine full
+  // regeneration (mount, resize, logo click -- see regenerateGallery),
+  // never on an ordinary extension or retention-window update. The main
+  // gesture/RAF effect below depends on this instead of on `galleryItems`
+  // itself, which is what stops it tearing down and rebuilding its
+  // listeners/RAF loop on every extension while still rebuilding exactly
+  // when it always needed to (a real regeneration invalidates trackRef's
+  // geometry, camera-neutral state, etc.).
+  const [gallerySessionId, setGallerySessionId] = useState(0);
   const [renderWindow, setRenderWindow] = useState(() =>
     getGalleryRenderWindow(),
   );
@@ -3899,7 +4119,41 @@ function App() {
     }
 
     columnStateRef.current = nextColumnState;
+
+    // Bounded Runtime Field pass (Round G refinement): build the bounded
+    // batch cache fresh from this one-time initial `items` array --
+    // O(initial item count), paid once per genuine regeneration (mount,
+    // resize, logo click), never per extension. Grouped by batchIndex
+    // (buildGalleryItems always produces a small, fixed number of
+    // initial batches -- see initialGalleryBatches -- plus the two fixed
+    // leftward/center-seed batches, so this loop is cheap and bounded
+    // regardless of session length) rather than retaining `items` itself
+    // as one flat unbounded array.
+    const initialBatches = new Map();
+    for (const item of items) {
+      const batchItems = initialBatches.get(item.batchIndex) ?? [];
+      batchItems.push(item);
+      initialBatches.set(item.batchIndex, batchItems);
+    }
+    const nextBatchCache = new Map();
+    const nextBatchBounds = new Map();
+    let highestBatchIndex = -1;
+    let frontierRightX = 0;
+    for (const [batchIndex, batchItems] of initialBatches) {
+      nextBatchCache.set(batchIndex, batchItems);
+      const bounds = getBatchBounds(batchItems);
+      nextBatchBounds.set(batchIndex, bounds);
+      highestBatchIndex = Math.max(highestBatchIndex, batchIndex);
+      frontierRightX = Math.max(frontierRightX, bounds.right);
+    }
+    batchCacheRef.current = nextBatchCache;
+    batchBoundsRef.current = nextBatchBounds;
+    highestGeneratedBatchIndexRef.current = highestBatchIndex;
+    frontierRightXRef.current = frontierRightX;
+
+    galleryItemsStateRef.current = items;
     setGalleryItems(items);
+    setGallerySessionId((current) => current + 1);
   }, []);
 
   useEffect(() => {
@@ -3910,6 +4164,82 @@ function App() {
       window.removeEventListener("resize", regenerateGallery);
     };
   }, [regenerateGallery]);
+
+  // Production diagnostic helper (Archive stability pass follow-up):
+  // window.__urbanumDebug() is a manually-invoked, read-only snapshot of
+  // Archive runtime health for use in a live Chrome session. It performs
+  // NO polling, NO interval, NO new RAF work, and NO network/telemetry --
+  // it only reads refs/state/DOM that already exist and are already kept
+  // fresh elsewhere in this component (galleryItemsStateRef is synced on
+  // every commit and by the retention/extension logic; wrapperRegistryRef
+  // and batchCacheRef are the same persistent Maps described by their own
+  // comments above; focusedIdRef/isProjectFilterActiveRef are already
+  // mirrored refs used elsewhere for the same stale-closure-avoidance
+  // reason). Calling it does not alter Archive behavior in any way; it is
+  // attached/detached alongside this component's own mount lifecycle so it
+  // never outlives a real App instance.
+  useEffect(() => {
+    window.__urbanumDebug = () => {
+      const track = trackRef.current;
+      const wrapperCount = document.querySelectorAll(".gallery-image-wrapper").length;
+      const renderedImageCount = document.querySelectorAll(".gallery-image-wrapper img").length;
+      const trackTransform = track ? getComputedStyle(track).transform : null;
+      const trackWidth = track ? track.style.width : null;
+      const distance = galleryMovementRef.current.distance;
+
+      let cameraX = null;
+      let cameraY = null;
+      let cameraScale = null;
+      if (trackTransform && trackTransform.startsWith("matrix(")) {
+        const parts = trackTransform
+          .slice("matrix(".length, -1)
+          .split(",")
+          .map((n) => parseFloat(n.trim()));
+        if (parts.length === 6) {
+          cameraScale = parts[0];
+          cameraX = parts[4];
+          cameraY = parts[5];
+        }
+      }
+
+      const isFiniteNumber = (n) => typeof n === "number" && Number.isFinite(n);
+
+      const report = {
+        timestamp: new Date().toISOString(),
+        galleryItemsCount: galleryItemsStateRef.current.length,
+        mountedWrapperCount: wrapperCount,
+        renderedImageCount,
+        historicalBatchCount: batchCacheRef.current.size,
+        highestGeneratedBatchIndex: highestGeneratedBatchIndexRef.current,
+        cameraDistance: distance,
+        cameraX,
+        cameraY,
+        cameraScale,
+        galleryTrackExists: !!track,
+        galleryTrackTransform: trackTransform,
+        galleryTrackWidth: trackWidth,
+        documentVisibilityState: document.visibilityState,
+        focusedId: focusedIdRef.current,
+        isProjectFilterActive: isProjectFilterActiveRef.current,
+        valid: {
+          distanceIsFinite: isFiniteNumber(distance),
+          cameraXIsFinite: cameraX === null || isFiniteNumber(cameraX),
+          cameraYIsFinite: cameraY === null || isFiniteNumber(cameraY),
+          cameraScaleIsFinite: cameraScale === null || isFiniteNumber(cameraScale),
+        },
+      };
+
+      // Intentional, manual-only diagnostic output -- never called
+      // automatically, so this is not console spam.
+      // eslint-disable-next-line no-console
+      console.log("[urbanum-debug]", report);
+      return report;
+    };
+
+    return () => {
+      delete window.__urbanumDebug;
+    };
+  }, []);
 
   // Mobile Archive Interaction Pass -- Stage 1B (Bottom Control Clearance):
   // measures .zoom-controls' own real rendered height (see zoomControlsRef
@@ -4166,7 +4496,12 @@ function App() {
       );
     });
 
-    galleryItems.forEach((item) => {
+    // Continuous-Effect Stability pass: reads galleryItemsStateRef.current
+    // (mirrors the current, bounded galleryItems state -- see that ref's
+    // own comment) instead of `galleryItems` directly, so this callback
+    // itself no longer needs to change identity every time galleryItems
+    // changes -- see the deps array below.
+    galleryItemsStateRef.current.forEach((item) => {
       const wrapper = getImageWrapper(item.id);
       if (!wrapper) return;
 
@@ -4186,7 +4521,7 @@ function App() {
     });
 
     focusTimelineRef.current = tl;
-  }, [galleryItems, getImageWrapper]);
+  }, [getImageWrapper]);
 
   // Archive State Reset (canonical): the one place the archive returns to
   // its neutral browsing state. Search (handleSearchSubmit/Clear), Filter
@@ -4549,7 +4884,9 @@ function App() {
         0,
       );
 
-      galleryItems.forEach((item) => {
+      // Continuous-Effect Stability pass: see handleExitFocus's identical
+      // comment just above its own equivalent forEach.
+      galleryItemsStateRef.current.forEach((item) => {
         const imageWrapper = getImageWrapper(item.id);
         if (!imageWrapper) return;
 
@@ -4570,7 +4907,7 @@ function App() {
 
       focusTimelineRef.current = tl;
     },
-    [galleryItems, getImageWrapper],
+    [getImageWrapper],
   );
 
   const handleRelatedImageEnter = useCallback((event) => {
@@ -4738,23 +5075,19 @@ function App() {
 
     if (!scrollContainer || !track) return;
 
-    // Extension-guard release (extension-race fix): this effect body only
-    // runs once React has committed the current `galleryItems` -- this
-    // effect's own dependency -- and flushed this component's effects for
-    // that commit. Reaching this line IS the "the newly generated batch
-    // has actually committed" signal extendGalleryIfNeeded's guard is
-    // meant to wait for, so the guard is released here, synchronously, and
-    // nowhere else. Previously this was released on an independent
-    // requestAnimationFrame scheduled from inside extendGalleryIfNeeded
-    // (untracked by this effect's own cleanup below), which could fire
-    // before React had actually flushed the cleanup/re-setup for this
-    // effect -- letting a stale animateGallery closure from the PREVIOUS
-    // effect instance (still closed over the pre-extension galleryItems)
-    // observe the guard as open and recompute the same nextBatchIndex a
-    // second time. Resetting here instead means a stale closure can only
-    // ever observe isExtendingGalleryRef.current === true until this exact
-    // point is reached -- and a stale closure, by definition, never reaches
-    // this point again (only the current, non-stale effect instance does).
+    // Extension-guard reset (Bounded Runtime Field pass -- supersedes the
+    // old "extension-race fix" comment that used to live here): this
+    // effect body now only runs on a genuine full regeneration (mount,
+    // resize, logo click -- see gallerySessionId, this effect's own
+    // dependency below), never on an ordinary extension, so this line no
+    // longer needs to do any stale-closure bookkeeping -- it is simply
+    // "a fresh regeneration starts with no extension in flight." The
+    // actual per-extension release now happens synchronously at the end
+    // of extendGalleryIfNeeded itself, immediately after it registers
+    // the new batch in the bounded batch cache (Round G refinement --
+    // see that function's own comment) -- see that function's own
+    // comment for why that is safe now that nextBatchIndex is computed
+    // from a ref instead of the `galleryItems` closure/state value.
     isExtendingGalleryRef.current = false;
 
     const movement = galleryMovementRef.current;
@@ -4772,8 +5105,10 @@ function App() {
     // Mobile Baseline Pass -- Task 3 (Archive pinch-to-zoom): gesture-
     // start-anchored pinch state, same closure-scoped-let lifetime as
     // touchPoint immediately above (reset whenever this effect's own
-    // [galleryItems] dependency changes, exactly like touchPoint already
-    // is). null whenever fewer/more than two touches are down; set fresh
+    // [gallerySessionId] dependency changes -- i.e. on a genuine
+    // regeneration, not on an ordinary extension -- exactly like
+    // touchPoint already is). null whenever fewer/more than two touches
+    // are down; set fresh
     // in handleTouchStart the instant a second touch lands, holding the
     // two-finger distance/midpoint/scale AT THAT MOMENT -- every
     // subsequent touchmove frame computes the desired scale directly from
@@ -4807,8 +5142,9 @@ function App() {
     let pinchCooldownUntil = 0;
     // Browsing/Exploration mode: pending "settle" timer, same lifetime
     // scope as animationFrame/touchPoint above (this whole effect body is
-    // recreated only when galleryItems changes -- see this effect's own
-    // dependency array). Set once motion drops under
+    // now recreated only on a genuine regeneration, not on every ordinary
+    // extension -- see gallerySessionId and this effect's own dependency
+    // array). Set once motion drops under
     // SCROLL_IDLE_VELOCITY_EPSILON, cleared immediately if real motion
     // resumes before it fires -- see animateGallery below.
     let scrollIdleTimeout = null;
@@ -4817,6 +5153,38 @@ function App() {
     // already false), cleared immediately if real motion resumes before it
     // fires. See FIELD_SETTLE_GRACE_MS/isFieldSettledRef's own comments.
     let fieldSettleTimeout = null;
+    // Bounded Runtime Field pass: the retention window's own debounce
+    // baseline, exactly the same idiom renderWindowRef/updateRenderWindow
+    // already use for the (narrower) render window -- avoids
+    // recomputing and re-collecting retained items from the batch cache
+    // on every single frame when the camera has only moved a few px.
+    // Initialized against the camera's starting position so the first
+    // real frame doesn't immediately treat that as "the window moved."
+    let lastRetentionWindow = getGalleryRetentionWindow(movement.distance);
+    const retentionWindowUpdateThreshold = Math.max(
+      window.innerWidth * 1.5,
+      900,
+    );
+    // Bounded Runtime Field pass: galleryItemsById (below) used to be
+    // rebuilt once per effect setup, which was correct only because this
+    // effect used to rebuild on every extension too (see this effect's
+    // own dependency array further down). Now that it doesn't, the Map
+    // is rebuilt lazily, on demand, only when galleryItemsStateRef.current
+    // has actually changed since the last build (reference equality --
+    // every place that changes it always assigns a fresh array/filter
+    // result, never mutates in place) -- see getGalleryItemsById below.
+    let cachedGalleryItemsById = null;
+    let cachedGalleryItemsByIdSource = null;
+    const getGalleryItemsById = () => {
+      const current = galleryItemsStateRef.current;
+      if (cachedGalleryItemsByIdSource !== current) {
+        cachedGalleryItemsById = new Map(
+          current.map((item) => [item.id, item]),
+        );
+        cachedGalleryItemsByIdSource = current;
+      }
+      return cachedGalleryItemsById;
+    };
 
     scrollContainer.style.height = "100vh";
 
@@ -4848,17 +5216,59 @@ function App() {
 
     galleryRenderer.primeEntranceState(galleryItems);
 
-    // Perf: built once per effect setup (i.e. once per gallery extension,
-    // since this whole effect depends on [galleryItems]), not once per
-    // animation frame. Lets updateEntranceAnimations look up an item by id
-    // in O(1) while only ever visiting currently-mounted wrappers -- see
-    // updateEntranceAnimations's own comment.
-    const galleryItemsById = new Map(
-      galleryItems.map((item) => [item.id, item]),
-    );
+    // Perf: Map lookup by id, O(1), built lazily by getGalleryItemsById
+    // above only when galleryItemsStateRef.current has actually changed --
+    // see that getter's own comment.
+
+    // Reversal-safety pass (Round H -- supersedes the old
+    // "galleryItemsRef.current.filter(...)" from before Round G, AND
+    // Round G's own "already bounded by evictDistantBatches" framing,
+    // since eviction has been removed -- see batchCacheRef's own
+    // comment): instead of scanning every item ever generated, only
+    // visits the batches in batchBoundsRef -- ALL of them, for the
+    // whole session, since nothing is ever evicted from it anymore --
+    // at BATCH granularity first (a cheap bounds check per batch,
+    // never touching that batch's actual items unless its bounds
+    // intersect), then flattens only the intersecting batches' items
+    // and applies the exact same per-item isItemInRenderWindow test
+    // the old code always used. Cost is O(total lifetime BATCH count +
+    // items in batches that actually intersect the window) -- batches
+    // are coarse (tens of items each), so this is far cheaper than the
+    // old O(total lifetime ITEM count), even though it does still grow
+    // slowly with session length. This runs only when the debounced
+    // retention-window threshold below is actually crossed, not every
+    // frame -- see updateGalleryRetention's own comment.
+    const collectRetainedItems = (retentionWindow) => {
+      const retained = [];
+      for (const [batchIndex, bounds] of batchBoundsRef.current) {
+        if (
+          bounds.right < retentionWindow.left ||
+          bounds.left > retentionWindow.right
+        ) {
+          continue;
+        }
+        const batchItems = batchCacheRef.current.get(batchIndex);
+        if (!batchItems) continue;
+        for (const item of batchItems) {
+          if (isItemInRenderWindow(item, retentionWindow)) {
+            retained.push(item);
+          }
+        }
+      }
+      return retained;
+    };
 
     const extendGalleryIfNeeded = () => {
-      const remainingTrack = track.scrollWidth - movement.distance;
+      // Bounded Runtime Field pass (Round G refinement): reads the
+      // scalar frontierRightXRef instead of the DOM's track.scrollWidth
+      // -- same value (the track's width IS derived from this same
+      // frontier, via getGalleryTrackWidthFromFrontier in the JSX style
+      // below), but a scalar read instead of a layout read, which also
+      // serves the idle-cost audit (this function runs every RAF
+      // frame).
+      const remainingTrack =
+        getGalleryTrackWidthFromFrontier(frontierRightXRef.current) -
+        movement.distance;
       const extensionThreshold = window.innerWidth * 3;
 
       if (
@@ -4900,29 +5310,39 @@ function App() {
       // updater touches nothing else. However many times React invokes
       // that updater, it produces the identical result every time and
       // mutates nothing, so replay is harmless by construction.
-      const nextBatchIndex = getNextGalleryBatchIndex(galleryItems);
+      // Bounded Runtime Field pass (Round G refinement -- supersedes the
+      // "galleryItemsRef.current (the full, never-pruned generation
+      // history)" comment that used to live here): nextBatchIndex is
+      // now a single scalar increment of highestGeneratedBatchIndexRef,
+      // rather than a scan (of any size) over any item collection. The
+      // same reasoning that justified reading a full history instead of
+      // the bounded `galleryItems` state still applies -- this scalar,
+      // like the old full-history array, is never pruned as the camera
+      // moves, so it is always correct regardless of what's currently
+      // bounded into view or cached -- it just no longer needs an
+      // actual array of items to stay correct.
+      const nextBatchIndex = highestGeneratedBatchIndexRef.current + 1;
 
-      // TEMPORARY DIAGNOSTIC (extension-race verification pass -- see
-      // generatedBatchIndicesRef's own comment). Two independent signals:
-      // (1) this closure's own, possibly-stale galleryItems already
-      // contains the batchIndex it's about to generate again; (2) this
-      // batchIndex has been generated by ANY closure (stale or current)
-      // during this mounted session, which is the check that actually
-      // catches the traced race, since a stale closure's own galleryItems
-      // does not yet contain the batch that made it stale.
-      if (galleryItems.some((item) => item.batchIndex === nextBatchIndex)) {
+      // Bounded Runtime Field pass (Round G refinement -- replaces both
+      // TEMPORARY DIAGNOSTIC checks that used to live here, including
+      // the generatedBatchIndicesRef Set): with nextBatchIndex now
+      // derived from a monotonically-advancing scalar (never reset,
+      // never recomputed from data that could be stale or pruned), the
+      // same index can no longer be computed twice by construction --
+      // there is no longer a data shape in which that diagnostic could
+      // ever fire, so it has been removed rather than kept as an
+      // ever-growing Set whose only job was proving another
+      // now-removed structure was behaving. The check below is kept as
+      // a genuine, O(1), always-meaningful correctness assertion (it
+      // stays meaningful even after the scalar-index design, since the
+      // cache could in principle be handed a stale/duplicate batch by
+      // a future bug) rather than a leftover mirror of removed state.
+      if (batchCacheRef.current.has(nextBatchIndex)) {
         console.warn(
-          "[gallery-extension-diagnostic] extendGalleryIfNeeded computed nextBatchIndex that this closure's own galleryItems already contains.",
-          { nextBatchIndex, galleryItemsLength: galleryItems.length, timestamp: performance.now() },
-        );
-      }
-      if (generatedBatchIndicesRef.current.has(nextBatchIndex)) {
-        console.warn(
-          "[gallery-extension-diagnostic] batchIndex has already been generated once before during this scroll session -- this is the stale-closure extension race.",
+          "[gallery-extension-diagnostic] batchCacheRef already has an entry for nextBatchIndex -- this should be structurally impossible now that nextBatchIndex derives from a monotonic scalar.",
           { nextBatchIndex, timestamp: performance.now() },
         );
       }
-      generatedBatchIndicesRef.current.add(nextBatchIndex);
 
       const { items: newBatch, nextColumnState } = createGalleryBatch(
         nextBatchIndex,
@@ -4933,16 +5353,93 @@ function App() {
 
       columnStateRef.current = nextColumnState;
 
-      setGalleryItems((currentItems) => [...currentItems, ...newBatch]);
+      // Bounded Runtime Field pass (Round G refinement): insert the new
+      // batch into the bounded cache (O(new batch size) to compute its
+      // own bounds, O(1) to store) instead of appending to an unbounded
+      // "full history" array, advance the two frontier scalars, prime
+      // the newly-created batch's entrance state exactly like the
+      // pre-existing primeEntranceState(galleryItems) call used to for
+      // every extension's worth of new items (this effect used to
+      // rebuild -- and re-run that call -- on every extension; now it
+      // doesn't, so newBatch needs its own explicit prime here instead),
+      // then derive the bounded RETENTION window and commit the
+      // currently-cached, currently-in-window items to React state via
+      // collectRetainedItems (never a full-array filter). This makes
+      // the newly-generated batch appear immediately (matching the
+      // pre-existing behavior exactly) and performs a prune pass at the
+      // one moment growth actually happens, rather than waiting for
+      // updateGalleryRetention's own debounced per-frame check (which
+      // still runs every frame below and is what handles the
+      // reverse-direction case, and the cache-eviction pass -- see that
+      // function's own comment).
+      const newBatchBounds = getBatchBounds(newBatch);
+      batchCacheRef.current.set(nextBatchIndex, newBatch);
+      batchBoundsRef.current.set(nextBatchIndex, newBatchBounds);
+      highestGeneratedBatchIndexRef.current = nextBatchIndex;
+      frontierRightXRef.current = Math.max(
+        frontierRightXRef.current,
+        newBatchBounds.right,
+      );
+      galleryRenderer.primeEntranceState(newBatch);
+      lastRetentionWindow = getGalleryRetentionWindow(movement.distance);
+      const retainedItems = collectRetainedItems(lastRetentionWindow);
+      galleryItemsStateRef.current = retainedItems;
+      setGalleryItems(retainedItems);
 
-      // isExtendingGalleryRef is released once this effect re-runs against
-      // the committed galleryItems that now contains newBatch -- see the
-      // reset at the top of this effect body, not here. Releasing it here
-      // via an independent requestAnimationFrame (the previous
-      // implementation) could fire before React had actually flushed this
-      // effect's cleanup/re-setup, letting a stale animateGallery closure
-      // observe the guard as open before its own galleryItems reflected
-      // this extension -- see this function's own comment above.
+      // Extension-guard release (extension-race fix, revised for the
+      // Bounded Runtime Field pass): previously released only once this
+      // effect re-ran against the newly-committed `galleryItems` state,
+      // specifically to guard against a stale closure recomputing the
+      // same nextBatchIndex from a stale `galleryItems` STATE value
+      // before React had flushed the update. That hazard no longer
+      // exists: nextBatchIndex above is now computed from
+      // highestGeneratedBatchIndexRef, a ref updated synchronously a few
+      // lines above this comment -- there is no React-commit round trip
+      // left to wait for, and no stale closure possible, since a ref
+      // read is never stale relative to a synchronous ref write.
+      // Releasing immediately, synchronously, is therefore both simpler
+      // and correct: the very next call to this function (next RAF
+      // frame) will see isExtendingGalleryRef.current === false and
+      // highestGeneratedBatchIndexRef.current already reflecting this
+      // batch, so it can only ever compute the NEXT index, never a
+      // duplicate of this one.
+      isExtendingGalleryRef.current = false;
+    };
+
+    // Bounded Runtime Field pass (comment revised, Round H): the
+    // symmetric counterpart to the append at the end of
+    // extendGalleryIfNeeded above. That one only ever runs forward (an
+    // extension only ever grows the world in the direction of
+    // travel), so it is also the only place that grows React state
+    // going forward. This function is what restores previously-pruned
+    // items as the camera moves BACK toward them -- reversing
+    // direction, or simply drifting back after a long pan -- by
+    // reading back out of batchCacheRef, which (as of Round H) is
+    // never pruned, so this always finds a previously-visited
+    // region's original tiles again, with no exceptions. Only what is
+    // currently checked into React state changes here -- the
+    // historical store itself is untouched. Debounced exactly like
+    // updateRenderWindow (same threshold idiom, a larger distance
+    // since the retention window itself is larger), so ordinary small
+    // movements don't re-collect retained items from the historical
+    // store every frame -- only once the camera has moved far enough
+    // that the retained set could actually need to change. (Round G
+    // also ran a second, wider-margin batch-CACHE EVICTION pass from
+    // here -- removed; see batchCacheRef's own comment for why.)
+    const updateGalleryRetention = () => {
+      const retentionWindow = getGalleryRetentionWindow(movement.distance);
+
+      if (
+        Math.abs(retentionWindow.left - lastRetentionWindow.left) >=
+          retentionWindowUpdateThreshold ||
+        Math.abs(retentionWindow.right - lastRetentionWindow.right) >=
+          retentionWindowUpdateThreshold
+      ) {
+        lastRetentionWindow = retentionWindow;
+        const retainedItems = collectRetainedItems(retentionWindow);
+        galleryItemsStateRef.current = retainedItems;
+        setGalleryItems(retainedItems);
+      }
     };
 
     const updateGalleryMotion = () => {
@@ -5045,7 +5542,8 @@ function App() {
       galleryRenderer.applyTransform(movement.distance);
       extendGalleryIfNeeded();
       galleryRenderer.updateRenderWindow();
-      galleryRenderer.updateEntranceAnimations(galleryItemsById);
+      updateGalleryRetention();
+      galleryRenderer.updateEntranceAnimations(getGalleryItemsById());
       if (movement.distance > browsingThreshold) {
         movement.hasBrowsed = true;
       }
@@ -5267,8 +5765,8 @@ function App() {
       // scoped wheel handler (see its useWheelToHorizontalScroll) is the
       // only thing that responds to the gesture, rather than the two
       // fighting over the same wheel event. Reads a ref, not state, so
-      // this effect's own dependency array ([galleryItems], unchanged)
-      // never needs Project-filter state added to it.
+      // this effect's own dependency array ([gallerySessionId]) never
+      // needs Project-filter state added to it.
       //
       // Mobile Archive Interaction Pass -- Stage 0 (Overlay Gesture
       // Guard): same early-return, now also while Menu or the mobile
@@ -5689,16 +6187,28 @@ function App() {
       window.removeEventListener("touchend", handleTouchEnd);
       window.removeEventListener("touchcancel", handleTouchCancel);
     };
-  }, [galleryItems]);
+    // Continuous-Effect Stability pass: depends on gallerySessionId
+    // instead of galleryItems -- see that state's own declaration comment.
+    // This is the actual fix for the confirmed diagnostic finding that
+    // this effect (listeners + RAF loop) used to tear down and rebuild on
+    // every ordinary gallery extension, not just on a genuine
+    // regeneration.
+  }, [gallerySessionId]);
 
-  // TEMPORARY DIAGNOSTIC (extension-race verification pass -- see
-  // generatedBatchIndicesRef's own comment). Runs whenever galleryItems
-  // commits and scans for duplicate item.id values, which is the direct,
-  // observable consequence of the extension race this pass is verifying
-  // the fix for (duplicate batchIndex -> duplicate id -> React key
-  // collision -> orphaned wrapperRegistryRef entry). Self-contained and
-  // side-effect-free (console.warn only) -- safe to delete this entire
-  // effect once the fix is verified.
+  // TEMPORARY DIAGNOSTIC (extension-race verification pass, comment
+  // updated for the Round G bounded-batch-cache refinement --
+  // generatedBatchIndicesRef itself has been removed, see
+  // highestGeneratedBatchIndexRef's own comment for why the race it
+  // guarded against is now structurally impossible). Runs whenever the
+  // bounded `galleryItems` state commits and scans for duplicate
+  // item.id values within it -- O(currently-retained item count), not
+  // O(total lifetime item count), since `galleryItems` itself has been
+  // bounded since the prior pass. Kept as a cheap, genuine correctness
+  // assertion for the batch-cache refactor too: a duplicate id here
+  // would mean two different cached batches produced overlapping items,
+  // which should also now be structurally impossible. Self-contained
+  // and side-effect-free (console.warn only) -- safe to delete this
+  // entire effect once both fixes are considered fully verified.
   useEffect(() => {
     const seenIds = new Set();
     for (const item of galleryItems) {
@@ -5869,7 +6379,16 @@ function App() {
               }${isScrolling ? " is-scrolling" : ""}`}
               ref={trackRef}
               style={{
-                width: `${getGalleryTrackWidth(galleryItems)}px`,
+                // Bounded Runtime Field pass (Round G refinement): reads
+                // frontierRightXRef.current (a scalar, maintained
+                // alongside the bounded batch cache -- see that ref's
+                // own comment), not the bounded `galleryItems` state --
+                // this width has to keep representing the TRUE full
+                // generated extent regardless of how much of that
+                // extent is currently retained in state or cache, since
+                // extendGalleryIfNeeded's own remainingTrack check
+                // depends on it staying accurate.
+                width: `${getGalleryTrackWidthFromFrontier(frontierRightXRef.current)}px`,
                 // Project Filter Composition: hidden (never unmounted) while
                 // ProjectFilterRow is what's showing instead -- trackRef
                 // must stay pointed at the same, permanently-mounted DOM
@@ -6089,7 +6608,7 @@ function App() {
                       width={dimensions.width}
                       height={dimensions.height}
                       loading={shouldEagerLoadImage(item) ? "eager" : "lazy"}
-                      fetchPriority={
+                      fetchpriority={
                         shouldEagerLoadImage(item) ? "high" : "auto"
                       }
                       decoding="async"
@@ -6344,7 +6863,7 @@ function App() {
               width={dimensions.width}
               height={dimensions.height}
               loading="eager"
-              fetchPriority="high"
+              fetchpriority="high"
               decoding="async"
             />
           </picture>

@@ -386,7 +386,7 @@ function IncomingOverlay({ image, armed, onFaded }) {
           src={getOptimizedImageSrc(image.image, 1200)}
           alt=""
           loading="eager"
-          fetchPriority="high"
+          fetchpriority="high"
           decoding="async"
           onLoad={() => setLoaded(true)}
           onError={() => setLoaded(true)}
@@ -667,7 +667,7 @@ export default function ImageViewer({ image, displayedImage, onImageLoaded }) {
                 `Archive ${renderedImage.archiveNumber}`
               }
               loading="eager"
-              fetchPriority="high"
+              fetchpriority="high"
               decoding="async"
               onLoad={handleBaseLoad}
               onError={handleBaseLoad}

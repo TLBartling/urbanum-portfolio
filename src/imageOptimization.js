@@ -188,7 +188,32 @@ export function getArchiveOptimizedImageSrc(src, width = 800, extension = "jpg")
 
 export function getArchiveOptimizedImageSrcSet(src, extension) {
   if (!isLocalImageAsset(src) && !isSanityImageAsset(src)) return undefined;
-  return optimizedImageWidths
+
+  // Local Archive assets are untouched: scripts/optimize-archive-images.mjs
+  // only ever generated real files at these three widths, so this branch
+  // keeps requesting exactly optimizedImageWidths, exactly as before this
+  // pass.
+  if (isLocalImageAsset(src)) {
+    return optimizedImageWidths
+      .map((width) => `${getArchiveOptimizedImageSrc(src, width, extension)} ${width}w`)
+      .join(", ");
+  }
+
+  // Sanity branch (Archive quality fix, same shape as the Project-page
+  // fix in getOptimizedImageSrcSet above -- reuses the same
+  // getSanitySourceWidth helper): keeps the same smaller responsive
+  // steps for small/medium tiles, and adds the source's own full
+  // intrinsic width as the largest candidate so large `discovery` tiles
+  // and Retina displays are no longer capped at 1200px. Never requests a
+  // width larger than the source. ARCHIVE_SANITY_IMAGE_QUALITY (72) and
+  // getGalleryImageSizes' own per-tile `sizes` value are both untouched
+  // by this change -- only the candidate width list grows.
+  const sourceWidth = getSanitySourceWidth(src);
+  const candidateWidths = sourceWidth
+    ? [...optimizedImageWidths.filter((width) => width < sourceWidth), sourceWidth]
+    : optimizedImageWidths;
+
+  return candidateWidths
     .map((width) => `${getArchiveOptimizedImageSrc(src, width, extension)} ${width}w`)
     .join(", ");
 }

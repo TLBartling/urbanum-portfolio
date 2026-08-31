@@ -873,10 +873,36 @@ function getGuaranteedWorldReach() {
 // does, from one shared source instead of a second, possibly-drifting
 // copy. See that file's own comments for the full reasoning.
 
+// Archive image-quality floor pass: `sizes` describes this tile's own
+// un-transformed CSS layout box only -- browsers have no way to account
+// for the Archive camera's own `transform: scale(...)` zoom (see
+// createGalleryRenderer's setTrackScaleX/Y quickSetters) when evaluating
+// srcset, so a tile actually being viewed zoomed-in would otherwise
+// always request a candidate sized for its neutral, unzoomed footprint,
+// reading as blurry once genuinely magnified. Continuously tracking the
+// live camera scale here would mean wiring this into the RAF/motion loop
+// (out of scope for this pass, and exactly the kind of broad change it
+// asks to avoid) -- so instead this applies one small, fixed headroom
+// multiplier, and ONLY to `discovery` tiles (the large/hero tiles
+// COLUMN_PATTERNS itself already flags -- see layout.discovery's own
+// comment above), landing in the "roughly 1.5-2x effective pixel
+// density" range this pass targets for large/zoomed tiles specifically.
+// Ordinary (non-discovery) tiles -- the large majority of what's on
+// screen at once -- return exactly their own authored width, completely
+// unchanged, so they keep selecting the cheap 400/800 srcset candidates
+// exactly as before. This only changes what `sizes` string is requested;
+// it never changes the srcset candidate list itself (still built by
+// getArchiveOptimizedImageSrcSet, still capped at the Sanity source's own
+// intrinsic width, still 400/800/1200 only for local assets).
+const ARCHIVE_DISCOVERY_TILE_SIZES_HEADROOM = 1.75;
+
 function getGalleryImageSizes(layout) {
   const width = Math.ceil(Number.parseFloat(layout.width));
+  const effectiveWidth = layout.discovery
+    ? Math.ceil(width * ARCHIVE_DISCOVERY_TILE_SIZES_HEADROOM)
+    : width;
 
-  return `${width}px`;
+  return `${effectiveWidth}px`;
 }
 
 // getImageDimensions also now lives in ./imageOptimization.js (imported

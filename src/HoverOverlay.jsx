@@ -383,7 +383,14 @@ function HoverOverlay({
           only genuine physical impossibility at that floor (a container too
           small to hold even the shortest single line) results in no visible
           themes, never a separate editorial decision. */}
-      {discovery && shuffledThemes.length > 0 && (
+      {/* Mobile Archive Interaction pass (client-approved): Lexicon/theme
+          tags are removed from the mobile tile interaction entirely --
+          isInspected is only ever true on a touch device (see this
+          component's own prop comment above), so gating on !isInspected
+          here hides this list purely for that case, leaving desktop's
+          discovery-tile hover reveal (isInspected always false there)
+          completely unaffected. */}
+      {discovery && !isInspected && shuffledThemes.length > 0 && (
         <ul className="hover-overlay__themes">
           {shuffledThemes.map((theme) => (
             <li
@@ -439,7 +446,15 @@ function HoverOverlay({
           component's own .hover-overlay__enter-project rule in styles.css,
           the same targeted opt-in .hover-overlay__themes li already uses
           against this card's own pointer-events: none default. */}
-      {isInspected && onEnterProject && (
+      {/* Mobile Archive Interaction pass (client-approved): the visible
+          "View Project" label itself is now discovery-tile (large tile)
+          only -- small tiles show the Archive Number alone, per the
+          approved size distinction, rather than shrinking this label to
+          force it into a tile with no room for it. Small, Project-linked
+          tiles are still fully tappable to enter the Project -- that's
+          handled at the whole-tile level now (see App.jsx's
+          handleGalleryTileTap), not only through this label. */}
+      {isInspected && onEnterProject && discovery && (
         <div
           className="hover-overlay__enter-project"
           role="button"

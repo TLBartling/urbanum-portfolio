@@ -4040,19 +4040,42 @@ function App() {
   // mirroring how a background tap or a different tile's tap already
   // dismiss it (see handleTouchEnd/handleTouchMove/handleTouchStart's own
   // Stage 5 additions).
-  const handleGalleryTileTap = useCallback((itemId) => {
-    // Mobile Header/Search/Menu Refinement Pass -- Section 6 (Haptics): a
-    // genuine inspection tap gets a single, subtle tick -- but only on the
-    // tap that OPENS the card, never the second tap that dismisses it (a
-    // plain toggle back to nothing shouldn't buzz). inspectedItemIdRef is
-    // read here, before the state update is scheduled, rather than inside
-    // the setInspectedItemId updater itself -- keeping the updater a pure
-    // function of its previous state, with the one-time side effect
-    // decided from the ref snapshot of what's committed right now.
-    const isOpening = inspectedItemIdRef.current !== itemId;
-    setInspectedItemId((current) => (current === itemId ? null : itemId));
-    if (isOpening) hapticTap();
-  }, []);
+  //
+  // Mobile Archive Interaction pass (client-approved, whole-tile tap-to-
+  // enter): the one exception to "second tap always dismisses," added
+  // below -- a SECOND tap on a tile that's already inspected AND Project-
+  // linked now enters the Project instead, via the exact same
+  // handleProjectRowImageClick fade-then-navigate function the "View
+  // Project" control inside HoverOverlay already calls (not a second
+  // navigation mechanism). This is what makes the whole tile a valid
+  // "open the Project" target, not only the small "View Project" label --
+  // that label still renders (large/discovery tiles only, see
+  // HoverOverlay.jsx) and still works identically via its own
+  // stopPropagation'd click; it just no longer has to be the ONLY way in.
+  // A tile with no Project (item.project falsy) keeps the plain dismiss
+  // toggle exactly as before -- there is nowhere for a second tap on
+  // those to go.
+  const handleGalleryTileTap = useCallback(
+    (item) => {
+      const wasInspected = inspectedItemIdRef.current === item.id;
+      if (wasInspected && item.project) {
+        handleProjectRowImageClick(item);
+        return;
+      }
+      // Mobile Header/Search/Menu Refinement Pass -- Section 6 (Haptics): a
+      // genuine inspection tap gets a single, subtle tick -- but only on the
+      // tap that OPENS the card, never the second tap that dismisses it (a
+      // plain toggle back to nothing shouldn't buzz). inspectedItemIdRef is
+      // read here, before the state update is scheduled, rather than inside
+      // the setInspectedItemId updater itself -- keeping the updater a pure
+      // function of its previous state, with the one-time side effect
+      // decided from the ref snapshot of what's committed right now.
+      const isOpening = !wasInspected;
+      setInspectedItemId((current) => (current === item.id ? null : item.id));
+      if (isOpening) hapticTap();
+    },
+    [handleProjectRowImageClick],
+  );
 
   // Shared regeneration sequence -- used on mount, on window resize, and
   // (see handleLogoClick below) when the logo is clicked on the homepage.
@@ -6552,7 +6575,7 @@ function App() {
                     // anything that wasn't one. Desktop's own click
                     // behavior (below) is completely unchanged.
                     isTouchDevice
-                      ? () => handleGalleryTileTap(item.id)
+                      ? () => handleGalleryTileTap(item)
                       : isProjectLinked
                         ? () => {
                             // Site-wide fade transition system: see

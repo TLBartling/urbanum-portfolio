@@ -4264,6 +4264,15 @@ html.is-browsing .zoom-controls {
 .project-image-column {
   flex: 1 1 auto;
   min-width: 0;
+  /* Invisible native-scroll-container experiment: this column is now the
+     containing block for .project-trackpad-scroller's own
+     `position: absolute; inset: 0;` (see further below) -- without this,
+     that overlay would resolve against .project-viewer instead (the
+     nearest ancestor that already declares position: relative, for
+     ProjectInfoPanel's own overlay), and incorrectly cover the Project
+     Information column too. A plain `position: relative` here changes
+     nothing about this element's own flex-row sizing or position. */
+  position: relative;
   /* Swipe-containment pass: this is the exact element ProjectTemplate.jsx
      attaches its touch/wheel gesture listeners to (imageColumnRef -- see
      that file's own "Image swipe/trackpad navigation" comment), so it's
@@ -4284,6 +4293,101 @@ html.is-browsing .zoom-controls {
      .about-content/body/html -- see this rule's own report for why a
      wider scope was never tried. */
   overscroll-behavior-x: contain;
+}
+
+/* Invisible native-scroll-container experiment (real-scroll-container
+   trackpad pass): a genuine horizontal scroll surface, laid directly over
+   .project-image-column (see that rule's own new `position: relative`
+   just above), whose only purpose is to give desktop trackpad gestures a
+   real local scroll container to belong to -- see ProjectTemplate.jsx's
+   own comment on useIsHoverCapableInput and the settle-detection effect
+   for the full mechanism and the CSS Overscroll Behavior spec finding
+   that motivated it. Rendered only when isHoverCapableInput is true
+   (never on touch-primary devices, which keep using the existing touch
+   recognizer instead), and completely inert visually: transparent, no
+   border/background/shadow, and absolutely positioned so it never
+   affects .project-image-column's own layout or ImageViewer's sizing.
+   `overflow-y: hidden` (not `auto`/`visible`) is deliberate -- this
+   element's own box must never itself become vertically scrollable; the
+   page's real vertical scroll happens on ancestors outside it entirely,
+   the same as it always has, completely unaffected by this element's
+   presence. */
+.project-trackpad-scroller {
+  position: absolute;
+  inset: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  display: flex;
+  /* Visually inert: no visible surface of its own, ever. */
+  background: transparent;
+  /* Sits above ImageViewer's own <img> layers so it actually receives
+     the trackpad gesture, but ImageViewer never renders any interactive
+     control inside .project-image-column (Previous/Next live in
+     .project-image-nav-row, a sibling of .project-viewer, not nested
+     here) -- so this can safely intercept pointer/wheel input across
+     the whole image viewport without shadowing any control. */
+  z-index: 1;
+  /* Scrollbar hidden across all three vendor mechanisms -- this is an
+     input surface, never meant to look like a scroll area. */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  /* Visual-affordance pass, refined (superseding the earlier pointer +
+     tiny-chevron cursor -- removed outright, not layered on top of):
+     no static cursor declared here at all. Which of the two directional
+     chevrons below actually shows is decided per-pointer-position by a
+     tiny mousemove-driven class toggle in ProjectTemplate.jsx (see that
+     file's own comment on the cursor-tracking effect) -- this rule only
+     ever supplies the neutral default (`auto`) for the brief instant
+     before that effect's own pointerenter handler has run. */
+  cursor: auto;
+}
+
+.project-trackpad-scroller::-webkit-scrollbar {
+  display: none;
+}
+
+/* The two directional cursor states themselves -- applied by toggling
+   one of these two class names onto .project-trackpad-scroller (never
+   both at once), per ProjectTemplate.jsx's cursor-tracking effect. Each
+   is a single open chevron only (no arrow silhouette, no pair, no
+   background/circle/shadow) on a 24x24 canvas: a thin 2.2px black
+   stroke with a wider 4px white stroke beneath it for legibility over
+   dark photographs (same halo technique as the rest of this file's
+   custom cursors), hotspot (12 12) placed at the chevron's own visual
+   center so the cursor feels spatially located exactly where the
+   pointer is, not offset from it. `auto` fallback if the data URI ever
+   fails to load. */
+.project-trackpad-scroller--cursor-prev {
+  cursor:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'><path d='M16 4 L7 12 L16 20' fill='none' stroke='white' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/><path d='M16 4 L7 12 L16 20' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/></svg>")
+    12 12,
+    auto;
+}
+
+.project-trackpad-scroller--cursor-next {
+  cursor:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'><path d='M8 4 L17 12 L8 20' fill='none' stroke='white' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/><path d='M8 4 L17 12 L8 20' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/></svg>")
+    12 12,
+    auto;
+}
+
+/* Three equal pages -- index 0 (previous) / 1 (center, at-rest) / 2
+   (next) -- each exactly the scroller's own width, so a settled scroll
+   position always lands on a whole-number page index
+   (ProjectTemplate.jsx's settle-detection effect reads it via
+   `Math.round(scrollLeft / clientWidth)`). scroll-snap-align: start
+   pairs with the container's own scroll-snap-type: x mandatory so the
+   browser's native scroll physics -- not any custom threshold/
+   accumulator logic -- decide when a gesture has genuinely settled on a
+   neighboring page. Empty and unstyled otherwise: these never render any
+   visible content of their own. */
+.project-trackpad-scroller__page {
+  flex: 0 0 100%;
+  height: 100%;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
 }
 
 /* Vertical stability correction (Josh review): this frame has a CONSTANT

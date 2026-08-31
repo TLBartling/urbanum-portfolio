@@ -158,6 +158,54 @@ const TOUCH_HORIZONTAL_DOMINANCE_RATIO = 1.5;
 const WHEEL_HORIZONTAL_TRIGGER_PX = 24;
 const WHEEL_LOCKOUT_MS = 500;
 
+// Invisible native-scroll-container experiment (real-scroll-container
+// trackpad pass): a genuine, empty, transparent horizontal scroll
+// container laid over the image viewport, whose only purpose is to give
+// desktop trackpad gestures a real local scroll surface to belong to --
+// see this file's own comment further down, at the effect that drives
+// it, for the full mechanism and why the earlier wheel-delta approaches
+// (checkpoint wheel handler, then an early-preventDefault containment
+// layer) couldn't reliably stop Safari from claiming the opposite swipe
+// as its own back/forward gesture: `overscroll-behavior-x` is defined
+// for scroll containers, and `.project-image-column` was never actually
+// one -- the CSS Overscroll Behavior spec requires a non-scroll-container
+// element to accept but silently ignore the property.
+//
+// This is strictly additive to the checkpoint touch/wheel systems above
+// (both untouched, unmodified, still fully intact) -- it exists
+// alongside them, gated to mount only on a device that actually has a
+// trackpad/mouse-class pointer, never replacing wheel or touch.
+//
+// useIsHoverCapableInput: mirrors App.jsx's own useIsTouchDevice() hook
+// exactly in shape (a live matchMedia query, same change-event wiring)
+// but reimplemented locally rather than imported, to keep this
+// experiment's footprint confined to Project interaction files only --
+// App.jsx is explicitly out of scope for this pass. `(hover: hover) and
+// (pointer: fine)` is the direct, standard feature-detection query for
+// "this device has a real hover-capable, precise pointer" (a trackpad or
+// mouse) -- the positive form of App.jsx's own touch-primary query,
+// chosen here (rather than negating that query) since it's what this
+// hook is actually asking. A touch-primary device (no real hover, coarse
+// pointer) returns false and never mounts the scroll-container surface
+// below -- it keeps using the existing touch recognizer above instead.
+function useIsHoverCapableInput() {
+  const HOVER_CAPABLE_QUERY = "(hover: hover) and (pointer: fine)";
+  const [isHoverCapable, setIsHoverCapable] = useState(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return false;
+    return window.matchMedia(HOVER_CAPABLE_QUERY).matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return undefined;
+    const mediaQueryList = window.matchMedia(HOVER_CAPABLE_QUERY);
+    const handleChange = (event) => setIsHoverCapable(event.matches);
+    mediaQueryList.addEventListener("change", handleChange);
+    return () => mediaQueryList.removeEventListener("change", handleChange);
+  }, []);
+
+  return isHoverCapable;
+}
+
 export default function ProjectTemplate({ slug, imageId }) {
   const [isIndexDrawerOpen, setIsIndexDrawerOpen] = useState(false);
   const [indexDrawerHeight, setIndexDrawerHeight] = useState(0);
@@ -262,6 +310,31 @@ export default function ProjectTemplate({ slug, imageId }) {
   // change. Reassigned on every render, just below, once currentImage/
   // handleSelectImage exist.
   const navigateByGestureRef = useRef(() => {});
+
+  // Desktop-trackpad-only gate for the invisible scroll-container
+  // surface below -- see useIsHoverCapableInput's own comment.
+  const isHoverCapableInput = useIsHoverCapableInput();
+
+  // The invisible scroll container's own DOM node (a real
+  // `overflow-x: auto` element, rendered conditionally below), plus the
+  // small amount of state its settle-detection effect needs. Kept
+  // completely separate from imageColumnRef/navigateByGestureRef's own
+  // touch/wheel effect above -- two independent input systems, not one
+  // shared one, per this experiment's own design.
+  const trackpadScrollerRef = useRef(null);
+
+  // True for the brief window between this code programmatically
+  // resetting the scroller back to its center snap point and that reset's
+  // own scroll/scrollend event(s) actually landing -- both fire
+  // asynchronously (the next frame, in every engine tested), never in the
+  // same tick as the scrollLeft assignment that causes them. Without this
+  // guard, the recenter's own scroll would be indistinguishable from a
+  // genuine new gesture and could trigger a second, unwanted navigation.
+  const isRecenteringTrackpadScrollerRef = useRef(false);
+
+  // Only used by the debounced-scroll fallback path, for engines without
+  // a native `scrollend` event (see the effect below).
+  const trackpadSettleTimeoutRef = useRef(null);
 
   useEffect(() => {
     const node = imageColumnRef.current;
@@ -382,6 +455,208 @@ export default function ProjectTemplate({ slug, imageId }) {
       node.removeEventListener("wheel", onWheel);
     };
   }, []);
+
+  // Invisible native-scroll-container settle-detection (real-scroll-
+  // container trackpad pass): a completely separate effect from the
+  // touch/wheel one above -- attaches to trackpadScrollerRef's own node
+  // (not imageColumnRef), and only runs at all once isHoverCapableInput
+  // is true, so a touch-primary device never even creates this listener.
+  // Deliberately NOT a custom wheel/deltaX handler: this container is a
+  // genuine `overflow-x: auto` scroll surface with 3 equal-width pages
+  // (index 0 = previous, 1 = center/at-rest, 2 = next) and
+  // `scroll-snap-type: x mandatory` (see styles.css), so the browser's
+  // own native scroll physics decide when a gesture has "settled" --
+  // this effect only reads where it settled and translates that into
+  // exactly one semantic previous/next request, via the exact same
+  // navigateByGestureRef the touch/wheel effect above already uses.
+  useEffect(() => {
+    if (!isHoverCapableInput) return undefined;
+    const node = trackpadScrollerRef.current;
+    if (!node) return undefined;
+
+    const CENTER_INDEX = 1;
+
+    // Moves the scroller back to its center page without visually
+    // animating (an instant scrollLeft assignment, not scrollTo with
+    // smooth behavior) -- recentering is bookkeeping for the next
+    // gesture, never something the visitor should see or feel. No-ops,
+    // and deliberately does NOT arm the recentering guard, when the
+    // scroller is already sitting on the center page (its own initial
+    // mount state, or a ResizeObserver firing with nothing to correct)
+    // -- assigning scrollLeft to its own current value fires no
+    // scroll/scrollend event in any engine tested, so arming the guard
+    // in that case would leave it stuck true forever with nothing left
+    // to ever clear it.
+    const recenter = () => {
+      const pageWidth = node.clientWidth;
+      if (!pageWidth) return;
+      const target = pageWidth * CENTER_INDEX;
+      if (Math.round(node.scrollLeft) === target) {
+        isRecenteringTrackpadScrollerRef.current = false;
+        return;
+      }
+      isRecenteringTrackpadScrollerRef.current = true;
+      node.scrollLeft = target;
+      // Defensive-only fallback: if for any reason this engine never
+      // fires a scroll/scrollend event for this assignment (observed
+      // nowhere in sandbox testing, but the real-Mac WebKit gesture
+      // pipeline is exactly the thing this whole pass can't fully
+      // verify outside real hardware), don't leave the guard armed
+      // forever -- self-clear shortly after. A genuine next gesture
+      // arriving in this same short window is vanishingly unlikely
+      // (it would require a new swipe to start within milliseconds of
+      // the programmatic recenter), and even then the worst case is
+      // one swallowed gesture, not a stuck scroller.
+      window.setTimeout(() => {
+        isRecenteringTrackpadScrollerRef.current = false;
+      }, 200);
+    };
+
+    // Start centered. clientWidth can legitimately be 0 on the very
+    // first paint (layout not yet committed) -- recenter() already
+    // no-ops safely in that case, and the ResizeObserver below re-fires
+    // once real layout lands, which recenters for real at that point.
+    recenter();
+
+    const handleSettle = () => {
+      if (isRecenteringTrackpadScrollerRef.current) {
+        // This settle is the recenter's own scroll landing, not a new
+        // gesture -- consume the guard and stop. Never treat a
+        // programmatic recenter as a navigation request.
+        isRecenteringTrackpadScrollerRef.current = false;
+        return;
+      }
+      const pageWidth = node.clientWidth;
+      if (!pageWidth) return;
+      const settledIndex = Math.round(node.scrollLeft / pageWidth);
+      if (settledIndex === CENTER_INDEX) {
+        // Settled back where it started (e.g. a gesture that didn't
+        // travel far enough to cross the snap point, or a vertical-
+        // only gesture that never should have reached here at all) --
+        // no navigation, and nothing to recenter either.
+        return;
+      }
+      // Same forward-direction convention the checkpoint wheel handler
+      // above already uses: settling toward the higher-index (next)
+      // page advances forward; settling toward index 0 (previous) goes
+      // back. This is always safe to call even at a Project boundary --
+      // navigateByGestureRef.current() itself is a no-op when there's
+      // no neighboring image in that direction (see its own definition
+      // below, in the component body) -- so the invisible scroller
+      // still recenters normally either way, per this experiment's own
+      // "always keep both directions locally available" requirement.
+      navigateByGestureRef.current(settledIndex > CENTER_INDEX ? "next" : "prev");
+      // rAF, not immediate: lets the browser finish committing this
+      // settle before this code moves the scroll position again --
+      // recentering in the very same tick risked being coalesced with
+      // (or racing) the settle it's responding to.
+      requestAnimationFrame(recenter);
+    };
+
+    const supportsScrollEnd = "onscrollend" in window;
+    const handleScrollFallback = () => {
+      if (trackpadSettleTimeoutRef.current) {
+        window.clearTimeout(trackpadSettleTimeoutRef.current);
+      }
+      // Debounced stand-in for `scrollend` in engines that don't fire
+      // it: only fires once no further `scroll` events have arrived for
+      // 120ms, which is what makes it a "settle" detector rather than a
+      // per-frame one -- a fast multi-tick gesture only evaluates once,
+      // after it actually stops.
+      trackpadSettleTimeoutRef.current = window.setTimeout(handleSettle, 120);
+    };
+
+    if (supportsScrollEnd) {
+      node.addEventListener("scrollend", handleSettle);
+    } else {
+      node.addEventListener("scroll", handleScrollFallback, { passive: true });
+    }
+
+    // Keeps the scroller centered across layout changes (a viewport
+    // resize, a sidebar/info-panel toggle that changes .project-image-
+    // column's own width) without ever treating the correction itself
+    // as a gesture -- recenter() already guards against firing a
+    // navigation for a no-op assignment, and arms the same
+    // isRecenteringTrackpadScrollerRef guard when it does need to move.
+    const resizeObserver = new ResizeObserver(() => {
+      recenter();
+    });
+    resizeObserver.observe(node);
+
+    return () => {
+      if (supportsScrollEnd) {
+        node.removeEventListener("scrollend", handleSettle);
+      } else {
+        node.removeEventListener("scroll", handleScrollFallback);
+      }
+      resizeObserver.disconnect();
+      if (trackpadSettleTimeoutRef.current) {
+        window.clearTimeout(trackpadSettleTimeoutRef.current);
+      }
+    };
+  }, [isHoverCapableInput]);
+
+  // Cursor-tracking pass (visual-affordance refinement, replaces the
+  // earlier static pointer + tiny-chevron cursor outright): swaps which
+  // of the two directional chevron cursors is showing based purely on
+  // which horizontal half of the ACTUAL PHOTOGRAPH -- not this column,
+  // not the invisible scroller's own box, which can be wider than the
+  // photo actually renders whenever its aspect ratio doesn't fill the
+  // frame -- the pointer currently sits over. A completely separate,
+  // small effect from the settle-detection one above: different event
+  // types entirely (pointerenter/pointermove here vs. scroll/scrollend
+  // there), so neither can interfere with the other. Deliberately just
+  // a synchronous mousemove -> getBoundingClientRect() -> classList
+  // toggle -- no DOM element tracks the pointer, no requestAnimationFrame
+  // loop, no CSS transition on the cursor itself (a cursor image swap is
+  // atomic; there's nothing to animate) -- the browser's own per-frame
+  // cursor compositing is what makes this feel immediate, not this code.
+  useEffect(() => {
+    if (!isHoverCapableInput) return undefined;
+    const node = trackpadScrollerRef.current;
+    if (!node) return undefined;
+
+    // The always-present base <img> (see ImageViewer.jsx's own
+    // .project-image-frame__inner) -- deliberately NOT the incoming
+    // fade overlay's own <img> (a sibling of .project-image-frame__inner
+    // under .project-image-frame, never nested inside it, so this
+    // selector can never match it) -- this is read-only, ImageViewer.jsx
+    // itself is never touched by this or any other pass.
+    const getImageRect = () => {
+      const img = imageColumnRef.current?.querySelector(
+        ".project-image-frame__inner .project-image-frame__img",
+      );
+      return img ? img.getBoundingClientRect() : null;
+    };
+
+    const applyCursorForClientX = (clientX) => {
+      const rect = getImageRect();
+      if (!rect || rect.width === 0) return;
+      const midpointX = rect.left + rect.width / 2;
+      const isLeftHalf = clientX < midpointX;
+      // classList.toggle's boolean-force form is a no-op when the class
+      // already matches that state -- this never forces a write (or a
+      // cursor re-decode) on every single mousemove tick, only on an
+      // actual left/right half change.
+      node.classList.toggle("project-trackpad-scroller--cursor-prev", isLeftHalf);
+      node.classList.toggle("project-trackpad-scroller--cursor-next", !isLeftHalf);
+    };
+
+    // Handled on pointerenter (using that event's own clientX) as well
+    // as pointermove, so the correct chevron is already showing from the
+    // very first frame the pointer is over the surface, rather than
+    // waiting on a first move to establish it.
+    const onPointerEnter = (event) => applyCursorForClientX(event.clientX);
+    const onPointerMove = (event) => applyCursorForClientX(event.clientX);
+
+    node.addEventListener("pointerenter", onPointerEnter);
+    node.addEventListener("pointermove", onPointerMove);
+
+    return () => {
+      node.removeEventListener("pointerenter", onPointerEnter);
+      node.removeEventListener("pointermove", onPointerMove);
+    };
+  }, [isHoverCapableInput]);
 
   if (!project) {
     return (
@@ -514,6 +789,29 @@ export default function ProjectTemplate({ slug, imageId }) {
                   displayedImage={displayedImage}
                   onImageLoaded={handleImageLoaded}
                 />
+                {isHoverCapableInput && (
+                  /* Invisible native-scroll-container experiment -- input
+                     surface only, see this file's own top comment
+                     (useIsHoverCapableInput) and the settle-detection
+                     effect above for the full mechanism. Renders no
+                     visible content, never touches ImageViewer's own
+                     layout, sizing, or fade -- absolutely positioned
+                     (inset: 0) over this column, which is why
+                     .project-image-column now also carries
+                     `position: relative` (see styles.css). aria-hidden:
+                     it's a pointer/trackpad input surface, not content --
+                     screen readers already reach Previous/Next via the
+                     existing, unrelated Image Navigation controls. */
+                  <div
+                    className="project-trackpad-scroller"
+                    ref={trackpadScrollerRef}
+                    aria-hidden="true"
+                  >
+                    <div className="project-trackpad-scroller__page" />
+                    <div className="project-trackpad-scroller__page" />
+                    <div className="project-trackpad-scroller__page" />
+                  </div>
+                )}
               </div>
 
               <ProjectInfoPanel

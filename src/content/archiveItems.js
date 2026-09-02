@@ -84,7 +84,49 @@ export async function loadArchiveItems() {
   }
 }
 
+// Surgical CMS/Frontend Visibility Audit + Fix: getArchiveItems() is the
+// one shared accessor every existing Archive consumer already reads
+// through -- the archive procedural composition system's gallery-batch
+// construction in App.jsx, HoverOverlay.jsx's Relationship Engine,
+// AboutPage.jsx's Featured-image lookup, metadataQueryEngine.js's
+// Filter/Search, and findArchiveItemBySrc just below -- none of which
+// filter by displayRole themselves (confirmed by reading each: they all
+// just call this function and use whatever it returns). That already-
+// shared boundary is the smallest place to enforce "an Archive Item whose
+// displayRole is Hidden should never reach the main procedural Archive":
+// filtering it out here means every one of those existing call sites is
+// correctly excluded for free, with no edit to App.jsx/HoverOverlay.jsx/
+// AboutPage.jsx/metadataQueryEngine.js at all -- none of which this pass
+// is allowed to touch anyway (no Archive generation/layout changes).
+// Default and Featured items are both still included -- only the literal
+// string "Hidden" is excluded, so existing Default/Featured behavior
+// (including AboutPage.jsx's own `displayRole === "Featured"` lookup,
+// unaffected since a Featured item is never simultaneously Hidden -- this
+// is a single-select field) is completely unchanged.
+//
+// Project pages are deliberately NOT read through this function anymore
+// -- see getAllArchiveItemsIncludingHidden() below and
+// projectContent.js's own getVisibleItemsForProject, which needs the
+// unfiltered set: per the CMS's own intended meaning for this field
+// (Hidden = excluded from the main Archive, but still visible inside the
+// Project it belongs to), a Hidden item must still reach the Project
+// gallery. Splitting the two accessors here, rather than filtering
+// inside App.jsx's own gallery-construction code, is what keeps that
+// distinction enforced at the data boundary instead of as a render-time
+// special case.
 export function getArchiveItems() {
+  return cachedArchiveItems.filter((item) => item.displayRole !== "Hidden");
+}
+
+// The one accessor that returns every cached Archive Item regardless of
+// displayRole, Hidden included -- see getArchiveItems()'s own comment
+// just above for why the two need to diverge. Used exclusively by
+// projectContent.js's getVisibleItemsForProject (the seam that builds a
+// Project's own image list): a Project page must still show its Hidden
+// images, only the main Archive excludes them. No other current caller
+// should reach for this one -- anything building or querying the
+// procedural Archive itself wants getArchiveItems() above, not this.
+export function getAllArchiveItemsIncludingHidden() {
   return cachedArchiveItems;
 }
 
@@ -92,7 +134,10 @@ export function getArchiveItems() {
 // separate content type, so it lives here rather than as its own file.
 // It deliberately calls getArchiveItems() rather than reading
 // cachedArchiveItems directly, so it automatically searches whatever
-// getArchiveItems() currently returns with no separate edit required.
+// getArchiveItems() currently returns with no separate edit required --
+// including, as of this pass, that Hidden-exclusion: every existing
+// caller (App.jsx only, confirmed by grep) is Archive-side code, where a
+// Hidden item correctly should no longer resolve.
 export function findArchiveItemBySrc(src) {
   return getArchiveItems().find((item) => item.image === src) ?? null;
 }

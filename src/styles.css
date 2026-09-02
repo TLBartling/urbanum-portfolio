@@ -2625,7 +2625,16 @@ html.is-browsing .zoom-controls {
        in lockstep with it rather than left at the old heavier value. */
     font-weight: 500;
     letter-spacing: 0.02em;
-    text-transform: uppercase;
+    /* Mobile Menu capitalization fix (client-approved): was `uppercase`,
+       forcing every label (including "Archive"/"Projects"/etc., already
+       authored in JSX with their own natural capital-first-letter/
+       lowercase-remainder casing -- see MobileMenuOverlay.jsx/Header.jsx's
+       own link labels) into ARCHIVE/PROJECTS/etc. `none` lets each
+       label's own JSX casing render as-is. Scoped to this mobile-only
+       component/breakpoint -- desktop's own Menu row
+       (.index-drawer__label-text) is a completely separate rule,
+       untouched. */
+    text-transform: none;
     color: #111;
   }
 
@@ -2747,6 +2756,93 @@ html.is-browsing .zoom-controls {
   .about-content {
     padding-top: calc(var(--safe-area-inset-top) + 88px);
   }
+}
+
+/* Surgical Projects Responsive Layout Pass: this block used to be
+   scoped inside @media (max-width: 640px) from back when ProjectsPage.jsx
+   still branched on isMobileUiMode and this list was the mobile-only
+   half of that ternary (see git history). That JS branch is gone --
+   this list is now the Projects page's only markup at every viewport
+   width (Surgical Projects Route Cleanup) -- but this CSS was left
+   mobile-scoped, so above 640px every row fell through to completely
+   unstyled default <button> markup (full-bleed block, no flex, no
+   thumbnail sizing, no gap): the confirmed root cause of "the list
+   layout does not adapt cleanly" at wider widths. Un-scoped below to a
+   plain, unconditional rule set so the exact same row styling applies
+   at every width -- nothing here needed a breakpoint on its own merits:
+   every value is either a fixed px/rem (thumb 64x64, 16px row gap, the
+   title/location/year type sizes) or already self-limiting via clamp()
+   (the inter-row gap tops out at 40px regardless of viewport), so
+   removing the @media wrapper changes nothing about how this already
+   rendered at mobile widths -- it only stops withholding that same
+   styling above 640px. No grid/column system, still -- .about-columns
+   and everything inside it belonged to the old desktop composition,
+   already removed outright (see ProjectsPage.jsx's own top comment),
+   not present here in any form. Background/horizontal padding/top
+   clearance still come from .about-page/.about-content, unchanged. */
+.mobile-projects-list {
+  display: flex;
+  flex-direction: column;
+  /* Generous vertical spacing between rows, per the approved wireframe --
+     real whitespace between rows, not a divider line (matching this
+     site's existing "no visual clutter" restraint elsewhere). */
+  gap: clamp(28px, 8vw, 40px);
+  /* Surgical Projects Responsive Layout Pass: a comfortable reading cap
+     for wide viewports only -- below this width the list already fills
+     .about-content's own (narrower) content box and this never engages.
+     No margin: 0 auto here on purpose: centering would visually pull the
+     list away from .about-content's own left edge (where the header's
+     Logo/Filter/Menu already line up -- see .about-content's own
+     comment), which is explicitly not wanted here ("do NOT center the
+     list in the viewport"). Leaving the default margin (0, left-aligned
+     within .about-content's padded box) is what keeps this reading as
+     the same left-aligned list at every width, just no longer stretched
+     edge-to-edge on a very wide monitor. */
+  max-width: 720px;
+}
+
+.mobile-projects-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  border: 0;
+  background: none;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  /* The whole row is the tap target -- image and text both, one single
+     button -- not just the text, per the approved interaction. */
+}
+
+.mobile-projects-row__thumb {
+  flex: 0 0 auto;
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+}
+
+.mobile-projects-row__text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.mobile-projects-row__title {
+  font-size: 0.95rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: #111;
+}
+
+.mobile-projects-row__location,
+.mobile-projects-row__year {
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: #9d9d9d;
 }
 
 .about-hero {
@@ -4206,6 +4302,55 @@ html.is-browsing .zoom-controls {
   letter-spacing: 0.03em;
 }
 
+/* Mobile back-control pass (client-approved): hidden by default (desktop/
+   tablet keep the chevron+label control above); shown only inside the
+   ~640px mobile breakpoint below, matching useIsMobileUiMode's own
+   breakpoint. */
+.project-breadcrumb__mobile-close {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  /* "Top-right": .project-breadcrumb is already the first element in
+     .project-content's normal flow (top), so right-aligning its own row
+     via flex is enough to reach the requested position -- no new
+     position: absolute/fixed layer, no z-index, nothing that could
+     interact with ImageViewer/the trackpad surface/Archive layering. */
+  .project-breadcrumb {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .project-breadcrumb__control {
+    display: none;
+  }
+
+  /* Byte-identical sizing/color/hover to .mobile-menu-overlay__close --
+     the same "X" visual language, reused verbatim rather than a second
+     implementation, per the explicit "same X control treatment"
+     requirement. */
+  .project-breadcrumb__mobile-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: none;
+    padding: 0;
+    cursor: pointer;
+
+    font-size: 1.6rem;
+    line-height: 1;
+    color: #9d9d9d;
+    transition: color 0.25s ease;
+  }
+
+  .project-breadcrumb__mobile-close:hover {
+    color: #111;
+  }
+}
+
 .project-image-viewer {
   width: 100%;
 }
@@ -4373,6 +4518,73 @@ html.is-browsing .zoom-controls {
     auto;
 }
 
+/* Surgical Project Info Scroll Debug -- confirmed root cause of "Project
+   Info cannot be scrolled/swiped at all" on any hover-capable input
+   (desktop mouse/trackpad, including a real desktop browser simply
+   resized narrow -- isHoverCapableInput stays true the whole time, it is
+   not a mobile/desktop detector): .project-trackpad-scroller is an
+   invisible (background: transparent), absolutely-positioned,
+   `inset: 0` surface with its own explicit `z-index: 1` (see that rule's
+   own comment), rendered whenever isHoverCapableInput is true --
+   unconditionally, regardless of isInfoOpen (ProjectTemplate.jsx's own
+   JSX guard is `{isHoverCapableInput && (...)}` only). .project-viewer
+   and .project-image-column (the scroller's own positioning ancestors)
+   never set a z-index of their own, so neither establishes a stacking
+   context -- which means this positive z-index escapes upward and is
+   compared directly against .project-info-panel (z-index: auto) in
+   whatever stacking context actually contains both. Per the CSS stacking
+   spec, a positive z-index descendant always paints above every
+   z-index:auto/0 descendant in that same context, REGARDLESS of DOM
+   order -- so even though .project-info-panel is the LATER sibling (and
+   would normally paint on top on DOM order alone), this scroller's
+   z-index: 1 wins, and sits above the opaque, fully-interactive Info
+   panel the entire time it's open. Being `background: transparent` hides
+   this from the eye completely, but hit-testing (which element a wheel/
+   click/touch event actually targets) follows paint order, not visual
+   opacity -- so every wheel/pointer/touch gesture over that box was
+   silently being captured by this scroller instead of reaching
+   .project-info-panel__inner underneath, and swallowed outright: its own
+   `overflow-x: auto; overflow-y: hidden` (deliberate, for the horizontal
+   image-paging gesture -- see that rule's own comment) has no vertical
+   scroll of its own to give, so the gesture visibly did nothing at all,
+   matching the reported "cannot be scrolled or swiped" exactly.
+
+   Confirmed NOT the fix: making this element's own JSX render
+   conditional on `!isInfoOpen` too (unmounting/remounting it around the
+   Info toggle) -- the settle-detection effect just above in
+   ProjectTemplate.jsx (the ResizeObserver + scrollend/scroll listener
+   pair driving this scroller's own native scroll-snap physics) only
+   depends on `[isHoverCapableInput]`, deliberately assuming this node
+   never changes identity for the life of the page. Unmounting it around
+   Info opening/closing would silently orphan that effect's listeners on
+   the very first toggle, breaking Project image trackpad navigation for
+   the rest of the session -- a real regression the "Project image swipe/
+   trackpad remains unchanged when Info is CLOSED" requirement rules out.
+
+   The fix instead reuses the ALREADY-EXISTING, already-isInfoOpen-gated
+   cursor-tracking effect directly below the settle-detection one (the
+   effect whose own comment already says its whole job is "keeping the
+   directional chevron... from ever applying to the overlay" while Info
+   is open) -- it already toggles CSS classes on this exact node on every
+   isInfoOpen change, so one more toggle call there (this class) is the
+   smallest possible change: no new effect, no new ref, no dependency-
+   array risk, and the underlying DOM node/ResizeObserver/scrollend
+   listeners are never touched, remounted, or interrupted. `pointer-
+   events: none` takes this element out of hit-testing entirely while
+   open, without hiding or disabling it -- the browser hit-tests straight
+   through to whatever's next in paint order, which (per the stacking
+   analysis above) is exactly .project-info-panel, now correctly on top
+   for real. Wheel, click-drag, and touch gestures are all dispatched via
+   the same hit-testing pass, so this one rule restores all three at
+   once. When Info is closed this class is removed on the very next
+   isInfoOpen-change run of that same effect, restoring this element's
+   default `auto` (unset) pointer-events -- byte-for-byte the same
+   interactive state Project image swipe/trackpad already had before
+   this fix, confirming that requirement too. */
+.project-trackpad-scroller--inert {
+  pointer-events: none;
+}
+
 /* Three equal pages -- index 0 (previous) / 1 (center, at-rest) / 2
    (next) -- each exactly the scroller's own width, so a settled scroll
    position always lands on a whole-number page index
@@ -4436,6 +4648,55 @@ html.is-browsing .zoom-controls {
      colored "image box." */
 }
 
+/* Round BB, Surgical Responsive Stability Pass -- confirmed root cause of
+   the mobile Project Info long-content cutoff: this rule's own height
+   formula above (max(340px, calc(100vh - 300px))) is what actually sizes
+   .project-viewer's box, and therefore .project-info-panel's own
+   position:absolute; inset:0 box (see that rule's comment) -- ProjectInfoPanel
+   never has a height of its own; it always exactly matches this frame's.
+   Two real, confirmable inaccuracies in that formula on real mobile
+   browsers, both traced (not guessed) by walking the full chain from
+   .project-content's own padding/gap values down to this rule:
+   1. `100vh` on mobile Safari/Chrome resolves against the IDEAL viewport
+      (address bar/toolbar hidden), not the actually-visible one -- with
+      the toolbar showing (the common case while actually browsing, not
+      just at a fresh pageload), the real visible height is smaller than
+      100vh reports, so this formula reserves LESS real screen space than
+      it thinks it has, sizing the frame (and the info panel riding on
+      its height) taller than what's truly visible above
+      .project-image-nav-row. `100dvh` (dynamic viewport height) tracks
+      the real, currently-visible viewport instead, exactly the value
+      this formula actually wants.
+   2. The flat "300px reserved for everything else" constant was never
+      reconciled against --safe-area-inset-top -- .project-content's own
+      mobile padding-top override (144px, see that rule's own comment)
+      does not add the safe-area inset the way .about-content's
+      equivalent override explicitly does, so on a notched device the
+      real space consumed above this frame is larger than 300px by
+      however tall the inset is, and this formula was silently
+      overreserving frame height by exactly that amount.
+   Mobile-only (this existing ~900px breakpoint, matching
+   .project-info-panel__inner's own mobile override just below in this
+   file) -- subtracting the safe-area inset from the same budget already
+   used everywhere else in this formula, not a new one. If a browser
+   doesn't understand the `dvh` unit this whole declaration is invalid
+   and is dropped by the cascade, leaving the unconditional `100vh` rule
+   above as the fallback -- no explicit fallback line needed. Desktop
+   (901px+) is completely untouched; safe-area-inset-top resolves to 0px
+   on non-notched/desktop browsers via this file's own
+   env(safe-area-inset-top, 0px) fallback, so this is a no-op there even
+   if it were ever to apply. Nothing here touches this rule's own
+   display/align-items/justify-content or ImageViewer's fade timing --
+   only the height number itself is corrected. */
+@media (max-width: 900px) {
+  .project-image-frame {
+    height: max(
+      340px,
+      calc(100dvh - 300px - var(--safe-area-inset-top))
+    );
+  }
+}
+
 /* WITHOUT imposing any size of its own (Josh review, final correction
    pass -- cropping fix): an earlier version of this wrapper was sized via
    an inline CSS `aspect-ratio` computed from this image's PRECOMPUTED
@@ -4497,6 +4758,24 @@ html.is-browsing .zoom-controls {
      history and why ease-in (not ease-in-out) is used for THIS
      direction specifically. */
   transition: transform 320ms ease-out, opacity 450ms ease-in;
+}
+
+/* Round BB, Surgical Responsive Stability Pass: kept byte-for-byte in
+   sync with .project-image-frame's own mobile height correction just
+   above -- this rule's own comment already establishes that its
+   max-height must always mirror that formula exactly (a percentage
+   would be circular), so the same 100dvh / safe-area-inset-top
+   correction is required here too, at the same ~900px breakpoint, or
+   the image's own cap and the frame's real height would silently
+   disagree on mobile. No change to width/height:auto, transition, or
+   any other property on this rule. */
+@media (max-width: 900px) {
+  .project-image-frame__img {
+    max-height: max(
+      340px,
+      calc(100dvh - 300px - var(--safe-area-inset-top))
+    );
+  }
 }
 
 /* Image-to-image transition, SEQUENTIAL fade with a CONTROLLED tail
@@ -4772,6 +5051,19 @@ html.is-browsing .zoom-controls {
   .project-info-trigger {
     width: 40px;
     height: 40px;
+    /* Clipping fix (mobile UI pass): without an explicit min-width/
+       min-height, this button's own grid track (.project-image-nav-row's
+       first 1fr column, shared with Image Navigation's own 1fr column on
+       the opposite side) can compute narrower than 40px at small phone
+       widths -- CSS Grid's default automatic minimum size for a grid item
+       lets the track shrink it below its specified width/height in that
+       case, squeezing the flex-centered 19px circle glyph inside and
+       clipping it. min-width/min-height pin this button to the full
+       intended 40px touch target regardless of the track's own computed
+       size, so the circle is never squeezed. No other sizing, spacing, or
+       desktop rule touched.*/
+    min-width: 40px;
+    min-height: 40px;
   }
 }
 
@@ -4873,6 +5165,45 @@ html.is-browsing .zoom-controls {
   padding: clamp(24px, 3vw, 40px);
   margin: 0 auto;
   text-align: center;
+}
+
+/* Mobile Project Info overflow fix, corrected: the previous pass added
+   overflow-y: auto alone and left justify-content: center (the base
+   rule's own vertical-centering declaration) in place. That's the actual
+   bug this correction fixes -- .project-info-panel__inner is a
+   column-direction flex container, so justify-content is its VERTICAL
+   axis: centering a flex container's own content is well known (WebKit
+   in particular) to size the scrollable range around the CENTERED
+   position rather than the content's natural top edge, so scrollTop: 0
+   lands mid-content instead of at its true beginning, with the genuine
+   top portion only partially reachable (or not at all) above it -- long
+   content reads as "still constrained," exactly as reported. Overriding
+   justify-content to flex-start, mobile-only, removes that centering
+   entirely: content now lays out flush from the container's own top
+   edge, same as a normal document, so overflow-y: auto's scroll range
+   runs cleanly from true beginning to true end with nothing unreachable.
+   Nothing about horizontal layout changes -- text-align: center (base
+   rule) and this element's own margin: 0 auto/max-width (horizontal
+   centering + measure) are on the opposite axis and are untouched, so
+   the column of text still sits centered and at its existing width, and
+   no font-size/line-height/weight is touched anywhere here. Short
+   content that already fit is the one visible trade-off: it now sits at
+   the top of the box instead of vertically centered, rather than risk
+   the same clipping bug recurring via a not-universally-supported
+   `safe center` value -- the explicit instruction that content must
+   never clip outweighs the "may remain centered if easy" preference.
+   .project-info-panel's own box (unchanged) still stops exactly at
+   .project-viewer's bottom edge, above .project-image-nav-row and below
+   the top-right mobile back control, so neither is affected by this at
+   all. Desktop's base rule (901px+, justify-content: center) is
+   completely untouched -- this whole block stays scoped to the same
+   ~900px breakpoint this page's other mobile/touch fixes already use. */
+@media (max-width: 900px) {
+  .project-info-panel__inner {
+    justify-content: flex-start;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
 }
 
 /* Global GT America weight calibration: no real 600 face exists, so this

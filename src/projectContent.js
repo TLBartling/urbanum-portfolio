@@ -2,7 +2,14 @@
 // direct import of the mock data files -- see src/content/. Today
 // getProjects()/getArchiveItems() are a pure passthrough to the same
 // mock arrays, so behavior in this file is unchanged.
-import { getProjects, getArchiveItems } from "./content";
+//
+// Surgical CMS/Frontend Visibility Audit + Fix: getVisibleItemsForProject
+// below reads getAllArchiveItemsIncludingHidden(), not getArchiveItems() --
+// see content/archiveItems.js's own comment on why the two now diverge.
+// A Project's own image list must still include its Hidden items; only
+// the main Archive (everything reading plain getArchiveItems()) excludes
+// them.
+import { getProjects, getAllArchiveItemsIncludingHidden } from "./content";
 
 // The CMS-agnostic boundary described in the Content Contract: everything
 // above this file -- ProjectTemplate and its children -- only ever sees
@@ -13,16 +20,23 @@ import { getProjects, getArchiveItems } from "./content";
 // component's props, needs to change.
 
 function getVisibleItemsForProject(slug) {
-  // "Hidden Archive Items should not appear in public navigation" and
-  // "should not be publicly accessible through direct URLs" -- both are
-  // satisfied by simply never including them in what this function
-  // returns, the same way a real Sanity query would filter
-  // `displayRole != "Hidden"` server-side rather than send hidden items to
-  // the client for the frontend to hide. Everything downstream (Image
-  // Navigation, the ?image= deep-link resolution below) only ever sees the
-  // already-public list.
-  return getArchiveItems()
-    .filter((item) => item.project === slug && item.displayRole !== "Hidden")
+  // Surgical CMS/Frontend Visibility Audit + Fix (correction): this used
+  // to also filter out `displayRole === "Hidden"` here, under the
+  // rationale (see git history) that "Hidden Archive Items should not
+  // appear in public navigation" / "should not be publicly accessible
+  // through direct URLs" -- treating Hidden as hidden everywhere. That
+  // was never the CMS's own intended meaning for this field: Hidden means
+  // excluded from the main procedural Archive specifically (now enforced
+  // at that boundary instead -- see content/archiveItems.js's
+  // getArchiveItems()), not hidden from the Project it belongs to. A
+  // Project's own gallery -- Image Navigation, the ?image= deep-link
+  // resolution below, ProjectInfoPanel -- is exactly where a Hidden image
+  // is still meant to be visible, so this function now reads
+  // getAllArchiveItemsIncludingHidden() and no longer excludes Hidden
+  // items itself. Still filters by project and still sorts by sortOrder,
+  // unchanged.
+  return getAllArchiveItemsIncludingHidden()
+    .filter((item) => item.project === slug)
     .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
 }
 
@@ -94,13 +108,41 @@ export function getProjectBySlug(slug) {
 }
 
 // Decides which image ProjectTemplate shows first, given a Project (from
-// getProjectBySlug, so already Hidden-filtered) and the Archive Number
-// requested via the URL's ?image= param, if any. Falls through to
-// Featured, then to the lowest sortOrder, so a missing, invalid, or Hidden
-// image id always still resolves to something real rather than a blank
-// state -- a Hidden item's Archive Number simply won't be found in
-// `project.images` at all, which is what makes it unreachable via a direct
-// URL without any separate hidden-item check here.
+// getProjectBySlug) and the Archive Number requested via the URL's
+// ?image= param, if any. Falls through to Featured, then to the lowest
+// sortOrder, so a missing or invalid image id always still resolves to
+// something real rather than a blank state.
+//
+// Surgical CMS/Frontend Visibility Audit + Fix (correction): the comment
+// here used to say a Hidden item's Archive Number "won't be found in
+// project.images at all," making it unreachable via a direct URL --
+// true back when getVisibleItemsForProject excluded Hidden items itself,
+// but no longer accurate now that it doesn't (see that function's own
+// corrected comment). A Hidden image is a real member of project.images
+// today, exactly like Default/Featured, so `requested` above can resolve
+// to one -- an explicit direct link/nav-arrow step onto a Hidden image is
+// exactly the "still navigable inside the Project carousel" behavior this
+// field is meant to keep. Only unchanged from before.
+//
+// One Small Visibility Semantics Follow-up: the FALLBACK tiers below (no
+// explicit request, or the requested id wasn't found) are different from
+// the explicit-request case just above -- these decide what a visitor
+// (or the Projects-index thumbnail, which calls this same function with
+// requestedArchiveNumber: null -- see ProjectsPage.jsx's
+// getProjectThumbnailSrc) sees as this Project's REPRESENTATIVE image
+// with no explicit choice involved. Per the CMS's own intended meaning,
+// Hidden is eligible inside the carousel once you're in the Project, but
+// was never meant to be eligible as that representative pick merely for
+// lack of a Featured item -- so the lowest-sortOrder fallback now skips
+// Hidden items (project.images is already sortOrder-ascending, from
+// getVisibleItemsForProject, so the first non-Hidden entry found is the
+// lowest-sortOrder eligible one). If a Project has no Featured image and
+// every one of its images is Hidden, there is no eligible representative
+// at all -- falling back to project.images[0] even then (rather than
+// returning null) is the same "always resolve to something real instead
+// of a blank state" guarantee this function has always made; it does not
+// reintroduce Hidden filtering into the carousel itself, which still
+// receives every item in project.images unfiltered.
 export function resolveInitialImageId(project, requestedArchiveNumber) {
   if (!project || project.images.length === 0) return null;
 
@@ -115,6 +157,11 @@ export function resolveInitialImageId(project, requestedArchiveNumber) {
     (item) => item.displayRole === "Featured",
   );
   if (featured) return featured.archiveNumber;
+
+  const lowestSortOrderVisible = project.images.find(
+    (item) => item.displayRole !== "Hidden",
+  );
+  if (lowestSortOrderVisible) return lowestSortOrderVisible.archiveNumber;
 
   return project.images[0].archiveNumber;
 }

@@ -3,7 +3,12 @@
 // and never import a mock-data file directly. See archiveItems.js,
 // projects.js, themes.js, journalEntries.js, aboutPage.js, and
 // contactPage.js for the per-type rationale.
-export { getArchiveItems, findArchiveItemBySrc, loadArchiveItems } from "./archiveItems";
+export {
+  getArchiveItems,
+  getAllArchiveItemsIncludingHidden,
+  findArchiveItemBySrc,
+  loadArchiveItems,
+} from "./archiveItems";
 export { getProjects, loadProjects } from "./projects";
 export { getThemes, loadThemes } from "./themes";
 export { getJournalEntries, loadJournalEntries } from "./journalEntries";

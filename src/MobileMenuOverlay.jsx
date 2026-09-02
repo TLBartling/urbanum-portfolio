@@ -19,12 +19,34 @@ import { useEffect } from "react";
 export default function MobileMenuOverlay({
   isOpen,
   onClose,
-  links,
+  linksBeforeSearch,
+  linksAfterSearch,
   linkPaths,
   activePath,
   onSelect,
   onSearchOpen,
 }) {
+  // Mobile Menu order/copy pass (client-approved): a page link is rendered
+  // identically regardless of which side of Search it falls on -- same
+  // active-state check, same click handler, same class -- so this is one
+  // shared render function called from two places below rather than the
+  // old single links.map() duplicated.
+  const renderLink = (label) => {
+    const isActive = activePath === linkPaths[label];
+    return (
+      <button
+        type="button"
+        key={label}
+        className={`mobile-menu-overlay__link${
+          isActive ? " mobile-menu-overlay__link--active" : ""
+        }`}
+        aria-current={isActive ? "page" : undefined}
+        onClick={() => onSelect(label)}
+      >
+        {label}
+      </button>
+    );
+  };
   // Same Escape-to-close convention MobileSearchOverlay already uses.
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -56,20 +78,25 @@ export default function MobileMenuOverlay({
       </div>
 
       <nav className="mobile-menu-overlay__links" aria-label="Site navigation">
+        {linksBeforeSearch.map(renderLink)}
         {/* Mobile Header/Search/Menu Refinement Pass -- Section 8 (Mobile
             Search Relocation): Search moved here from the mobile top
             header (see Header.jsx's own Section 8 comment). Deliberately
-            NOT added to MENU_LINKS/linkPaths/onSelect above -- those are a
-            real page-navigation table (active-state highlighting, actual
-            routes) and Search isn't a page, it opens the existing mobile
-            Search/discovery overlay instead. onSearchOpen is the same
-            handleMobileSearchOpen the header's old visible Search button
-            used to call -- no new search logic, just a different trigger
-            surface. Reuses the exact .mobile-menu-overlay__link class the
-            page links below use (same type family/size/weight/spacing,
-            same generous touch target) so it reads as one consistent list,
-            not a bolted-on extra control -- just never gets
-            aria-current/--active since it isn't a "current page." */}
+            NOT part of linksBeforeSearch/linksAfterSearch/onSelect above --
+            those are a real page-navigation table (active-state
+            highlighting, actual routes) and Search isn't a page, it opens
+            the existing mobile Search/discovery overlay instead.
+            onSearchOpen is the same handleMobileSearchOpen the header's
+            old visible Search button used to call -- no new search logic,
+            just a different trigger surface. Reuses the exact
+            .mobile-menu-overlay__link class the page links use (same type
+            family/size/weight/spacing, same generous touch target) so it
+            reads as one consistent list, not a bolted-on extra control --
+            just never gets aria-current/--active since it isn't a
+            "current page." Mobile Menu order/copy pass: now positioned
+            between linksBeforeSearch and linksAfterSearch (Contact and
+            Journal) per the client-approved order, rather than always
+            first. */}
         <button
           type="button"
           className="mobile-menu-overlay__link"
@@ -77,22 +104,7 @@ export default function MobileMenuOverlay({
         >
           Search
         </button>
-        {links.map((label) => {
-          const isActive = activePath === linkPaths[label];
-          return (
-            <button
-              type="button"
-              key={label}
-              className={`mobile-menu-overlay__link${
-                isActive ? " mobile-menu-overlay__link--active" : ""
-              }`}
-              aria-current={isActive ? "page" : undefined}
-              onClick={() => onSelect(label)}
-            >
-              {label}
-            </button>
-          );
-        })}
+        {linksAfterSearch.map(renderLink)}
       </nav>
     </div>
   );

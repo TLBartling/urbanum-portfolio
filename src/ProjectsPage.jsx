@@ -1,70 +1,92 @@
 import { useState } from "react";
 import Header from "./Header";
-import { allImages } from "./App";
+import { navigate } from "./navigation";
+import { getProjects } from "./content";
+import { getProjectBySlug, resolveInitialImageId } from "./projectContent";
+import { getOptimizedImageSrc } from "./imageOptimization";
 
-// Reassigned from its original role as the site's About page (see git
-// history) to the Projects page, now living at /projects. Not linked from
-// the homepage yet -- reachable directly by URL only, pending a decision
-// with the client on whether this becomes the permanent Projects page, a
-// Featured Projects page, or something else. Composition/layout are
-// unchanged from the original: a title/location/established line, an
-// asymmetric image composition with numbered captions, a short
-// description, and a CLIENT/ARCHITECT/STATUS/PHOTOGRAPHY/TAGS meta panel.
-// Images below are drawn from the same pool the gallery already uses (see
-// allImages in App.jsx), purely as stand-ins for the studio's own
-// photography that will replace them later; the archive numbers/labels
-// are what's meant to persist.
-const COLUMN_ONE_TILES = [
-  { number: "001", label: "Exterior View", year: "2026", src: allImages[0] },
-  { number: "003", label: "Facade Detail", year: "2026", src: allImages[6] },
-];
+// Surgical Projects Route Cleanup: this page was previously the old
+// desktop "About"-style composition (hero + three-column tile layout,
+// ProjectTile, and its allImages-based stand-in tile arrays/meta/tags --
+// see git history) at >640px, with the approved mobile project-list index
+// (below) rendering only at <=640px. That desktop composition was never
+// part of the approved direction and has been removed outright -- the
+// list below is now the Projects page at every viewport width. CSS stays
+// mobile-optimized for now, per this pass's own explicit scope; only
+// which markup renders changed here, not how it's styled.
 
-const COLUMN_TWO_IMAGE_TILES = [
-  { number: "007", label: "Lobby Interior", year: "2026", src: allImages[11] },
-  { number: "005", label: "Base Structure", year: "2026", src: allImages[4] },
-];
+// Mobile Projects Index pass (client-approved wireframe): the ONLY
+// mobile-specific data lookup this page needs -- one representative
+// image per real Project, reusing the exact same Featured-then-lowest-
+// sortOrder priority projectContent.js's resolveInitialImageId already
+// establishes for "which image does this Project open on" (Project page
+// deep-linking), rather than inventing a second, competing "which image
+// represents this Project" rule. getProjectBySlug already Hidden-filters
+// and sorts a Project's images (see that function's own comment); this
+// just asks it the same question ProjectTemplate.jsx effectively asks on
+// load, and reads the chosen item's own `image` (its real Sanity CDN
+// URL, or null) off the result. Returns undefined when a Project has no
+// visible images at all -- no invented placeholder, per this pass's own
+// "do not invent metadata" instruction; the row below simply omits its
+// thumbnail in that case.
+function getProjectThumbnailSrc(project) {
+  const full = getProjectBySlug(project.slug);
+  if (!full || full.images.length === 0) return undefined;
 
-const COLUMN_TWO_STUDY_TILE = {
-  number: "010",
-  label: "Study Model",
-  year: "2026",
-  src: allImages[9],
-};
+  const archiveNumber = resolveInitialImageId(full, null);
+  const leadImage = full.images.find(
+    (item) => item.archiveNumber === archiveNumber,
+  );
+  // 400 is the smallest width tier optimizedImageWidths already
+  // establishes elsewhere in this codebase (imageOptimization.js) --
+  // reused here rather than an arbitrary new number, and safe for both
+  // the Sanity branch (the CDN resizes on request to any width) and the
+  // local-asset branch (a real pre-generated /img/optimized/400/... file
+  // exists at that exact width).
+  return leadImage?.image
+    ? getOptimizedImageSrc(leadImage.image, 400)
+    : undefined;
+}
 
-const COLUMN_THREE_TILES = [
-  { number: "012", label: "Landscape Plaza", year: "2026", src: allImages[24] },
-  { number: "014", label: "Aerial View Context", year: "2026", src: allImages[17] },
-];
+// Mobile Projects Index pass: one tappable row per real Project --
+// thumbnail, title, location, year -- reusing the same navigate("/projects/
+// :slug") mechanism every other "enter a Project" control on this site
+// already uses (see e.g. ProjectBreadcrumb.jsx). No ?image= query param:
+// omitting it is exactly what already tells ProjectTemplate.jsx to resolve
+// its own initial image via resolveInitialImageId (Featured, then lowest
+// sortOrder) -- the same function this row's own thumbnail lookup above
+// reuses, so the image a visitor lands on matches what they tapped.
+function MobileProjectRow({ project }) {
+  const thumbnailSrc = getProjectThumbnailSrc(project);
 
-const META_FIELDS = [
-  { label: "Client", value: "Private" },
-  { label: "Architect", value: "Urbānum Studio" },
-  { label: "Status", value: "Established" },
-  { label: "Photography", value: "Urbānum Studio" },
-];
-
-const TAGS = ["Architecture", "Design", "Residential", "Commercial", "Urban Design"];
-
-function ProjectTile({ number, label, year, src }) {
   return (
-    <div className="about-tile">
-      <img
-        className="about-tile__image"
-        src={src}
-        alt={label}
-        loading="lazy"
-        decoding="async"
-      />
-      <div className="about-tile__caption">
-        {/* Archive-number presentation rule (Josh review): bracketed
-            site-wide, e.g. "[001]" -- display-only; .about-tile__year
-            below is a year, not an archive number, and stays unbracketed,
-            as does the alt text above. */}
-        <span className="about-tile__number">{`[${number}]`}</span>
-        <span className="about-tile__label">{label}</span>
+    <button
+      type="button"
+      className="mobile-projects-row"
+      onClick={() => navigate(`/projects/${project.slug}`)}
+      aria-label={`View project: ${project.title}`}
+    >
+      {thumbnailSrc && (
+        <img
+          className="mobile-projects-row__thumb"
+          src={thumbnailSrc}
+          alt=""
+          loading="lazy"
+          decoding="async"
+        />
+      )}
+      <div className="mobile-projects-row__text">
+        <span className="mobile-projects-row__title">{project.title}</span>
+        {project.location && (
+          <span className="mobile-projects-row__location">
+            {project.location}
+          </span>
+        )}
+        {project.year != null && (
+          <span className="mobile-projects-row__year">{project.year}</span>
+        )}
       </div>
-      <span className="about-tile__year">{year}</span>
-    </div>
+    </button>
   );
 }
 
@@ -75,6 +97,17 @@ export default function ProjectsPage() {
   // gallery, rather than overlaying it differently here.
   const [isIndexDrawerOpen, setIsIndexDrawerOpen] = useState(false);
   const [indexDrawerHeight, setIndexDrawerHeight] = useState(0);
+  // Surgical Projects Route Cleanup: no more isMobileUiMode branch here --
+  // see this file's own top comment. Real Projects only (getProjects(),
+  // the same live/Sanity-backed content ProjectTemplate.jsx and every
+  // other real page on this site already reads from), sorted by the
+  // CMS's own sortOrder field -- the same ordering projectContent.js's
+  // getProjectsInOrder already applies for Previous/Next Project
+  // navigation, rather than whatever incidental order getProjects()
+  // happens to return.
+  const orderedProjects = [...getProjects()].sort(
+    (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0),
+  );
 
   return (
     <div className="about-page">
@@ -105,57 +138,16 @@ export default function ProjectsPage() {
             : undefined,
         }}
       >
-        <div className="about-hero">
-          <h1 className="about-hero__title">Urbānum Studio</h1>
-          <p className="about-hero__location">Miami, Florida, USA</p>
-          <p className="about-hero__established">Established 2024</p>
-        </div>
-
-        <div className="about-columns">
-          <div className="about-column about-column--one">
-            {COLUMN_ONE_TILES.map((tile) => (
-              <ProjectTile key={tile.number} {...tile} />
-            ))}
-          </div>
-
-          <div className="about-column about-column--two">
-            {COLUMN_TWO_IMAGE_TILES.map((tile) => (
-              <ProjectTile key={tile.number} {...tile} />
-            ))}
-            <div className="about-text-row">
-              <ProjectTile {...COLUMN_TWO_STUDY_TILE} />
-              <p className="about-description">
-                Urbānum Studio is an architecture practice based in Miami,
-                Florida. Our work explores space, material, and context
-                with clarity and intention, creating architecture that is
-                grounded, relevant, and enduring.
-              </p>
-            </div>
-          </div>
-
-          <div className="about-column about-column--three">
-            {COLUMN_THREE_TILES.map((tile) => (
-              <ProjectTile key={tile.number} {...tile} />
-            ))}
-            <div className="about-meta">
-              <dl className="about-meta__fields">
-                {META_FIELDS.map(({ label, value }) => (
-                  <div className="about-meta__field" key={label}>
-                    <dt>{label}</dt>
-                    <dd>{value}</dd>
-                  </div>
-                ))}
-              </dl>
-              <div className="about-meta__tags">
-                <span className="about-meta__tags-label">Tags</span>
-                <ul>
-                  {TAGS.map((tag) => (
-                    <li key={tag}>{tag}</li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </div>
+        {/* Surgical Projects Route Cleanup: this list is now the
+            Projects page at every viewport width -- the old desktop
+            hero + three-column composition that used to live in this
+            ternary's else-branch is removed outright (see this file's
+            own top comment), not just hidden, so there is nothing left
+            for a resize across 640px to swap to. */}
+        <div className="mobile-projects-list">
+          {orderedProjects.map((project) => (
+            <MobileProjectRow key={project.slug} project={project} />
+          ))}
         </div>
       </div>
     </div>

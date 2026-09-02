@@ -85,6 +85,25 @@ export default function ProjectBreadcrumb() {
         </span>
         <span className="project-breadcrumb__label">Archive</span>
       </button>
+      {/* Mobile back-control pass (client-approved): mobile gets the same
+          simple "X" visual language the mobile Menu close control already
+          uses (.mobile-menu-overlay__close in styles.css) instead of the
+          "‹ Archive" chevron+label above -- desktop keeps that control
+          exactly as it is (see this component's own top comment). Same
+          navigate("/") action as the control above, nothing new; which of
+          the two buttons is actually visible/hit-testable is decided
+          purely by CSS at the ~640px mobile breakpoint (see
+          .project-breadcrumb__mobile-close in styles.css), the same
+          breakpoint useIsMobileUiMode already uses elsewhere for "mobile
+          UI mode," so no JS mobile-detection branch was needed here. */}
+      <button
+        type="button"
+        className="project-breadcrumb__mobile-close"
+        onClick={() => navigate("/")}
+        aria-label="Back to Archive"
+      >
+        <span aria-hidden="true">&times;</span>
+      </button>
     </div>
   );
 }

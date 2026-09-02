@@ -629,6 +629,27 @@ export default function ProjectTemplate({ slug, imageId }) {
       "project-trackpad-scroller--cursor-prev",
       "project-trackpad-scroller--cursor-next",
     );
+    // Surgical Project Info Scroll Debug -- confirmed root cause (see
+    // styles.css's own comment on .project-trackpad-scroller--inert):
+    // this element's explicit z-index: 1 escapes .project-viewer/
+    // .project-image-column (neither sets a z-index of its own, so
+    // neither creates a stacking context), so it was painting -- and
+    // therefore hit-testing, for wheel/click/touch alike -- ABOVE
+    // .project-info-panel while open, silently swallowing every gesture
+    // meant for the Info panel's own scrollable content even though it
+    // is completely invisible (background: transparent). Toggled here,
+    // not as a new effect: this effect already runs on every isInfoOpen
+    // change and already exists specifically to neutralize this same
+    // element while Info is open (see its own header comment on the
+    // cursor classes just above and the click-to-navigate guard below).
+    // `pointer-events: none` removes it from hit-testing entirely without
+    // unmounting it, so the settle-detection effect's own ResizeObserver/
+    // scrollend listeners (a separate effect, deliberately depending only
+    // on [isHoverCapableInput] and never re-running on isInfoOpen -- see
+    // its own comment) keep pointing at the same live node the whole
+    // time; nothing about Project image trackpad navigation while Info
+    // is CLOSED changes at all.
+    node.classList.toggle("project-trackpad-scroller--inert", isInfoOpen);
     if (!isHoverCapableInput || isInfoOpen) return undefined;
 
     // The always-present base <img> (see ImageViewer.jsx's own

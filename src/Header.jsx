@@ -96,6 +96,18 @@ const EMPTY_FILTER_SELECTION = { theme: [], project: [], year: [], type: [] };
 // actually routes to.
 const MENU_LINKS = ["Archive", "Practice", "Journal", "Contact"];
 
+// Mobile Menu order/copy pass (client-approved): the mobile Menu overlay's
+// own link order/labels, deliberately independent of MENU_LINKS above --
+// desktop navigation stays exactly as it is (4 links, its own order); only
+// mobile gets the requested Archive / Projects / Practice / Contact /
+// Search / Journal sequence. Split into two arrays because Search itself
+// isn't a page link (see MobileMenuOverlay.jsx's own comment on why it's
+// rendered separately, via onSearchOpen, not through this link table) but
+// still needs to land in a specific position in the visual list -- between
+// Contact and Journal -- rather than always first.
+const MOBILE_MENU_LINKS_BEFORE_SEARCH = ["Archive", "Projects", "Practice", "Contact"];
+const MOBILE_MENU_LINKS_AFTER_SEARCH = ["Journal"];
+
 // All links are wired up to real routes; kept as a lookup rather than
 // growing the ternary below, since another page later is one more entry
 // here instead of a longer condition.
@@ -110,6 +122,12 @@ const MENU_LINKS = ["Archive", "Practice", "Journal", "Contact"];
 // this nav link always points at the canonical path.
 const MENU_LINK_PATHS = {
   Archive: "/",
+  // Mobile Menu order/copy pass: "Projects" is a mobile-menu-only entry
+  // (see MOBILE_MENU_LINKS_BEFORE_SEARCH above) -- added here, not to
+  // MENU_LINKS, so the desktop Menu row (which only ever maps over
+  // MENU_LINKS) is completely unaffected. Points at the real, existing
+  // "/projects" index route (Router.jsx) -- no new page.
+  Projects: "/projects",
   Practice: "/practice",
   Journal: "/journal",
   Contact: "/contact",
@@ -358,6 +376,30 @@ export default function Header({
   const [mobileOverlay, setMobileOverlay] = useState(null);
   const isMobileSearchOverlayOpen = mobileOverlay === "search";
   const isMobileMenuOpen = mobileOverlay === "menu";
+
+  // Round BB, Surgical Responsive Stability Pass -- confirmed root cause
+  // of the live-resize glitch: this state is deliberately NOT reset by
+  // the `isMobileUiMode &&` guard on <MobileSearchOverlay>/
+  // <MobileMenuOverlay> just below (that guard only unmounts the
+  // overlay's own DOM, it never touches this state, by design -- see
+  // this state's own comment above). That's fine crossing INTO desktop
+  // (nothing stale is left visible, confirmed by reading those two
+  // guards). But crossing back OUT to mobile without ever pressing the
+  // overlay's own X first left `mobileOverlay` still "search"/"menu"
+  // from before, so the very next render in mobile UI mode remounted
+  // that overlay already OPEN, full-viewport, with no tap to explain
+  // it -- exactly the kind of "frozen/misaligned after resizing" state
+  // this pass is meant to catch. Resetting this to null the moment
+  // isMobileUiMode goes false (not on the way back in) closes that gap
+  // at its source: by the time mobile UI mode can possibly return, there
+  // is no stale "open" value left for it to inherit. Does not touch
+  // isSearchOpen/drawerSection (desktop's own, separate state, see this
+  // state's own comment above) or the ResizeObserver-driven
+  // indexDrawerHeight measurement -- both are unrelated to this overlay
+  // pair and untouched by this effect.
+  useEffect(() => {
+    if (!isMobileUiMode) setMobileOverlay(null);
+  }, [isMobileUiMode]);
   // Search Query Wiring: null until the homepage's own Enter-to-commit
   // (see handleSearchKeyDown) sets it -- the one flag that decides whether
   // the input line or the compact chip renders below. Deliberately starts
@@ -1818,7 +1860,8 @@ export default function Header({
         <MobileMenuOverlay
           isOpen={isMobileMenuOpen}
           onClose={handleMobileOverlayClose}
-          links={MENU_LINKS}
+          linksBeforeSearch={MOBILE_MENU_LINKS_BEFORE_SEARCH}
+          linksAfterSearch={MOBILE_MENU_LINKS_AFTER_SEARCH}
           linkPaths={MENU_LINK_PATHS}
           activePath={path}
           onSelect={handleMobileMenuSelect}

@@ -45,15 +45,14 @@ export const journalEntryType = defineType({
     defineField({
       name: 'caption',
       title: 'Image Caption',
-      description:
-        'Short plain text only. Shown as a subtle hover caption on the Journal page when present -- left blank, nothing is shown.',
+      description: 'Shown when hovering over the photo. Leave blank for none.',
       type: 'text',
       rows: 2,
     }),
     defineField({
       name: 'privateNotes',
       title: 'Private Notes',
-      description: 'Internal use only — never displayed publicly on the site.',
+      description: 'Never shown on the public site.',
       type: 'text',
       rows: 3,
     }),

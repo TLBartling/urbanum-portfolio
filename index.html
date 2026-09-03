@@ -6,18 +6,26 @@
     <!-- Urbānum [u] favicon (bracket-and-lowercase-u mark, cropped/sized
          from Josh's finalized master artwork): icon-only, no visible
          header/logo change -- see src/Header.jsx's own wordmark SVG for
-         the actual site logo, untouched by this pass. The previous
-         favicon.svg reference (a plain Courier "u" placeholder, not part
-         of Josh's new artwork) is removed here rather than left alongside
-         this set: SVG favicons are generally preferred over PNG/ICO ones
-         by modern browsers when both are declared, which would have
-         silently kept the old placeholder showing in the tab despite this
-         whole pass. The favicon.svg file itself is left on disk,
-         unreferenced (see this pass's own report). apple-touch-icon.png
+         the actual site logo, untouched by this pass. apple-touch-icon.png
          is the dedicated iOS/home-screen icon, unrelated to the tab
          favicon. No manifest/PWA system exists on this site and none was
          introduced for this task -- see this pass's own report for why
-         192x192/512x512 icons were skipped. -->
+         192x192/512x512 icons were skipped.
+
+         Safari tab-favicon fix follow-up: favicon.svg previously held an
+         unreferenced placeholder (a plain Courier "u", not the approved
+         mark) and was deliberately left out of the <link> list below for
+         that reason. favicon.svg now holds a redrawn vector copy of the
+         SAME approved [u] mark the PNG/ICO assets already show (same
+         concept, thin bracket strokes, restrained spacing -- only a
+         touch more internal padding than the raster crop, specifically
+         so Safari's own small-tab rasterization doesn't read as heavy/
+         cramped/oversized). It is listed FIRST so Safari (16+), Chrome,
+         and Firefox -- all of which support standard SVG favicons --
+         rasterize the crisp vector for the tab instead of scaling up a
+         small fixed-size PNG; the ico/png links immediately after remain
+         the real fallback for any browser that ignores the SVG link. -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />

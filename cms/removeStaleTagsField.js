@@ -39,11 +39,20 @@
 // see auditUnknownFields.js's own comment on the same point). Never
 // hard-code a token here; read it from the environment only.
 //
-// SCOPE: only ever touches the exact field `tags`, only on documents
-// that actually have it, only via `unset` (which removes the one
-// property named -- it cannot touch, reorder, or overwrite any other
+// SCOPE: only ever touches the exact field `tags`, only on `archiveItem`
+// documents that actually have it, only via `unset` (which removes the
+// one property named -- it cannot touch, reorder, or overwrite any other
 // field on the document). No document is deleted. No other field is
 // ever written, on this type or any other.
+//
+// Safety fix: `defined(tags)` alone also matches 6 legacy `_type ==
+// "archiveImage"` documents, whose own `tags` property is an unrelated
+// reference array, not the stale plain-string leftover this script
+// exists to remove -- confirmed via a dry run before this fix shipped
+// (73 total: 67 archiveItem, 6 archiveImage). The query below is now
+// scoped to `_type == "archiveItem"` explicitly, so archiveImage
+// documents are never included in the affected set, in dry-run or
+// --commit mode.
 const {createClient} = require('@sanity/client')
 
 const client = createClient({
@@ -57,7 +66,7 @@ const client = createClient({
 const shouldCommit = process.argv.includes('--commit')
 
 async function main() {
-  const affected = await client.fetch(`*[defined(tags)]{_id, _type, title, archiveNumber, tags}`)
+  const affected = await client.fetch(`*[_type == "archiveItem" && defined(tags)]{_id, _type, title, archiveNumber, tags}`)
 
   if (affected.length === 0) {
     console.log('No documents with a `tags` property were found. Nothing to do.')

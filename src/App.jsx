@@ -3084,21 +3084,23 @@ function App() {
   // Type Filter: same reasoning and placement as PROJECT_TITLES
   // immediately above -- computed here, at render time, from
   // getProjects() (Type lives on Project, not Archive Item -- see
-  // cms/schemaTypes/projectType.js). Unlike PROJECT_TITLES, Type isn't
-  // already a one-per-Project unique value -- several Projects can share
-  // a Type -- so this dedupes via Set the same way ARCHIVE_YEARS_NUMERIC
-  // below dedupes Year, then sorts alphabetically (Type has no inherent
-  // order the way Year's numeric-descending does, so this follows
-  // THEME_NAMES/getThemes()'s own "order title asc" convention instead).
-  // `.filter(Boolean)` drops any existing Project published before this
-  // field existed and not yet given a Type (see cms/queries.js's
-  // normalizeProject: `type: raw.type` is undefined for those) -- an
-  // absent Type contributes no option to the Filter rather than a blank
-  // one. Passed straight through to Header's new `types` prop below,
-  // mirroring exactly how THEME_NAMES/PROJECT_TITLES/YEAR_OPTIONS already
-  // stop Header from ever falling back to its own MOCK_TYPES default.
+  // cms/schemaTypes/projectType.js). Type isn't a one-per-Project unique
+  // value -- several Projects can share a Type, and (CMS Type
+  // Multi-Select pass) a single Project can now carry more than one Type
+  // itself -- so this flattens every Project's own `types` array
+  // (`flatMap`, not `map`) before deduping via Set the same way
+  // ARCHIVE_YEARS_NUMERIC below dedupes Year, then sorts alphabetically
+  // (Type has no inherent order the way Year's numeric-descending does,
+  // so this follows THEME_NAMES/getThemes()'s own "order title asc"
+  // convention instead). `project.types ?? []` guards a Project with no
+  // Type set (or published before the field existed) -- an absent Type
+  // contributes no option to the Filter rather than a blank one, same
+  // "absent means absent" convention normalizeProject already uses.
+  // Passed straight through to Header's new `types` prop below, mirroring
+  // exactly how THEME_NAMES/PROJECT_TITLES/YEAR_OPTIONS already stop
+  // Header from ever falling back to its own MOCK_TYPES default.
   const PROJECT_TYPES = Array.from(
-    new Set(getProjects().map((project) => project.type).filter(Boolean)),
+    new Set(getProjects().flatMap((project) => project.types ?? [])),
   ).sort();
 
   // Phase 4 (Connect Themes): same reasoning and placement as

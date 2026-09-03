@@ -57,40 +57,50 @@ export const aboutPageType = defineType({
   fields: [
     defineField({
       name: 'title',
-      title: 'Title (legacy/fallback)',
-      description:
-        'Legacy/fallback heading, shown at the top of the left column only when the Description field below has no rich-text content. If Description is populated, author "Practice" (and the rest of the visible text) there instead and this field is not shown. No longer required -- safe to leave blank once Description is in use.',
+      title: 'Title',
+      description: 'Shown only if Description below is empty.',
       type: 'string',
     }),
     defineField({
       name: 'subtitle',
-      title: 'Subtitle / Location (legacy/fallback)',
-      description:
-        'Legacy/fallback line beneath the title -- e.g. a location or a one-line descriptor. Only shown when the Description field below has no rich-text content.',
+      title: 'Subtitle / Location',
+      description: 'Shown only if Description below is empty.',
       type: 'string',
     }),
     defineField({
+      // CMS Legacy Description Migration + Editor Cleanup pass:
+      // description text simplified -- still tells Josh the one thing he
+      // needs to act on (this replaces Title/Subtitle on the page once
+      // it has content) and how to format it, in plain language, without
+      // the internal "legacy/fallback field" wiring explanation that used
+      // to accompany it.
       name: 'bodyRichText',
       title: 'Description',
-      description:
-        'The page’s complete visible text, including "Practice" itself and "Philosophy" -- when this has content, it fully replaces the Title/Subtitle fields below (they will not be shown). Use Section Heading for "Practice" and for a sub-heading like "Philosophy"; use Normal for intro copy and short statements; use Bold / Medium / Italic and Links inline as needed. Start a new paragraph for a line break. If this is left empty, the legacy Title / Subtitle / Description (plain text) fields below are used instead.',
+      description: 'Optional.',
       type: 'richText',
     }),
     defineField({
+      // CMS Legacy Description Migration + Editor Cleanup pass --
+      // DEPRECATED, COMPATIBILITY ONLY. This is the OLD plain-text Body
+      // field; `bodyRichText` immediately above is now the one
+      // Description field Josh sees and edits. Kept in the schema (not
+      // deleted) so an existing About Page document's already-stored
+      // `body` value stays a recognized, valid property rather than
+      // triggering "Unknown field found" -- same reasoning as
+      // projectType.js's own now-hidden `description` field. `hidden:
+      // true` keeps it out of the visible form entirely; `readOnly: true`
+      // additionally blocks any write through Studio's own form.
+      //
+      // migrateLegacyDescriptionsToRichText.js copies this field's value
+      // into bodyRichText wherever that field is still empty -- this
+      // field's own stored value is never touched, cleared, or unset by
+      // that script.
       name: 'body',
-      // CMS typography foundation pass: demoted to legacy fallback --
-      // still the exact same `text` field (name, type, rows all
-      // unchanged), so any existing About Page document's stored value
-      // keeps rendering exactly as it does today. Only the Studio title/
-      // description below changed, to make its now-secondary role clear
-      // to Josh. src/cms/queries.js still fetches this field under its
-      // original name; src/AboutPage.jsx now reads it only when
-      // `bodyRichText` is empty.
       title: 'Description (legacy plain text)',
-      description:
-        'Superseded by the Description field above. Only used as a fallback when that field is empty -- existing paragraphs here still render exactly as before, one per blank-line-separated block.',
       type: 'text',
       rows: 8,
+      hidden: true,
+      readOnly: true,
     }),
   ],
   preview: {

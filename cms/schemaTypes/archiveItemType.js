@@ -1,5 +1,6 @@
 import {defineField, defineType} from 'sanity'
 import {ArchiveNumberInput} from './components/ArchiveNumberInput'
+import {TypeContextField} from './components/TypeContextField'
 
 // Archive Item is the atomic unit of the Urbanum archive: one photograph
 // plus the minimum structured metadata needed to place it -- which
@@ -51,7 +52,7 @@ export const archiveItemType = defineType({
       // description here is updated to match; nothing else about the
       // field (its name, type, validation, or position in the form)
       // changed.
-      description: 'Assigned automatically for new items. Edit here to override if needed.',
+      description: 'Assigned automatically. Edit to override if needed.',
       components: {input: ArchiveNumberInput},
       validation: (Rule) => Rule.required(),
     }),
@@ -65,10 +66,31 @@ export const archiveItemType = defineType({
     defineField({
       name: 'themes',
       title: 'Lexicon',
-      description: 'Select one or more recurring ideas that connect this image to the rest of the archive.',
+      description: 'Ideas that connect this image to the rest of the archive.',
       type: 'array',
       of: [{type: 'reference', to: [{type: 'theme'}]}],
       validation: (Rule) => Rule.required().min(1),
+    }),
+    defineField({
+      // CMS Type Context pass: read-only display only -- resolves and
+      // shows the linked Project's own Type(s) (`projectTypes`, an
+      // array of references -- see projectType.js), it does not store
+      // any of it. This field is never
+      // patched by TypeContextField.jsx (it never calls `onChange`), so
+      // this document's stored JSON never actually gains a `typeContext`
+      // property no matter how long Josh looks at this screen -- there
+      // is nothing here to become a second, out-of-sync copy of Type.
+      // `readOnly: true` is set for the same reason ArchiveNumberInput's
+      // own comment explains it must NOT be set on that field: here, the
+      // opposite applies, since this field's component never calls
+      // `set()` at all, `readOnly` only reinforces (never blocks) the
+      // read-only intent already true by construction.
+      name: 'typeContext',
+      title: 'Type',
+      type: 'string',
+      readOnly: true,
+      description: 'Type is managed on the linked Project.',
+      components: {input: TypeContextField},
     }),
     defineField({
       name: 'displayRole',
@@ -83,7 +105,7 @@ export const archiveItemType = defineType({
       // language -- what each option means for the image, not a
       // definitions list. The three option values themselves (Default/
       // Featured/Hidden, in the options.list below) are unchanged.
-      description: 'Choose how this image should appear within the project.',
+      description: 'Controls where this image appears.',
       type: 'string',
       options: {
         list: [
@@ -106,7 +128,7 @@ export const archiveItemType = defineType({
       // be skipped -- Sort Order didn't carry it despite being just as
       // optional, which is the inconsistency this labels.
       title: 'Sort Order (optional)',
-      description: 'Sets the order this image appears within its project. Lower numbers come first.',
+      description: 'Lower numbers come first.',
       type: 'number',
       validation: (Rule) => Rule.integer(),
     }),
@@ -143,7 +165,7 @@ export const archiveItemType = defineType({
     defineField({
       name: 'privateNotes',
       title: 'Private Notes',
-      description: 'Notes for internal reference only — never shown on the public site.',
+      description: 'Never shown on the public site.',
       type: 'text',
       rows: 3,
     }),

@@ -45,35 +45,36 @@ export const contactPageType = defineType({
   fields: [
     defineField({
       name: 'title',
-      title: 'Title (legacy/fallback)',
-      description:
-        'Legacy/fallback heading -- e.g. the studio name -- shown only when the Description field below has no rich-text content. If Description is populated, author "Urbānum" (and the rest of the visible text) there instead and this field is not shown. No longer required -- safe to leave blank once Description is in use.',
+      title: 'Title',
+      description: 'Shown only if Description below is empty.',
       type: 'string',
     }),
     defineField({
       name: 'subtitle',
-      title: 'Subtitle (legacy/fallback)',
-      description:
-        'Legacy/fallback line beneath the title -- e.g. an address or a one-line descriptor. Only shown when the Description field below has no rich-text content.',
+      title: 'Subtitle',
+      description: 'Shown only if Description below is empty.',
       type: 'string',
     }),
     defineField({
+      // CMS Legacy Description Migration + Editor Cleanup pass:
+      // description text simplified -- see aboutPageType.js's own
+      // identical field comment for the full reasoning (same pattern,
+      // same rationale, applied here).
       name: 'bodyRichText',
       title: 'Description',
-      description:
-        'The page’s complete visible left-column text, including "Urbānum" and "Office For Architecture" themselves -- when this has content, it fully replaces the Title/Subtitle fields below (they will not be shown). Use Section Heading for "Urbānum"; use Normal for "Office For Architecture," the address, employment copy, and owner-representation copy; use Bold / Medium / Italic and Links inline as needed (e.g. a clickable email address). Start a new paragraph for a line break. If this is left empty, the legacy Title / Subtitle / Description (plain text) fields below are used instead.',
+      description: 'Optional.',
       type: 'richText',
     }),
     defineField({
+      // CMS Legacy Description Migration + Editor Cleanup pass --
+      // DEPRECATED, COMPATIBILITY ONLY. See aboutPageType.js's own
+      // `body` field comment for the identical pattern and rationale.
       name: 'body',
-      // CMS typography foundation pass: demoted to legacy fallback -- see
-      // aboutPageType.js's own `body` field comment for the identical
-      // pattern and rationale.
       title: 'Description (legacy plain text)',
-      description:
-        'Superseded by the Description field above. Only used as a fallback when that field is empty -- existing paragraphs here still render exactly as before, one per blank-line-separated block.',
       type: 'text',
       rows: 12,
+      hidden: true,
+      readOnly: true,
     }),
   ],
   preview: {

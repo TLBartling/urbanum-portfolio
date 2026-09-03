@@ -341,8 +341,20 @@ const quietFieldStyle = {
   borderRadius: 0,
   backgroundColor: 'transparent',
   boxShadow: 'none',
-  paddingLeft: 0,
-  paddingRight: 0,
+  // CMS Polish Pass ("Importer input padding"): previously 0/0, which
+  // left typed and placeholder text sitting flush against this field's
+  // invisible edges -- especially noticeable on Location, Year, Exact
+  // Date, Sort Order, and (via captionFieldStyle/noteFieldStyle, which
+  // both spread this object) Description/Internal Notes too, since none
+  // of those override padding themselves. Modest, symmetric inset added
+  // on all four sides; nothing else about this style (border, background,
+  // boxShadow, radius, the bottom hairline itself) changed, and no field's
+  // width/flex sizing, gap, or typography changed either -- this is a
+  // padding-only fix.
+  paddingLeft: '4px',
+  paddingRight: '4px',
+  paddingTop: '6px',
+  paddingBottom: '6px',
 }
 // Description reads as a caption sitting under the photo, not a form
 // field to fill in -- no visible input chrome at all, and no FieldLabel
@@ -816,7 +828,7 @@ export function ImportWorkspace() {
   const [newProjectLocation, setNewProjectLocation] = useState('')
   const [newProjectDate, setNewProjectDate] = useState('')
   // Type lives on Project (cms/schemaTypes/projectType.js's own
-  // `projectType` field), not on the Archive Item draft -- but unlike
+  // `projectTypes` field), not on the Archive Item draft -- but unlike
   // Location/Year immediately above (genuinely creation-only, per
   // isNewProject's own comment), Type is surfaced and editable in
   // Required Information for every Project, new or existing (see the
@@ -824,18 +836,27 @@ export function ImportWorkspace() {
   // rendered only inside the isNewProject section, which is what made it
   // invisible for the common case of attaching an existing Project --
   // this was fixed by giving it its own always-visible block). So
-  // `requiredType` is reset on the same schedule as every other per-draft
-  // Required field (see resetDraftFields), but is no longer scoped to
-  // isNewProject the way newProjectLocation/newProjectDate still are --
-  // it's re-seeded from whatever the attached Project already has by the
-  // Project field's own onAttach, handleCreateProject's existing-title
-  // match, and applySessionContext (all below), so it correctly reflects
-  // an existing Project's current Type rather than always starting
-  // blank. Holds a plain {id, label} object (AnnotationField's own
-  // shape), single-selected like Project itself -- never an array --
-  // matching Type's own single-reference cardinality on the Project
-  // schema.
-  const [requiredType, setRequiredType] = useState(null)
+  // `requiredTypeIds` is reset on the same schedule as every other
+  // per-draft Required field (see resetDraftFields), but is no longer
+  // scoped to isNewProject the way newProjectLocation/newProjectDate
+  // still are -- it's re-seeded from whatever the attached Project
+  // already has by the Project field's own onAttach,
+  // handleCreateProject's existing-title match, and applySessionContext
+  // (all below), so it correctly reflects an existing Project's current
+  // Type(s) rather than always starting blank.
+  //
+  // CMS Type Multi-Select pass: a Project can now belong to one or more
+  // Types (see projectType.js's own `projectTypes` field, an array of
+  // references, replacing the old single `projectType` reference) --
+  // this state changed shape to match, from a single {id, title} object
+  // to a plain array of Type document ids, the exact same shape
+  // `requiredThemeIds` immediately above already uses for Lexicon's own
+  // multi-select. Every read/write of this state (Required's fetch
+  // effect, applySessionContext, handleCreateProject's existing-title
+  // match, the Type AnnotationField's own onAttach/onCreate/onRemove,
+  // handleSaveOptional's Project patch, resetDraftFields, and
+  // requiredComplete) was updated together with this change.
+  const [requiredTypeIds, setRequiredTypeIds] = useState([])
 
   // Plain local state, each seeded with a sensible blank/default (Display
   // Role's default mirrors the schema's own `initialValue`). Reset to
@@ -909,14 +930,27 @@ export function ImportWorkspace() {
     let cancelled = false
 
     // Required-Information surfacing fix: also selects each Project's own
-    // current `projectType` reference, dereferenced to `{_id, title}` --
-    // needed so the Type control (see the JSX below) can show what a
-    // Project *already* has the moment it's attached, existing or brand
-    // new, the same way Theme's own suggestions already carry enough to
-    // render a chip. Without this, `availableProjects` entries would
-    // carry no Type information at all, and Type would always render as
+    // current Type(s), dereferenced to `[{_id, title}, ...]` -- needed so
+    // the Type control (see the JSX below) can show what a Project
+    // *already* has the moment it's attached, existing or brand new, the
+    // same way Theme's own suggestions already carry enough to render a
+    // chip. Without this, `availableProjects` entries would carry no
+    // Type information at all, and Type would always render as
     // "unselected" even for a Project that already has one set.
-    client.fetch('*[_type == "project"]{_id, title, "projectType": projectType->{_id, title}} | order(title asc)').then(
+    //
+    // CMS Type Multi-Select pass: `projectTypes` (the new array field,
+    // see projectType.js) is preferred; `select()` falls back to the old
+    // single `projectType` reference -- wrapped as a one-item array --
+    // for any Project not yet migrated, so an existing Project's Type
+    // still shows up here even before the migration script (see
+    // migrateProjectTypeToArray.js) has run against it. Neither field
+    // present yields an empty array, same "absent means absent"
+    // convention every other optional field in this tool already uses.
+    client
+      .fetch(
+        '*[_type == "project"]{_id, title, "projectTypes": select(defined(projectTypes) => projectTypes[]->{_id, title}, defined(projectType) => [projectType->{_id, title}], [])} | order(title asc)',
+      )
+      .then(
       (docs) => {
         if (!cancelled) setAvailableProjects(docs)
       },
@@ -962,7 +996,7 @@ export function ImportWorkspace() {
     // `type` this originally queried -- Sanity rejects `type` as a
     // document schema name outright (see typeType.js's own comment),
     // so this fetch never actually succeeded until this rename. Local
-    // state/handler names (availableTypes, setRequiredType, etc.) are
+    // state/handler names (availableTypes, setRequiredTypeIds, etc.) are
     // untouched -- they're plain JS identifiers with no Sanity meaning,
     // not schema terminology.
     client.fetch('*[_type == "projectType"]{_id, title} | order(title asc)').then(
@@ -1163,11 +1197,7 @@ export function ImportWorkspace() {
       const matchedProject = context.project
         ? (availableProjects || []).find((project) => project._id === context.project._id)
         : null
-      setRequiredType(
-        matchedProject?.projectType
-          ? {_id: matchedProject.projectType._id, title: matchedProject.projectType.title}
-          : null,
-      )
+      setRequiredTypeIds((matchedProject?.projectTypes || []).map((type) => type._id))
       setOptionalLocation(context.location)
       setOptionalYear(context.year)
       setOptionalFullDate(context.fullDate)
@@ -1321,11 +1351,7 @@ export function ImportWorkspace() {
       // its own `projectType` (the fetch effect above now selects it),
       // so this seeds Type directly, no extra lookup needed -- same
       // reasoning as the Project AnnotationField's own onAttach above.
-      setRequiredType(
-        existing.projectType
-          ? {_id: existing.projectType._id, title: existing.projectType.title}
-          : null,
-      )
+      setRequiredTypeIds((existing.projectTypes || []).map((type) => type._id))
       return
     }
 
@@ -1413,12 +1439,13 @@ export function ImportWorkspace() {
   }, [client, isSavingNewTheme, availableThemes])
 
   // Type CMS authoring pass: same dedupe-then-create shape as
-  // handleCreateProject/handleCreateTheme above, but single-select like
-  // handleCreateProject (setRequiredType, not append-to-array) -- a
-  // Project has exactly one Type, the same cardinality Theme's own
-  // `projectType` field on projectType.js now carries as a single
-  // reference. No slug/sortOrder bookkeeping (typeType.js has only
-  // `title`, the same reason handleCreateTheme above needs none either).
+  // handleCreateProject/handleCreateTheme above. CMS Type Multi-Select
+  // pass: now append-to-array like handleCreateTheme, not single-select
+  // like handleCreateProject -- a Project can belong to one or more
+  // Types now (see projectType.js's own `projectTypes` field, an array
+  // of references to `projectType` documents). No slug/sortOrder
+  // bookkeeping (typeType.js has only `title`, the same reason
+  // handleCreateTheme above needs none either).
   //
   // Naming correction: creates a `projectType` document, not the bare
   // `type` this originally created -- Sanity rejects `type` as a document
@@ -1433,7 +1460,7 @@ export function ImportWorkspace() {
       (type) => type.title.trim().toLowerCase() === title.toLowerCase(),
     )
     if (existing) {
-      setRequiredType(existing)
+      setRequiredTypeIds((prev) => (prev.includes(existing._id) ? prev : [...prev, existing._id]))
       return
     }
 
@@ -1445,7 +1472,7 @@ export function ImportWorkspace() {
           a.title.localeCompare(b.title),
         ),
       )
-      setRequiredType({_id: created._id, title: created.title})
+      setRequiredTypeIds((prev) => [...prev, created._id])
     } catch (error) {
       console.error('[ImportWorkspace] Failed to create new Type.', error)
       setNewTypeError('Could not create Type -- try again.')
@@ -1493,11 +1520,11 @@ export function ImportWorkspace() {
     // Type resets to blank on the same schedule as every other per-draft
     // Required field (Project/Theme above) -- it's no longer scoped
     // to isNewProject the way newProjectLocation/newProjectDate still are
-    // (see requiredType's own declaration comment for why), but photo
+    // (see requiredTypeIds' own declaration comment for why), but photo
     // 2+ within a batch on the same Project gets it correctly re-seeded
     // straight back by applySessionContext, called immediately after
     // this same reset.
-    setRequiredType(null)
+    setRequiredTypeIds([])
     setIsSavingNewType(false)
     setNewTypeError(null)
     setIsSavingNewTheme(false)
@@ -1707,21 +1734,32 @@ export function ImportWorkspace() {
       // screen, a rule this fix leaves completely alone), but Type is now
       // surfaced and editable for every Project, new or existing (see the
       // Type field's own comment in the JSX below), so its write can't be
-      // gated the same way. Only ever a `set` -- if requiredType is empty
-      // (Type field cleared without a replacement picked), nothing is
-      // patched, so this can extend an existing Project with a Type it's
-      // missing or change it to a different one, but never unset a
-      // Project's existing Type by omission; same conservative,
+      // gated the same way. Only ever a `set` -- if requiredTypeIds is
+      // empty (every Type chip removed with no replacement picked),
+      // nothing is patched, so this can extend an existing Project with
+      // Type(s) it's missing or change which ones it has, but never unset
+      // a Project's existing Type(s) by omission; same conservative,
       // additive-only posture the isNewProject block above already has
       // for Location/Year, just applied to a field that's no longer
-      // creation-only. Reference target is `projectType` (see
-      // projectType.js's own field), matching the naming correction
-      // already applied elsewhere in this file.
-      if (requiredProject?._id && requiredType?._id) {
+      // creation-only.
+      //
+      // CMS Type Multi-Select pass: writes the new `projectTypes` array
+      // field (see projectType.js), not the old single `projectType`
+      // reference -- every id currently in requiredTypeIds, in the order
+      // they were attached, the same shape handleSaveRequired's own
+      // `themes` write above already uses for Lexicon.
+      // `autoGenerateArrayKeys: true` is required here (unlike the old
+      // single-reference `.set()` this replaces) because this is now an
+      // array-of-reference value -- each item needs a Sanity-assigned
+      // `_key`, the same documented option patchImportDraft.js's own
+      // `.commit()` call already relies on for exactly this reason.
+      if (requiredProject?._id && requiredTypeIds.length > 0) {
         await client
           .patch(requiredProject._id)
-          .set({projectType: {_type: 'reference', _ref: requiredType._id}})
-          .commit()
+          .set({
+            projectTypes: requiredTypeIds.map((id) => ({_type: 'reference', _ref: id})),
+          })
+          .commit({autoGenerateArrayKeys: true})
       }
 
       await patchImportDraft(client, currentDraft.id, fields)
@@ -1747,7 +1785,7 @@ export function ImportWorkspace() {
     requiredProject,
     newProjectLocation,
     newProjectDate,
-    requiredType,
+    requiredTypeIds,
     handlePublish,
   ])
 
@@ -1922,16 +1960,20 @@ export function ImportWorkspace() {
   // the Type block's own comment in the JSX below), so this gate no
   // longer special-cases isNewProject the way it briefly did -- Type is
   // simply required, the same unconditional way Project/Theme
-  // already are. An existing Project that already has a Type gets
-  // requiredType seeded automatically (see applySessionContext and the
+  // already are. An existing Project that already has Type(s) gets
+  // requiredTypeIds seeded automatically (see applySessionContext and the
   // Project field's own onAttach/handleCreateProject above), so this
   // only actually blocks Continue for a Project -- new or legacy -- that
   // genuinely has no Type set yet, which is the correct behavior for a
-  // schema-required field.
+  // schema-required field. CMS Type Multi-Select pass: checks
+  // requiredTypeIds.length > 0 rather than a single truthy value, the
+  // same "at least one" shape requiredThemeIds.length > 0 immediately
+  // above already checks for Lexicon -- one or more Types both satisfy
+  // this now, matching projectType.js's own `Rule.required().min(1)`.
   const requiredComplete =
     Boolean(requiredProject) &&
     requiredThemeIds.length > 0 &&
-    Boolean(requiredType)
+    requiredTypeIds.length > 0
 
   return (
     // Container's `width` prop isn't a loose cap -- @sanity/ui's own
@@ -2886,10 +2928,8 @@ export function ImportWorkspace() {
                             const matchedProject = (availableProjects || []).find(
                               (project) => project._id === item.id,
                             )
-                            setRequiredType(
-                              matchedProject?.projectType
-                                ? {_id: matchedProject.projectType._id, title: matchedProject.projectType.title}
-                                : null,
+                            setRequiredTypeIds(
+                              (matchedProject?.projectTypes || []).map((type) => type._id),
                             )
                           }}
                           onCreate={handleCreateProject}
@@ -2901,8 +2941,8 @@ export function ImportWorkspace() {
                             // Type CMS authoring pass: resets alongside
                             // the rest of the New Project workflow's own
                             // state above, for the same reason -- see
-                            // requiredType's own declaration comment.
-                            setRequiredType(null)
+                            // requiredTypeIds' own declaration comment.
+                            setRequiredTypeIds([])
                             setNewTypeError(null)
                           }}
                           className="urbanum-field"
@@ -2957,16 +2997,25 @@ export function ImportWorkspace() {
                             id="required-type"
                             label="Type"
                             placeholder="Type a project type…"
-                            items={requiredType ? [{id: requiredType._id, label: requiredType.title}] : []}
+                            items={requiredTypeIds.map((id) => {
+                              const type = (availableTypes || []).find((t) => t._id === id)
+                              return {id, label: type ? type.title : id}
+                            })}
                             suggestions={(availableTypes || []).map((type) => ({
                               id: type._id,
                               label: type.title,
                             }))}
-                            multiple={false}
+                            multiple
                             creating={isSavingNewType}
-                            onAttach={(item) => setRequiredType({_id: item.id, title: item.label})}
+                            onAttach={(item) =>
+                              setRequiredTypeIds((prev) =>
+                                prev.includes(item.id) ? prev : [...prev, item.id],
+                              )
+                            }
                             onCreate={handleCreateType}
-                            onRemove={() => setRequiredType(null)}
+                            onRemove={(item) =>
+                              setRequiredTypeIds((prev) => prev.filter((id) => id !== item.id))
+                            }
                             className="urbanum-field"
                             style={quietFieldStyle}
                           />

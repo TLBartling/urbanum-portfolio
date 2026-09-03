@@ -92,9 +92,27 @@ export default function ContactPage() {
   // fall back to the legacy plain-text split when empty" pattern as
   // AboutPage.jsx's own `hasRichBody`/`paragraphs` -- see that file's
   // comment for the full reasoning.
-  const hasRichBody =
-    Array.isArray(contactPage?.bodyRichText) &&
-    contactPage.bodyRichText.length > 0;
+  //
+  // Contact Page Content Repair pass: presence is now judged by actual
+  // text, not just array length. A `bodyRichText` array can be non-empty
+  // while still being visually blank -- e.g. a single empty paragraph
+  // block Sanity's own rich-text editor can leave behind after a click
+  // into (and back out of) the field with nothing typed. The old
+  // `length > 0` check treated that as "has content," which hid the
+  // legacy `body` fallback below even though nothing was actually
+  // rendering -- exactly the bug that made this page go blank. This
+  // mirrors the same "meaningful content" definition already
+  // established in cms/migrateLegacyDescriptionsToRichText.js's own
+  // `hasMeaningfulRichText()`: true only if some block has some span
+  // with non-whitespace text.
+  const hasRichBody = (contactPage?.bodyRichText ?? []).some(
+    (block) =>
+      Array.isArray(block?.children) &&
+      block.children.some(
+        (child) =>
+          typeof child?.text === "string" && child.text.trim() !== "",
+      ),
+  );
 
   // Same blank-line-per-paragraph convention as AboutPage.jsx's own
   // `paragraphs` derivation -- see aboutPageType.js/contactPageType.js's

@@ -3510,7 +3510,21 @@ html.is-browsing .zoom-controls {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  max-width: 37ch;
+  /* Visual regression fix (Contact visual metrics pass): restored to
+     43ch. This selector's own governing comment immediately above (the
+     "46ch -> 43ch" visual-fidelity pass) measured and confirmed 43ch
+     against the approved mockup -- including the exact wrap points this
+     column's paragraphs should land on -- but a later, unrelated commit
+     (Contact/Practice/Journal weight-calibration + justify-to-left-align
+     polish pass) silently narrowed this to 37ch without any comment or
+     stated reason, and without touching the measurement comment above,
+     which still describes 43ch. That undocumented 6ch narrowing is what
+     made the rich-text rendering read "too expanded" versus the
+     previously approved composition: a narrower column wraps onto more
+     lines (taller left block, "too loose" vertical rhythm) and reads
+     comparatively smaller/more crowded next to the image column, which
+     doesn't share this max-width and stays full-width regardless. */
+  max-width: 43ch;
 }
 
 .contact-layout__copy {
@@ -3633,6 +3647,23 @@ html.is-browsing .zoom-controls {
    line-start distance (~27px CSS) at the 1920px reference viewport. */
 .contact-layout__heading + .contact-layout__heading {
   margin-top: -1.05em;
+}
+
+/* Contact subtitle weight fix: "Office For Architecture" still read
+   slightly too heavy against the approved reference at .rich-text__muted's
+   own font-weight: 400 -- .rich-text__muted is the shared Muted decorator
+   rule (see its own comment further down), used by RichText.jsx wherever
+   any richText field's Muted mark is applied, so lightening it directly
+   would affect every other page/field that ever uses Muted, not just this
+   one line. Scoped instead to Muted specifically nested inside a Contact
+   heading -- the span's own explicit weight here overrides the inherited
+   400 for this one case only. 300 is GT America Light, a real loaded
+   face (see this file's @font-face block), matching the weight
+   .contact-layout__paragraph's own body copy already uses -- not a
+   synthesized/faux-light weight. Font size, line-height, color,
+   spacing, and position are all untouched. */
+.contact-layout__heading .rich-text__muted {
+  font-weight: 300;
 }
 
 /* Same restrained editorial type scale .about-layout__paragraph already

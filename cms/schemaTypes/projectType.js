@@ -62,7 +62,7 @@ export const projectType = defineType({
     defineField({
       name: 'sortOrder',
       title: 'Sort Order',
-      description: 'Controls Previous/Next Project navigation order. Lower numbers appear first.',
+      description: 'Lower numbers appear first.',
       type: 'number',
       validation: (Rule) => Rule.required().integer(),
     }),
@@ -78,32 +78,76 @@ export const projectType = defineType({
       // (typeType.js), the same shape Theme already uses on Archive Item,
       // is what makes that possible: the uploader can
       // `client.create({_type: 'projectType', title})` a new one exactly
-      // like handleCreateTheme already does. Single reference (not an
-      // array) since a Project has exactly one Type -- the same
-      // cardinality the closed list already had, just represented as a
-      // reference instead of a string now. Still mandatory
-      // (`Rule.required()`); still written by the uploader
-      // (ImportWorkspace.jsx) at the same moment Location/Year get set
-      // for a brand-new Project, never touching an already-published
-      // Project's existing Type.
+      // like handleCreateTheme already does.
       //
-      // Naming correction: this field, the document it references
-      // (typeType.js), and this field's own name were all originally
-      // `type` -- Sanity rejects `type` as a *document* schema name
-      // outright ("reserved name"), which is what actually broke Studio
-      // and prompted this fix. This field name itself was never the
-      // cause of that error (Sanity doesn't reserve `type` as a plain
-      // field key), but it's renamed anyway, to `projectType`, for the
-      // internal-consistency Josh asked for: one clear internal name
-      // (`projectType`, used for the field, the reference target, and
-      // GROQ) paired with one stable user-facing label (`Type`, below --
-      // unchanged from before this fix and unrelated to it).
-      name: 'projectType',
+      // CMS Type Multi-Select pass: a Project can now belong to one or
+      // more Types (e.g. both "Adaptive Reuse" and "Interiors"), not
+      // exactly one -- this field is renamed `projectTypes` and changed
+      // from a single `reference` to an `array` of references, the exact
+      // same shape Archive Item's own `themes` (Lexicon) field already
+      // uses on archiveItemType.js, referencing the same `projectType`
+      // taxonomy document (typeType.js) this field always pointed at.
+      // Still mandatory, `min(1)` rather than a bare `required()` --
+      // "one or more," the same "at least one" contract `themes` already
+      // enforces -- and still written by the uploader (ImportWorkspace.jsx)
+      // at the same moments the old single field was, never touching an
+      // already-published Project's Type(s) except to add to or change
+      // them (see ImportWorkspace.jsx's own comment on that write for the
+      // full reasoning).
+      //
+      // MIGRATION: this is a NEW field, not the old `projectType`
+      // field renamed in place -- an existing Project's data lives under
+      // the OLD field name (see the deprecated field immediately below)
+      // until migrateProjectTypeToArray.js moves it over. Naming
+      // correction: this field, the document it references (typeType.js),
+      // and this field's own name were all originally `type` -- Sanity
+      // rejects `type` as a *document* schema name outright ("reserved
+      // name"), which is what actually broke Studio and prompted that
+      // earlier fix; renamed then to `projectType`, and now to
+      // `projectTypes` for this pass, for the same internal-consistency
+      // reasoning each time. GROQ/frontend/importer all read/write this
+      // exact field name now (see cms/components/ImportWorkspace.jsx,
+      // src/cms/queries.js).
+      name: 'projectTypes',
       title: 'Type',
-      description: 'The category of project.',
+      description: 'One or more categories for this project.',
+      type: 'array',
+      of: [{type: 'reference', to: [{type: 'projectType'}]}],
+      validation: (Rule) => Rule.required().min(1),
+    }),
+    defineField({
+      // CMS Type Multi-Select pass -- DEPRECATED, COMPATIBILITY ONLY.
+      // This is the OLD single-reference Type field this schema used
+      // before this pass; `projectTypes` immediately above is now the
+      // one Type field Josh sees and edits. This field is kept in the
+      // schema (not deleted) purely so an existing Project's already-
+      // stored `projectType` value stays a recognized, valid property --
+      // removing this field definition entirely while old documents
+      // still carry the old property would make Studio start showing
+      // "Unknown field found" for every one of them, the exact same
+      // class of problem the CMS Polish Pass's `tags` cleanup already
+      // dealt with once (see cms/auditUnknownFields.js's own comment).
+      // `hidden: true` keeps it out of the visible form entirely (Josh
+      // never sees two Type-looking fields at once, satisfying "no
+      // duplicate fields with conflicting meaning" -- there is exactly
+      // one Type control visible and editable, `projectTypes` above);
+      // `readOnly: true` additionally blocks any write through Studio's
+      // own form even if something did surface it. No validation --
+      // an unmigrated legacy Project has a value here and a brand-new
+      // Project never will, and neither state should ever block
+      // publishing.
+      //
+      // Once migrateProjectTypeToArray.js has been run against
+      // production and every Project's data confirmed moved into
+      // `projectTypes`, this field can be deleted from the schema
+      // entirely in a later pass -- not done here, since that's a
+      // one-way step this pass was explicitly told not to take yet.
+      name: 'projectType',
+      title: 'Type (legacy, hidden)',
       type: 'reference',
       to: [{type: 'projectType'}],
-      validation: (Rule) => Rule.required(),
+      hidden: true,
+      readOnly: true,
     }),
     defineField({
       // Archive polish pass ("optional-field labeling"): Studio has no
@@ -129,19 +173,47 @@ export const projectType = defineType({
       // full non-destructive-migration rationale. src/ProjectInfoPanel.jsx
       // prefers this field when it has content, falling back to
       // `description` (and then `image.caption`, unchanged) otherwise.
+      //
+      // CMS Legacy Description Migration + Editor Cleanup pass: this is
+      // now the ONE Description field Josh sees and edits -- `description`
+      // below is hidden (not deleted; see its own comment). Title
+      // simplified from "Description (optional)" to plain "Description"
+      // and the description text shortened to just note it's optional,
+      // now that there's no second Description-labeled field on screen
+      // to disambiguate from or explain a fallback relationship to.
       name: 'descriptionRichText',
-      title: 'Description (optional)',
-      description:
-        'The project’s body copy on its detail page. Use Bold / Medium / Italic and Links inline as needed. Start a new paragraph for a line break. If this is left empty, the legacy Description (plain text) field below is used instead.',
+      title: 'Description',
+      description: 'Optional.',
       type: 'richText',
     }),
     defineField({
+      // CMS Legacy Description Migration + Editor Cleanup pass --
+      // DEPRECATED, COMPATIBILITY ONLY. This is the OLD plain-text
+      // Description field; `descriptionRichText` immediately above is
+      // now the one Description field Josh sees and edits. Kept in the
+      // schema (not deleted) so an existing Project's already-stored
+      // `description` value stays a recognized, valid property rather
+      // than triggering Studio's "Unknown field found" warning -- the
+      // same reasoning the CMS Type Multi-Select pass already applied to
+      // Project's own old `projectType` field (see that field's comment,
+      // below). `hidden: true` keeps it out of the visible form entirely
+      // (exactly one Description control is ever shown); `readOnly: true`
+      // additionally blocks any write through Studio's own form even if
+      // something did surface it.
+      //
+      // migrateLegacyDescriptionsToRichText.js copies this field's value
+      // into descriptionRichText wherever that field is still empty --
+      // this field's own stored value is never touched, cleared, or
+      // unset by that script. Once migration is verified against
+      // production, a later pass can delete this field from the schema
+      // entirely -- not done here, on purpose, per this pass's own
+      // instruction to keep it for compatibility/rollback until then.
       name: 'description',
-      title: 'Description (legacy plain text, optional)',
-      description:
-        'Superseded by the Description field above. Only used as a fallback when that field is empty.',
+      title: 'Description (legacy plain text)',
       type: 'text',
       rows: 3,
+      hidden: true,
+      readOnly: true,
     }),
   ],
   preview: {

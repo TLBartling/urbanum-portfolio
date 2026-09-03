@@ -35,14 +35,20 @@
 //   theme   -- structured field, string or array of strings.
 //   project -- structured field, string or array of strings.
 //   type    -- structured field, string or array of strings. Matches an
-//              item's parent Project's own Type (denormalized onto the
-//              item as `projectType` -- see cms/queries.js's
+//              item's parent Project's own Type(s) (denormalized onto
+//              the item as `projectTypes` -- see cms/queries.js's
 //              normalizeArchiveItem), the same denormalize-and-match
 //              shape `project` immediately above already uses for
 //              Project itself. No item-level override the way `year` has
 //              (Type lives only on Project, never on Archive Item -- see
-//              cms/schemaTypes/projectType.js), so this is a single,
-//              direct equality check, not an either-one-counts pair.
+//              cms/schemaTypes/projectType.js). CMS Type Multi-Select
+//              pass: a Project (and so an item inheriting from it) can
+//              now carry more than one Type -- this matches if the query
+//              value is present ANYWHERE in the item's inherited
+//              `projectTypes` array, the same "array is OR logic, does
+//              this item's own array contain the value" shape `theme`
+//              immediately below already uses for its own `themes`
+//              array, not a single direct equality check anymore.
 //   year    -- structured field, string/array of strings, PLUS one special
 //              value shape: `{ before: <number> }`, matching any item whose
 //              year is strictly earlier than that number. An explicit-year
@@ -131,11 +137,16 @@ const STRUCTURED_FIELD_MATCHERS = {
     item.theme === value ||
     (Array.isArray(item.themes) && item.themes.includes(value)),
   project: (item, value) => item.project === String(value),
-  // Type Filter: item.projectType is the parent Project's own Type,
+  // Type Filter: item.projectTypes is the parent Project's own Type(s),
   // denormalized onto the item exactly the way project (immediately
   // above) and projectYear (see year, below) already are -- see this
-  // file's own module-comment entry for `type` above.
-  type: (item, value) => item.projectType === String(value),
+  // file's own module-comment entry for `type` above. CMS Type
+  // Multi-Select pass: array-membership check, not equality -- an item
+  // matches a Type filter value if ANY of its inherited Types matches,
+  // the same shape `theme`'s own `themes` check immediately above
+  // already uses.
+  type: (item, value) =>
+    Array.isArray(item.projectTypes) && item.projectTypes.includes(String(value)),
   year: (item, value) => {
     const [ownYear, projectYear] = getYearFieldValues(item);
     // "Earlier" Bucket: a `{ before: N }` value (see this file's own

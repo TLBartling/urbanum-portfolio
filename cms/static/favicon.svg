@@ -1,12 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" fill="#f5efe4"/>
+  <rect width="64" height="64" fill="#faf9f5"/>
+  <g stroke="#000000" stroke-width="2" stroke-linecap="square" fill="none">
+    <path d="M17 18 L17 46 M17 18 L23 18 M17 46 L23 46"/>
+    <path d="M47 18 L47 46 M47 18 L41 18 M47 46 L41 46"/>
+  </g>
   <text
-    x="50%"
-    y="50%"
+    x="32"
+    y="33"
     fill="#000000"
-    font-family="'Courier New', Courier, monospace"
-    font-size="44"
-    font-weight="400"
+    font-family="'GT America', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif"
+    font-size="22"
+    font-weight="500"
     text-anchor="middle"
     dominant-baseline="central"
   >u</text>

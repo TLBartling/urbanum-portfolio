@@ -1210,21 +1210,16 @@ body {
    Project-linked Thumbnail tiles as small as ~22x14px (measured against
    COLUMN_PATTERNS at real mobile viewport heights) -- at that extreme,
    0.5rem (8px) of padding on every side alone can approach or exceed the
-   tile's own height, leaving Archive Number (and, on the rarer Thumbnail
-   tile where it actually fits, View Project) no room to render visibly
-   at all. 2px is the smallest padding that still reads as intentional
-   breathing room rather than the text touching the image edge -- below
-   this, on the smallest real tiles, this card's own content is still
-   constrained by the tile's own physical size (a real, acknowledged
-   limit, not something padding alone can fully solve), not by this
-   rule. Final simplification pass: this class's own reasoning no longer
-   mentions the "+" affordance (removed entirely, see
-   .hover-overlay__enter-project's own comment) -- the reduced padding
-   itself is still needed for Archive Number/View Project's own
-   containment on these same small tiles, so the class stays. It is also
-   what HoverOverlay.jsx's fit-measurement effect reads via
-   getComputedStyle to compute the real available interior width/height
-   -- see that effect's own comment. */
+   tile's own height, leaving Archive Number and, where it actually fits,
+   View Project (the Final Mobile Interaction Model pass: View Project
+   attempts to render on every tier now, not Medium/Large only -- see
+   .hover-overlay__enter-project's own comment below) no room to render
+   visibly at all. 2px is the smallest padding that still reads as
+   intentional breathing room rather than the text touching the image
+   edge -- below this, on the smallest real tiles, this card's own
+   content is still constrained by the tile's own physical size (a real,
+   acknowledged limit, not something padding alone can fully solve), not
+   by this rule. */
 .hover-overlay--thumbnail-inspected {
   padding: 2px;
 }
@@ -1668,28 +1663,31 @@ body {
    layout change of its own. */
 .hover-overlay__enter-project {
   align-self: center;
-  /* Final simplification pass: this control now mounts on ANY inspected,
-     Project-linked tile -- tier no longer gates its existence at all (the
-     Thumbnail-only "+" affordance it used to share this job with is
-     removed entirely; every Project-linked tile now gets exactly one
-     entry control, this one). Whether it's actually visible is decided
-     by HoverOverlay.jsx's own real-DOM fit-measurement effect (see that
-     component's top-of-file comment) -- this rule only styles what that
-     effect toggles between via the --measuring modifier class just
-     below. .gallery-image-wrapper's own overflow: hidden remains the
-     real containment boundary if a measurement is ever somehow wrong --
-     unchanged, see that rule's own comment. */
+  /* Final Mobile Interaction Model pass (consistency cleanup): this
+     control mounts on ANY inspected, Project-linked tile now --
+     Large/Medium/Thumbnail alike -- per HoverOverlay.jsx's own JSX guard
+     (isInspected && onEnterProject, no tier condition). Earlier passes
+     gated this by tier (Medium/Large only) or by a live
+     useLayoutEffect/ResizeObserver DOM-measurement fit check (which
+     failed shut on a real device); neither exists any more. No
+     rendering-eligibility logic lives in this rule -- only containment
+     (wrapping, sizing) does; see the container-query fallback below this
+     rule for the one remaining case (a container too small even for a
+     wrapped 2-line label) where this control is hidden outright, and
+     .gallery-image-wrapper's own overflow: hidden for the backstop if a
+     size assumption is ever still wrong -- unchanged, see that rule's
+     own comment. */
   display: inline-flex;
   align-items: center;
   justify-content: center;
   /* No min-height: this control's own visible height is just its natural
-     content size (line-height of whatever the responsive font-size below
-     resolves to, plus the margin-top below) -- comfortably small at any
-     real tile size. The 44px standard tap-target size is preserved as an
-     INVISIBLE hit area instead (position: relative + the ::before rule
-     just below) rather than as visible layout height, so this control's
-     own real footprint -- the thing HoverOverlay.jsx's fit-measurement
-     effect actually measures -- stays as small as its text genuinely is. */
+     content size (one or two lines at whatever the responsive font-size
+     below resolves to, plus the margin-top below) -- comfortably small
+     at any real tile size. The 44px standard tap-target size is
+     preserved as an INVISIBLE hit area instead (position: relative + the
+     ::before rule just below) rather than as visible layout height, per
+     instruction ("do not reserve a rigid 44px box in the visible
+     layout"). */
   padding: 0 0.75rem;
   margin-top: 0.15rem;
   pointer-events: auto;
@@ -1697,52 +1695,46 @@ body {
   /* position: relative is what lets the ::before rule immediately below
      position its expanded, invisible hit area relative to THIS element
      rather than some further-up ancestor -- purely a positioning-context
-     change, no visual effect of its own. Final simplification pass: also
-     what the --measuring modifier class below overrides to take this
-     control out of flow entirely while unmeasured/not fitting. */
+     change, no visual effect of its own. */
   position: relative;
-  /* nowrap still guarantees this never grows past one line regardless of
-     how the responsive font-size below resolves -- the shrinking font is
-     what keeps a narrow tile's text inside its own width instead of
-     wrapping; nowrap is what stops a wrap from silently growing this
-     control's height. Same reasoning .hover-overlay__themes li's own
-     white-space: nowrap already documents for the identical failure
-     mode. This no longer needs to be the ONLY thing standing between a
-     narrow tile and clipped text, though -- HoverOverlay.jsx's own real-
-     DOM fit-measurement is what actually guarantees that now (see this
-     rule's own top-of-file cross-reference); nowrap here is still worth
-     keeping so a near-fit case degrades to "doesn't fit, hidden" rather
-     than "wraps to two lines and then maybe still doesn't fit". */
-  white-space: nowrap;
+  /* Final Mobile Interaction Model pass: white-space is normal (the
+     property's own default -- no longer set to nowrap here), and
+     max-width/box-sizing below cap this control's own cross-axis size to
+     whatever room the overlay's flex layout actually gives it. Together
+     these let "View Project ->" wrap onto a second line on a narrow
+     tile (e.g. "View" / "Project ->") instead of either overflowing past
+     the tile's own edge or being suppressed outright -- "never clip
+     horizontally," per instruction, without a fixed pixel threshold
+     deciding it. text-align centers each wrapped line the same way
+     justify-content already centers the single-line case. If a rare
+     edge-case tile still clips after this pass, the fix belongs here --
+     in this composition -- not in a runtime fit-measurement system or a
+     global hide. (flex-wrap is not the relevant property here -- this
+     element's own content is a single text node, not multiple flex
+     children, so flex-wrap has no effect on it; white-space is what
+     actually governs whether that text node wraps.) */
+  max-width: 100%;
+  box-sizing: border-box;
+  text-align: center;
 
   font-family: "GT America", "Helvetica Neue", Helvetica, Arial, sans-serif;
-  /* Final simplification pass: real-device screenshots proved that
-     scaling this down toward its old 9px floor could still produce text
-     that either clipped or was too small to comfortably read -- this
-     typography's job is no longer "shrink however far it takes to try to
-     fit" (HoverOverlay.jsx's own fit-measurement now owns whether this
-     renders at all); it's "modest, proportional scaling within a
-     genuinely readable range," per instruction. Same clamp()-over-
-     container-query-units shape as before (cqmin, the smaller of this
-     container's own width/height, same unit Archive Number's own
-     font-size clamp uses):
+  /* Responsive, not fixed -- View Project scales down modestly to fit
+     smaller tiles rather than disappearing entirely. Same
+     clamp()-over-container-query-units shape as before (cqmin, the
+     smaller of this container's own width/height, same unit Archive
+     Number's own font-size clamp uses):
        Ceiling: 0.68rem, unchanged -- a tile with room to spare still
        looks exactly as it always has.
-       Coefficient: 9.4cqmin, unchanged from the prior pass's own
-       real-device calibration (window.__urbanumMobileDebug(), see that
-       pass's own history for the full derivation) -- kept as-is since
-       raising the floor below doesn't require re-deriving how quickly
-       this scales down, only where it stops.
-       Floor: 11px (was 9px) -- raised specifically so this control can
-       no longer render at a size this file's own editorial floor
-       elsewhere (Archive Number, Themes) intentionally allows for
-       secondary metadata, but that isn't genuinely comfortable for a
-       primary navigation label someone is meant to read and tap. Below
-       whatever tile size would have pushed this clamp under 11px, the
-       fit-measurement effect above now hides the control outright
-       instead -- "better to show Number only than unreadably tiny text,"
-       per instruction, is enforced there, not by letting this floor keep
-       dropping. */
+       Coefficient: 9.4cqmin, unchanged from its own real-device
+       calibration (window.__urbanumMobileDebug(), see
+       MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX in App.jsx for the full
+       derivation history).
+       Floor: 11px -- kept at the raised, genuinely-readable floor from
+       an earlier pass (was 9px) rather than reverted, per instruction
+       ("responsive typography stays"/"do not shrink the text into
+       unreadability just to keep it on one line"). Below the floor, a
+       narrower container gets more help from wrapping (above) than from
+       shrinking further. */
   font-size: clamp(11px, 9.4cqmin, 0.68rem);
   font-weight: 400;
   letter-spacing: 0.1em;
@@ -1757,42 +1749,45 @@ body {
   transition: opacity 0.25s ease;
 }
 
-/* Final simplification pass: the two states HoverOverlay.jsx's own
-   fit-measurement effect toggles this control between. viewProjectFits
-   true renders the base rule above, normally, in flow. false (the
-   default on mount, and the outcome whenever the real measurement
-   determines this control does not fit) applies this modifier class
-   instead -- taken out of flow entirely (position: absolute, not just
-   invisible) so it never affects Archive Number's own centering, and
-   fully non-interactive (opacity: 0 plus pointer-events: none on both
-   this element AND its own ::before expanded hit area just below --
-   pointer-events: none on this element alone would NOT be enough, since
-   ::before declares its own explicit pointer-events: auto, and an
-   ancestor's none does not override a descendant's own explicit auto).
-   This same class covers both "still being measured" (briefly, before
-   HoverOverlay.jsx's useLayoutEffect corrects it -- see that effect's
-   own comment for why this is never actually visible to the user) and
-   "measured and confirmed not to fit" -- both cases look and behave
-   identically: nothing there. top/left: 0 give the out-of-flow box an
-   explicit position (rather than leaving it at browser-dependent
-   "static position" ambiguity); harmless, since opacity: 0 + pointer-
-   events: none mean it's never seen or reachable regardless of where it
-   sits. */
-.hover-overlay__enter-project--measuring {
-  position: absolute;
-  top: 0;
-  left: 0;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.hover-overlay__enter-project--measuring::before {
-  pointer-events: none;
-}
-
 .hover-overlay__enter-project:hover,
 .hover-overlay__enter-project:focus-visible {
   opacity: 0.7;
+}
+
+/* Final Mobile Interaction Model pass: View Project's own "never clip"
+   fallback -- the same "physical impossibility -> no visible content,
+   never a half-rendered one" principle Archive Number's own fallback
+   documents just above (@container hover-overlay (max-width: 40px),
+   (max-height: 20px)), applied to this control instead. Below Number's
+   own floor nothing renders at all (Number is hidden there too), so this
+   rule only ever matters in the narrow gap above it: a container just
+   big enough for Number but not for a wrapped, 2-line View Project label
+   at its own 11px font floor.
+     Width branch (max-width: 56px): the longer of the two wrapped words,
+     "PROJECT" (7 characters, uppercase, 0.1em letter-spacing), needs
+     roughly 7 * 0.7em * 11px (this file's own ~0.7em/character advance
+     approximation, see .hover-overlay__number's own derivation comment)
+     + 6 gaps * 0.1em * 11px of tracking =~ 60px, plus this control's own
+     0.75rem (12px) padding on each side. 56px sits just under that --
+     conservatively closer to Number's own 40px floor than to the full
+     ~84px the text plus padding would want, so this only suppresses the
+     genuinely tightest containers, not ordinary narrow Thumbnail tiles.
+     Height branch (max-height: 28px): two wrapped lines at the 11px
+     floor (roughly 13px/line at a normal line-height) plus this
+     control's own margin-top (0.15rem/2.4px) is already ~28px on its
+     own, before Number or the overlay's own gap/padding are even
+     counted -- so 28px is close to the real minimum this control could
+     ever fit in.
+   Both, like Number's own equivalent numbers, are a reasoned
+   approximation (GT America is proportional, not monospace, and this
+   hasn't been re-measured against its real per-character advance) worth
+   a direct visual check against a real narrow tile, not treated as
+   exactly measured. This is a plain CSS breakpoint, not a runtime
+   measurement system -- no JS reads or writes anything related to it. */
+@container hover-overlay (max-width: 56px), (max-height: 28px) {
+  .hover-overlay__enter-project {
+    display: none;
+  }
 }
 
 /* Text Containment correction pass: the 44px standard tap-target size,

@@ -804,18 +804,14 @@ const TAP_MAX_DURATION_MS = 600;
 // pixel values computed once at gallery-build time, the same numbers
 // getGalleryImageSizes above already parses via Number.parseFloat, and
 // the same box the rendered <img> and .hover-overlay exactly fill) needs
-// to clear before it is a touch selection surface at all -- see
-// handleGalleryTileTap's own use of these below. Below this floor, a
-// tile is "Tiny": no tap-reveal, no card, no Archive Number, ever -- it
-// stays a purely visual archive fragment, and its own tap is treated
-// exactly like a tap on empty Archive canvas (dismiss whatever else is
-// open, nothing more). At/above this floor, a tile is "eligible" --
-// Medium or Large/discovery, per HoverOverlay's own existing `discovery`
-// gate on Themes/View Project, which already reliably separates the two
-// (discovery is the editorial large/hero flag COLUMN_PATTERNS authors
-// directly; every discovery tile is, by construction, comfortably larger
-// than this floor -- it exists to separate genuinely tiny fragments from
-// the ordinary Medium tiles that make up most of the field).
+// to clear before a NON-Project-linked tile becomes a touch selection
+// surface at all -- see handleGalleryTileTap's own use of this below.
+// Below this floor, a non-Project tile is "Thumbnail tier": no
+// tap-reveal, no card, no Archive Number, ever -- it stays a purely
+// visual archive fragment, and its own tap is treated exactly like a tap
+// on empty Archive canvas (dismiss whatever else is open, nothing more).
+// A Project-linked tile is never excluded this way, at any size -- see
+// the Final Mobile Interaction Model pass immediately below for why.
 //
 // Derived the same way this codebase's other physical-fit floors are
 // (see .hover-overlay__themes' and .hover-overlay__enter-project's own
@@ -824,31 +820,27 @@ const TAP_MAX_DURATION_MS = 600;
 // comfortable size (its own 0.2rem/0.5rem padding plus roughly one line
 // of text) needs on the order of 65-70px width / 38-40px height to read
 // as "physically fits comfortably," not clipped or crowded -- rounded up
-// to a clean, slightly more generous floor here since this is the gate
-// for whether a tile is a selection surface at all, not just whether one
-// specific piece of content fits inside an already-selected one.
+// to a clean, slightly more generous floor here.
 const MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX = 80;
 const MOBILE_SELECTABLE_TILE_MIN_HEIGHT_PX = 48;
-// Mobile View Project tier unification (clean-slate pass): the separate
-// MOBILE_VIEW_PROJECT_MIN_WIDTH_PX/_HEIGHT_PX eligibility system (a
-// second, independent size gate layered on top of the tile-eligibility
-// floor immediately above) is retired here. It was never meant to be a
-// second sizing system -- it existed because "does View Project fit"
-// used to be answered separately from "is this tile a selection surface
-// at all," and that split is what kept producing narrow tiles (e.g. a
-// real 116px-wide tile) that were selectable but not "eligible," with no
-// real design reason for the gap. The Archive already has exactly the
-// tiers this interaction needs: Tiny (below
-// MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX/_HEIGHT_PX immediately above) vs.
-// everything at/above it (Medium/Large, Large being the `discovery` tiles
-// COLUMN_PATTERNS itself flags). View Project now uses that same Tiny
-// floor directly (see isThumbnailTier at both call sites below) instead
-// of a second, parallel threshold -- a Project-linked tile is either
-// Tiny (gets the "+" affordance, see HoverOverlay.jsx) or it isn't (gets
-// Archive Number + View Project, with View Project's own font-size now
-// responsive -- see .hover-overlay__enter-project's clamp() in
-// styles.css -- so a merely-narrow Medium tile shrinks the label instead
-// of losing it outright).
+// Final Mobile Interaction Model pass (consistency cleanup, not a new
+// threshold experiment): this constant now has exactly one remaining job
+// for a Project-linked tile -- deciding whether HoverOverlay applies its
+// own reduced, thumbnail-scale safe-area padding
+// (.hover-overlay--thumbnail-inspected, see isThumbnailTier at both call
+// sites below) so Archive Number and View Project have real interior
+// room on the smallest real tiles. It is no longer a View Project
+// eligibility gate: an earlier MOBILE_VIEW_PROJECT_MIN_WIDTH_PX system,
+// and later isThumbnailTier itself, both retired that role in turn --
+// View Project now always attempts to render on any inspected,
+// Project-linked tile, any tier, and lets CSS wrapping/containment
+// decide how it actually fits (see .hover-overlay__enter-project in
+// styles.css). It also no longer decides which navigation path a
+// Project-linked tile gets: a second tap anywhere on an already-
+// inspected, Project-linked tile now navigates uniformly across every
+// tier -- see handleGalleryTileTap below. Its one remaining job, for a
+// non-Project tile, is the plain selection-surface floor described in
+// this constant's own declaration comment above.
 // How long after a pinch gesture ends a stray touchend on the finger(s)
 // that were part of it should still be treated as "part of that pinch
 // ending," not a fresh tap -- short and purposeful, just enough to absorb
@@ -3833,10 +3825,10 @@ function App() {
     lastTappedArchiveNumber: null,
     lastTappedWidthPx: null, // item.layout.width, parsed
     lastTappedHeightPx: null, // item.layout.height, parsed
-    lastTappedIsThumbnailTier: null, // MOBILE_SELECTABLE_TILE_MIN_* floor -- Thumbnail tier gets "+", not View Project
-    lastTappedSelectableEligible: null, // !isThumbnailTier
-    lastTappedViewProjectEligible: null, // isProjectLinked -- final simplification pass: tier no longer decides this at tap-time; the real fit decision now happens live inside HoverOverlay.jsx's own DOM-measurement effect, which this tap-time snapshot has no visibility into. True here means "attempts to render", not "confirmed visible".
-    lastTappedOnEnterProjectExists: null, // isProjectLinked -- true for both "+" and View Project tiers now
+    lastTappedIsThumbnailTier: null, // MOBILE_SELECTABLE_TILE_MIN_* floor -- only gates a non-Project tile's selection-surface eligibility and HoverOverlay's reduced thumbnail-inspected padding now; no longer decides View Project or navigation
+    lastTappedSelectableEligible: null, // !isThumbnailTier || isProjectLinked -- a Project-linked tile is always a selection surface, any tier
+    lastTappedViewProjectEligible: null, // isProjectLinked -- Final Mobile Interaction Model pass: View Project always attempts to render for any inspected, Project-linked tile now (tier-independent); CSS wrapping/containment, not JS, decides whether it ends up actually visible
+    lastTappedOnEnterProjectExists: null, // isProjectLinked -- true for every Project-linked tile, any tier (no separate affordance tiers exist any more)
     resultingInspectedItemId: null, // what handleGalleryTileTap set/would set
     handleGalleryTileTapRan: false, // proves the click genuinely reached this handler at least once
     handleGalleryTileTapCallCount: 0,
@@ -4118,67 +4110,37 @@ function App() {
     [],
   );
 
-  // Mobile Tile Eligibility pass: MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX/
-  // _HEIGHT_PX (module scope, declared near TAP_MOVEMENT_THRESHOLD_PX
-  // above) are the physical floor a tile's own rendered box needs to
-  // clear before it is a touch selection surface at all -- see their own
-  // declaration comment for the derivation.
+  // Final Mobile Interaction Model pass (consistency cleanup): ONE rule
+  // now governs every Project-linked tile, regardless of tier --
+  // "tap once to reveal the project information; tap the selected image
+  // again to open the project." Earlier passes had contradictory,
+  // tier-dependent paths here (a Thumbnail-only whole-tile shortcut, a
+  // text-only-navigation requirement for Medium/Large, a live
+  // DOM-measurement gate deciding whether View Project could render at
+  // all) -- all of that is retired. What remains:
   //
-  // Mobile Archive Interaction Pass -- Stage 5 (Touch-Native Image
-  // Inspection): the touch-only replacement for this tile's own onClick
-  // (see the gallery-image-wrapper render below, gated on isTouchDevice) --
-  // a genuine tap (already disambiguated from a drag/pan by Stage 0's own
-  // handleTouchEnd, the only thing that lets a click reach this handler at
-  // all on a touch device) reveals this tile's metadata card instead of
-  // immediately navigating, even for a Project-linked image. Entering the
-  // Project is a distinct, explicit control (the "View Project" control
-  // rendered inside HoverOverlay itself, wired to
-  // handleProjectRowImageClick -- the exact same fade-then-navigate
-  // function the Project Filter Row already uses, reused rather than a
-  // second copy of that sequence). Tapping the tile that is ALREADY
-  // inspected again is always the dismiss gesture (a plain toggle),
-  // mirroring how a background tap or a different tile's tap already
-  // dismiss it (see handleTouchEnd/handleTouchMove/handleTouchStart's own
-  // Stage 5 additions).
+  //   - First tap on a Project-linked tile (any tier) opens the SAME
+  //     inspected state every tile gets: HoverOverlay renders Archive
+  //     Number, then attempts View Project below it (see
+  //     HoverOverlay.jsx's own render -- no tier gate there any more
+  //     either; CSS wrapping/containment decides how much of View
+  //     Project actually shows, not this handler).
+  //   - A second tap ANYWHERE on that same already-inspected tile
+  //     navigates to its Project -- isProjectLinked && wasInspected,
+  //     below, with no isThumbnailTier condition. Tapping the "View
+  //     Project" control itself still navigates directly too (its own
+  //     stopPropagation'd onClick in HoverOverlay.jsx), so either a
+  //     precise tap on the control or an imprecise tap anywhere else on
+  //     the tile gets the visitor into the Project the same way.
+  //   - A tap on a DIFFERENT tile (Project-linked or not) always just
+  //     opens/moves inspection -- never navigates on that first tap.
   //
-  // Final Mobile Interaction Model pass: the tile itself is a
-  // selection/inspection surface for Medium/Large, and stays that way --
-  // an earlier, client-approved pass had a second tap on ANY already-
-  // inspected Project-linked tile enter the Project directly (a whole-
-  // tile shortcut for every tile, not just tiny ones); that was removed
-  // because it made the whole image an implicit second navigation path
-  // outside "View Project" ("do NOT make the whole image navigate," "do
-  // NOT use double tap") and stays removed for Medium/Large here -- only
-  // View Project's own control navigates for that tier.
-  //
-  // Thumbnail tier gets a DELIBERATE, narrower exception, added back for
-  // that tier only: real generated Archive geometry produces Project-
-  // linked tiles as small as ~22x14px (measured against COLUMN_PATTERNS
-  // at real mobile viewport heights), where a contained, precision "+"
-  // hit target that never overflows the tile is physically impossible
-  // to make comfortably tappable on its own. The centered "+" (rendered
-  // by HoverOverlay once this tile is inspected, see isThumbnailTier
-  // passed to it below) is the visual affordance communicating "this
-  // selected thumbnail is actionable" -- tapping it directly still
-  // enters the Project (its own onClick, stopPropagation'd, unchanged).
-  // The second tap ANYWHERE on that same already-inspected Thumbnail
-  // tile does the same thing, handled here: wasInspected && isThumbnailTier
-  // && isProjectLinked calls handleProjectRowImageClick directly, exactly
-  // the way the old whole-tile shortcut did, but scoped to ONLY the tier
-  // where a real precision target cannot exist -- Medium/Large never
-  // reach this branch (isThumbnailTier is false for both).
-  //
-  // Mobile Tile Eligibility pass, revised: a tap on a tile below
-  // MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX/_HEIGHT_PX -- the Thumbnail tier
-  // -- still never opens the full Archive-Number-plus-View-Project card
-  // (there is no room for it), but it is NOT a dead tap for a
-  // Project-linked image: first tap opens the SAME inspected state
-  // everything else does (HoverOverlay renders the "+" instead of the
-  // full card for this tier); second tap enters the Project, per the
-  // exception above. A Thumbnail tile with no Project keeps the original
-  // behavior exactly -- tapping it only ever dismisses whatever else is
-  // inspected, identical to a tap on empty Archive canvas (mirroring
-  // handleTouchEnd's own background-tap-dismiss branch).
+  // Non-Project tiles are unaffected by any of this: they can never
+  // reach the navigate branch (isProjectLinked is false), and a
+  // Thumbnail-tier non-Project tile keeps its pre-existing behavior of
+  // never becoming a selection surface at all -- see
+  // MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX/_HEIGHT_PX's own declaration
+  // comment above for why that floor still exists for that one case.
   const handleGalleryTileTap = useCallback(
     (item) => {
       const width = Number.parseFloat(item.layout.width);
@@ -4201,16 +4163,17 @@ function App() {
       mobileDebugRef.current.lastTappedWidthPx = width;
       mobileDebugRef.current.lastTappedHeightPx = height;
       mobileDebugRef.current.lastTappedIsThumbnailTier = isThumbnailTier;
-      mobileDebugRef.current.lastTappedSelectableEligible = !isThumbnailTier;
-      // onEnterProject exists for any Project-linked tile regardless of
-      // tier -- final simplification pass: View Project is now the only
-      // entry control, tier no longer decides its shape (the Thumbnail-
-      // only "+" affordance is removed entirely). Thumbnail tiles still
-      // get this handler's own whole-tile-tap exception below as their
-      // real fallback, since View Project's own real-DOM fit-measurement
-      // (HoverOverlay.jsx) may or may not let it actually render there.
-      // This field records whether an entry affordance exists at all;
-      // lastTappedIsThumbnailTier says which navigation path applies.
+      mobileDebugRef.current.lastTappedSelectableEligible =
+        !isThumbnailTier || isProjectLinked;
+      // Final Mobile Interaction Model pass: onEnterProject/View Project
+      // eligibility is simply isProjectLinked now -- tier plays no part,
+      // there is no separate affordance per tier, and there is no live
+      // fit-measurement system deciding this at render time any more
+      // (see HoverOverlay.jsx's own render). lastTappedIsThumbnailTier
+      // above still records the tier for the one thing it still affects:
+      // HoverOverlay's reduced thumbnail-inspected padding, plus whether
+      // a non-Project tile is a selection surface at all (the branch
+      // just below).
       mobileDebugRef.current.lastTappedOnEnterProjectExists = isProjectLinked;
       mobileDebugRef.current.lastTappedViewProjectEligible = isProjectLinked;
       mobileDebugRef.current.handleGalleryTileTapRan = true;
@@ -4223,13 +4186,13 @@ function App() {
         return;
       }
       const wasInspected = inspectedItemIdRef.current === item.id;
-      // Final Mobile Interaction Model pass: the Thumbnail-only
-      // whole-tile-tap-to-enter exception -- see this function's own
-      // top comment for the full reasoning. Only ever fires on the
-      // SECOND tap of an already-inspected Thumbnail, Project-linked
-      // tile; the first tap always falls through to the plain
-      // inspect/toggle logic below, identical to every other tile.
-      if (isThumbnailTier && isProjectLinked && wasInspected) {
+      // Final Mobile Interaction Model pass: the second-tap-anywhere-
+      // navigates rule, now uniform across every tier -- see this
+      // function's own top comment for the full reasoning. Only ever
+      // fires on the SECOND tap of an already-inspected, Project-linked
+      // tile (any tier); the first tap on any tile always falls through
+      // to the plain inspect/toggle logic below.
+      if (isProjectLinked && wasInspected) {
         mobileDebugRef.current.resultingInspectedItemId = item.id;
         mobileDebugRef.current.lastTappedWholeTileNavigated = true;
         handleProjectRowImageClick(item);
@@ -6701,17 +6664,24 @@ function App() {
               // properly separated as their own later task.
               const isProjectLinked = Boolean(item.project);
               const isInteractive = isProjectLinked || imageFocusEnabled;
-              // Mobile tier unification (clean-slate pass): the same
-              // Thumbnail/Tiny-tier formula handleGalleryTileTap already
-              // uses for tap eligibility, reused here (not re-derived) so
-              // both places agree on what "this tile's own size" means.
-              // No separate View-Project-only threshold exists anymore --
-              // see MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX/_HEIGHT_PX's own
-              // declaration comment. Only touch-device tiles need this at
-              // all: on desktop, onEnterProject/isThumbnailTier are never
-              // read by anything meaningful (isInspected is always false
-              // there, see HoverOverlay's own guard), so computing it here
-              // has no desktop-visible effect either way -- kept simple by
+              // Final Mobile Interaction Model pass: the same
+              // Thumbnail-tier formula handleGalleryTileTap already uses,
+              // reused here (not re-derived) so both places agree on what
+              // "this tile's own size" means. Its only remaining jobs: (1)
+              // HoverOverlay's own reduced thumbnail-inspected padding
+              // (isThumbnailTier prop below), and (2) whether a
+              // non-Project tile becomes a selection surface at all
+              // (handleGalleryTileTap's own early-return branch). It no
+              // longer decides View Project eligibility or which
+              // navigation path a Project-linked tile gets -- both are
+              // uniform across tiers now, see
+              // MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX/_HEIGHT_PX's own
+              // declaration comment and handleGalleryTileTap's own top
+              // comment. Only touch-device tiles need this at all: on
+              // desktop, onEnterProject/isThumbnailTier are never read by
+              // anything meaningful (isInspected is always false there,
+              // see HoverOverlay's own guard), so computing it here has
+              // no desktop-visible effect either way -- kept simple by
               // not special-casing isTouchDevice explicitly.
               const isThumbnailTier =
                 Number.parseFloat(item.layout.width) <
@@ -7013,32 +6983,41 @@ function App() {
                     // Project" control below -- this component still holds
                     // no state and performs no gesture logic of its own.
                     isInspected={isTouchDevice && inspectedItemId === item.id}
-                    // Final simplification pass: no longer decides View
-                    // Project's shape or eligibility (the Thumbnail-only
-                    // "+" affordance this used to gate is removed entirely
-                    // -- View Project is now the only entry control, on
-                    // every tier). What this still does: tells
-                    // HoverOverlay whether to apply its own Thumbnail-only
-                    // reduced safe-area padding (still needed -- small
-                    // tiles still benefit from less padding eating into
-                    // Archive Number/View Project's own usable interior).
-                    // See isThumbnailTier's own declaration above for the
-                    // shared formula.
+                    // Final Mobile Interaction Model pass: no longer
+                    // decides View Project's render eligibility or which
+                    // navigation path a Project-linked tile gets -- both
+                    // are uniform across every tier now (see
+                    // HoverOverlay.jsx's own render and
+                    // handleGalleryTileTap's own top comment). What this
+                    // still does: tells HoverOverlay whether to apply its
+                    // own Thumbnail-only reduced safe-area padding (still
+                    // needed -- small tiles still benefit from less
+                    // padding eating into Archive Number/View Project's
+                    // own usable interior). See isThumbnailTier's own
+                    // declaration above for the shared formula.
                     isThumbnailTier={isThumbnailTier}
                     // Stage 5 (hybrid touch-inspection design): only
                     // Project-linked tiles get an onEnterProject callback at
                     // all -- undefined for every other tile, which is what
                     // tells HoverOverlay not to render View Project (see
                     // its own prop default/guard). Every Project-linked
-                    // tile gets a real callback regardless of tier --
-                    // whether View Project actually ends up VISIBLE for a
-                    // given tile is decided independently, live, by
-                    // HoverOverlay's own real-DOM fit-measurement effect,
-                    // not by this prop or by isThumbnailTier above.
-                    // handleProjectRowImageClick is the exact same
-                    // fade-then-navigate function the Project Filter Row
-                    // already calls -- reused verbatim, not a second "enter
-                    // a project" implementation.
+                    // tile gets a real callback regardless of tier, and
+                    // View Project now always attempts to render alongside
+                    // it (no tier gate in HoverOverlay.jsx any more) --
+                    // whether it's actually VISIBLE for a given tile is
+                    // decided by plain CSS (responsive wrapping, plus a
+                    // container-query hide-fallback for the rare container
+                    // too small even for a 2-line wrapped label -- see
+                    // .hover-overlay__enter-project in styles.css), never
+                    // by this prop, isThumbnailTier above, or any JS
+                    // measurement. handleProjectRowImageClick is the exact
+                    // same fade-then-navigate function the Project Filter
+                    // Row already calls -- reused verbatim, not a second
+                    // "enter a project" implementation, and it's also what
+                    // handleGalleryTileTap's own second-tap-anywhere branch
+                    // calls now, so a tap on this control and a tap
+                    // elsewhere on an already-inspected tile both resolve
+                    // to the same navigation.
                     onEnterProject={
                       isProjectLinked
                         ? () => handleProjectRowImageClick(item)

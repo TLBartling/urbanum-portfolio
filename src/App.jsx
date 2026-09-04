@@ -849,17 +849,24 @@ const MOBILE_SELECTABLE_TILE_MIN_HEIGHT_PX = 48;
 // above the render loop), gating whether onEnterProject is even passed to
 // HoverOverlay at all -- not whether a rendered-but-hidden control exists
 // waiting on a CSS promotion that may never come.
-// Slightly relaxed from the old CSS floor's 150x100 (explicitly permitted
-// -- "the exact threshold can be less strict than 150x100 if needed"),
-// while staying safely above the label's own real minimum: "VIEW PROJECT
-// ->" at this control's 0.68rem/0.1em uppercase type needs roughly 133px
-// not to overflow its own box (14 chars * ~0.7em advance + padding +
-// border, see .hover-overlay__enter-project's own styles.css comment for
-// the full derivation) and roughly 92px tall (safe-area padding + Number
-// + gap + the control's own 44px min-height + border/margin). 140/90
-// keeps a small margin above both without reintroducing the old
-// (apparently non-functional) mechanism's own extra caution.
-const MOBILE_VIEW_PROJECT_MIN_WIDTH_PX = 140;
+// Width recalibrated (real-device evidence pass): the original 140px
+// figure estimated the label's own footprint at ~133px from a generic
+// 14-chars * ~0.7em-per-character assumption, PLUS a border that no
+// longer exists on this control (removed in the diagnosis-first pass,
+// see .hover-overlay__enter-project's own styles.css comment) -- an
+// estimate, not a measurement, and one that assumed a wider render than
+// this control (GT America/Helvetica Neue fallback, 0.68rem, 0.1em
+// tracking, no border, no box chrome) actually produces. Real iPhone
+// evidence (window.__urbanumMobileDebug(), a genuinely tapped tile --
+// archiveNumber "031", project "wynwood-courtyard") proved a 116x128px
+// tile renders Archive Number + "View Project ->" with no clipping.
+// 116 is set here as an exact floor, not rounded down further: it is
+// the smallest correction that admits that confirmed-working tile,
+// while still excluding anything narrower that has not been shown to
+// fit. Height is unchanged -- 128 already clears the existing 90px
+// floor with room to spare on that same real tile, and nothing in this
+// evidence points at height as ever having been the blocker.
+const MOBILE_VIEW_PROJECT_MIN_WIDTH_PX = 116;
 const MOBILE_VIEW_PROJECT_MIN_HEIGHT_PX = 90;
 // How long after a pinch gesture ends a stray touchend on the finger(s)
 // that were part of it should still be treated as "part of that pinch

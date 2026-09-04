@@ -446,14 +446,22 @@ function HoverOverlay({
           component's own .hover-overlay__enter-project rule in styles.css,
           the same targeted opt-in .hover-overlay__themes li already uses
           against this card's own pointer-events: none default. */}
-      {/* Mobile Archive Interaction pass (client-approved): the visible
-          "View Project" label itself is now discovery-tile (large tile)
-          only -- small tiles show the Archive Number alone, per the
-          approved size distinction, rather than shrinking this label to
-          force it into a tile with no room for it. Small, Project-linked
-          tiles are still fully tappable to enter the Project -- that's
-          handled at the whole-tile level now (see App.jsx's
-          handleGalleryTileTap), not only through this label. */}
+      {/* Mobile Archive Interaction pass: the visible "View Project"
+          label itself is only ever attempted on discovery-tile (large
+          tile) slots -- discovery is the editorial gate checked here in
+          JSX. Whether it actually renders on any given eligible tile is
+          then decided in CSS, by this control's own @container floor in
+          styles.css -- the physical-fit gate, mirroring
+          .hover-overlay__themes' own editorial-gate-in-JSX/physical-fit-
+          gate-in-CSS split above. Below that floor, small tiles show the
+          Archive Number alone rather than a cramped or clipped control.
+          Locked Mobile Interaction Model pass: small, Project-linked
+          tiles are NOT independently tappable to enter the Project via
+          the whole tile anymore -- that whole-tile shortcut was removed
+          in App.jsx's handleGalleryTileTap, since it made the image
+          itself a second, implicit navigation path, which this pass's
+          interaction model rules out. This label (when it fits) is the
+          only in-place way to enter a Project from an inspected tile. */}
       {isInspected && onEnterProject && discovery && (
         <div
           className="hover-overlay__enter-project"

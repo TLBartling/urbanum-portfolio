@@ -4031,53 +4031,50 @@ function App() {
   // a genuine tap (already disambiguated from a drag/pan by Stage 0's own
   // handleTouchEnd, the only thing that lets a click reach this handler at
   // all on a touch device) reveals this tile's metadata card instead of
-  // immediately navigating, even for a Project-linked image. This is the
-  // approved hybrid design: tap inspects, in place; entering the Project
-  // is a distinct, explicit control (the "View Project" control rendered
-  // inside HoverOverlay itself, wired to handleProjectRowImageClick -- the
-  // exact same fade-then-navigate function the Project Filter Row already
-  // uses, reused rather than a third copy of that sequence) -- never a
-  // second identical tap on the same tile. Tapping the tile that is
-  // ALREADY inspected again is the dismiss gesture (a plain toggle),
+  // immediately navigating, even for a Project-linked image. Entering the
+  // Project is a distinct, explicit control (the "View Project" control
+  // rendered inside HoverOverlay itself, wired to
+  // handleProjectRowImageClick -- the exact same fade-then-navigate
+  // function the Project Filter Row already uses, reused rather than a
+  // second copy of that sequence). Tapping the tile that is ALREADY
+  // inspected again is always the dismiss gesture (a plain toggle),
   // mirroring how a background tap or a different tile's tap already
   // dismiss it (see handleTouchEnd/handleTouchMove/handleTouchStart's own
   // Stage 5 additions).
   //
-  // Mobile Archive Interaction pass (client-approved, whole-tile tap-to-
-  // enter): the one exception to "second tap always dismisses," added
-  // below -- a SECOND tap on a tile that's already inspected AND Project-
-  // linked now enters the Project instead, via the exact same
-  // handleProjectRowImageClick fade-then-navigate function the "View
-  // Project" control inside HoverOverlay already calls (not a second
-  // navigation mechanism). This is what makes the whole tile a valid
-  // "open the Project" target, not only the small "View Project" label --
-  // that label still renders (large/discovery tiles only, see
-  // HoverOverlay.jsx) and still works identically via its own
-  // stopPropagation'd click; it just no longer has to be the ONLY way in.
-  // A tile with no Project (item.project falsy) keeps the plain dismiss
-  // toggle exactly as before -- there is nowhere for a second tap on
-  // those to go.
-  const handleGalleryTileTap = useCallback(
-    (item) => {
-      const wasInspected = inspectedItemIdRef.current === item.id;
-      if (wasInspected && item.project) {
-        handleProjectRowImageClick(item);
-        return;
-      }
-      // Mobile Header/Search/Menu Refinement Pass -- Section 6 (Haptics): a
-      // genuine inspection tap gets a single, subtle tick -- but only on the
-      // tap that OPENS the card, never the second tap that dismisses it (a
-      // plain toggle back to nothing shouldn't buzz). inspectedItemIdRef is
-      // read here, before the state update is scheduled, rather than inside
-      // the setInspectedItemId updater itself -- keeping the updater a pure
-      // function of its previous state, with the one-time side effect
-      // decided from the ref snapshot of what's committed right now.
-      const isOpening = !wasInspected;
-      setInspectedItemId((current) => (current === item.id ? null : item.id));
-      if (isOpening) hapticTap();
-    },
-    [handleProjectRowImageClick],
-  );
+  // Locked Mobile Interaction Model pass: the tile itself is a
+  // selection/inspection surface only, never a navigation surface -- an
+  // earlier, client-approved pass had a second tap on an already-inspected
+  // Project-linked tile enter the Project directly (a whole-tile tap-to-
+  // enter shortcut, meant as a safety net for tiles too small to render
+  // the "View Project" label). That shortcut is removed here: it made the
+  // whole image an implicit second navigation path outside "View Project"
+  // -- functionally a two-tap/double-tap-to-navigate gesture on the image
+  // itself, which this pass's own interaction model explicitly rules out
+  // ("do NOT make the whole image navigate," "do NOT use double tap").
+  // Every tap on a gallery tile now does exactly one thing: toggle this
+  // tile's own inspected state. A tile too small to render "View Project"
+  // (see its own @container floor in styles.css) simply has no in-place
+  // way to enter its Project on touch -- the tile shows its Archive
+  // Number alone, per the approved small-tile treatment, and is not a
+  // dead end: the same image is reachable at full size, with its own
+  // "View Project" control, wherever else the Archive/Project Filter Row
+  // surfaces it. Flagged for a final check with Josh since the removed
+  // behavior was previously described as client-approved.
+  const handleGalleryTileTap = useCallback((item) => {
+    const wasInspected = inspectedItemIdRef.current === item.id;
+    // Mobile Header/Search/Menu Refinement Pass -- Section 6 (Haptics): a
+    // genuine inspection tap gets a single, subtle tick -- but only on the
+    // tap that OPENS the card, never the second tap that dismisses it (a
+    // plain toggle back to nothing shouldn't buzz). inspectedItemIdRef is
+    // read here, before the state update is scheduled, rather than inside
+    // the setInspectedItemId updater itself -- keeping the updater a pure
+    // function of its previous state, with the one-time side effect
+    // decided from the ref snapshot of what's committed right now.
+    const isOpening = !wasInspected;
+    setInspectedItemId((current) => (current === item.id ? null : item.id));
+    if (isOpening) hapticTap();
+  }, []);
 
   // Shared regeneration sequence -- used on mount, on window resize, and
   // (see handleLogoClick below) when the logo is clicked on the homepage.

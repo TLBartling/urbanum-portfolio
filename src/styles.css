@@ -1210,13 +1210,21 @@ body {
    Project-linked Thumbnail tiles as small as ~22x14px (measured against
    COLUMN_PATTERNS at real mobile viewport heights) -- at that extreme,
    0.5rem (8px) of padding on every side alone can approach or exceed the
-   tile's own height, leaving the centered "+" (see
-   .hover-overlay__enter-project-plus below) no room to render visibly at
-   all. 2px is the smallest padding that still reads as intentional
-   breathing room rather than the glyph touching the image edge -- below
-   this, on the smallest real tiles, the "+" is still constrained by the
-   tile's own physical size (a real, acknowledged limit, not something
-   padding alone can fully solve), not by this rule. */
+   tile's own height, leaving Archive Number (and, on the rarer Thumbnail
+   tile where it actually fits, View Project) no room to render visibly
+   at all. 2px is the smallest padding that still reads as intentional
+   breathing room rather than the text touching the image edge -- below
+   this, on the smallest real tiles, this card's own content is still
+   constrained by the tile's own physical size (a real, acknowledged
+   limit, not something padding alone can fully solve), not by this
+   rule. Final simplification pass: this class's own reasoning no longer
+   mentions the "+" affordance (removed entirely, see
+   .hover-overlay__enter-project's own comment) -- the reduced padding
+   itself is still needed for Archive Number/View Project's own
+   containment on these same small tiles, so the class stays. It is also
+   what HoverOverlay.jsx's fit-measurement effect reads via
+   getComputedStyle to compute the real available interior width/height
+   -- see that effect's own comment. */
 .hover-overlay--thumbnail-inspected {
   padding: 2px;
 }
@@ -1660,104 +1668,82 @@ body {
    layout change of its own. */
 .hover-overlay__enter-project {
   align-self: center;
-  /* Mobile tier unification (clean-slate pass): this control now mounts
-     on any inspected, Project-linked Medium/Large tile (App.jsx's
-     isThumbnailTier false) -- no separate View-Project-only size gate
-     exists anymore (retired; see App.jsx's own comment at that former
-     constant's declaration). display stays a plain, unconditional
-     inline-flex -- nothing here decides whether this element exists,
-     only App.jsx/HoverOverlay.jsx's JSX guards do that.
-     .gallery-image-wrapper's own overflow: hidden is still the real
-     containment boundary if a size assumption is ever wrong -- unchanged,
-     see that rule's own comment. */
+  /* Final simplification pass: this control now mounts on ANY inspected,
+     Project-linked tile -- tier no longer gates its existence at all (the
+     Thumbnail-only "+" affordance it used to share this job with is
+     removed entirely; every Project-linked tile now gets exactly one
+     entry control, this one). Whether it's actually visible is decided
+     by HoverOverlay.jsx's own real-DOM fit-measurement effect (see that
+     component's top-of-file comment) -- this rule only styles what that
+     effect toggles between via the --measuring modifier class just
+     below. .gallery-image-wrapper's own overflow: hidden remains the
+     real containment boundary if a measurement is ever somehow wrong --
+     unchanged, see that rule's own comment. */
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  /* Text Containment correction pass (LOCKED RULE: Medium/Large must
-     always show Number + View Project when selected -- this control can
-     never be hidden by a size threshold the way it briefly was in the
-     prior pass). min-height: 44px is gone -- it was a rigid VISIBLE
-     floor that, stacked under Archive Number inside a short Medium
-     tile's own real height, is exactly what forced this pass's earlier
-     (now-reverted) height-based hide rule to exist at all. Without it,
-     this control's own visible height is just its natural content size
-     (line-height of whatever the responsive font-size below resolves to
-     -- floor 9px -- plus the 0.15rem margin-top below): a few px at the
-     absolute floor, comfortably inside even the smallest real Medium
-     tile (48px, MOBILE_SELECTABLE_TILE_MIN_HEIGHT_PX) alongside Archive
-     Number and the flex gap, with no hide fallback needed at all. The
-     44px standard tap-target size is preserved as an INVISIBLE hit area
-     instead (position: relative + the ::before rule just below) rather
-     than as visible layout height -- see that rule's own comment. */
+  /* No min-height: this control's own visible height is just its natural
+     content size (line-height of whatever the responsive font-size below
+     resolves to, plus the margin-top below) -- comfortably small at any
+     real tile size. The 44px standard tap-target size is preserved as an
+     INVISIBLE hit area instead (position: relative + the ::before rule
+     just below) rather than as visible layout height, so this control's
+     own real footprint -- the thing HoverOverlay.jsx's fit-measurement
+     effect actually measures -- stays as small as its text genuinely is. */
   padding: 0 0.75rem;
   margin-top: 0.15rem;
   pointer-events: auto;
   cursor: pointer;
-  /* Text Containment correction pass: position: relative is what lets
-     the ::before rule immediately below position its expanded,
-     invisible hit area relative to THIS element rather than some
-     further-up ancestor -- purely a positioning-context change, no
-     visual effect of its own. */
+  /* position: relative is what lets the ::before rule immediately below
+     position its expanded, invisible hit area relative to THIS element
+     rather than some further-up ancestor -- purely a positioning-context
+     change, no visual effect of its own. Final simplification pass: also
+     what the --measuring modifier class below overrides to take this
+     control out of flow entirely while unmeasured/not fitting. */
   position: relative;
   /* nowrap still guarantees this never grows past one line regardless of
      how the responsive font-size below resolves -- the shrinking font is
-     what keeps a narrow Medium tile's text inside its own width instead
-     of wrapping or clipping; nowrap is what stops a wrap from silently
-     growing this control's height if that shrink were ever not enough.
-     Same reasoning .hover-overlay__themes li's own white-space: nowrap
-     already documents for the identical failure mode. */
+     what keeps a narrow tile's text inside its own width instead of
+     wrapping; nowrap is what stops a wrap from silently growing this
+     control's height. Same reasoning .hover-overlay__themes li's own
+     white-space: nowrap already documents for the identical failure
+     mode. This no longer needs to be the ONLY thing standing between a
+     narrow tile and clipped text, though -- HoverOverlay.jsx's own real-
+     DOM fit-measurement is what actually guarantees that now (see this
+     rule's own top-of-file cross-reference); nowrap here is still worth
+     keeping so a near-fit case degrades to "doesn't fit, hidden" rather
+     than "wraps to two lines and then maybe still doesn't fit". */
   white-space: nowrap;
 
   font-family: "GT America", "Helvetica Neue", Helvetica, Arial, sans-serif;
-  /* Mobile tier unification (clean-slate pass): responsive, not fixed --
-     "View Project should be allowed to scale down modestly to fit
-     smaller medium tiles rather than disappearing entirely." Same
-     clamp()-over-container-query-units method .hover-overlay__themes
-     already uses one screen up (that rule's own comment has the full
-     methodology this one reuses), tuned for this control's own known,
-     fixed text ("VIEW PROJECT ->", uppercase, 14 characters -- Themes
-     needed a "worst-case across several different strings" budget;
-     this control only ever renders one specific string, so its budget
-     is exact, not a worst case).
-       Ceiling: 0.68rem, this control's own existing size, unchanged --
-       so any tile that already displayed it at full size keeps looking
-       exactly as it did.
-       Coefficient: 9.4cqmin (was 9.4cqw -- Text Containment pass). The
-       underlying number is unchanged from the original real-device
-       calibration (window.__urbanumMobileDebug(), the 116px-wide tile
-       from the real-device evidence pass -- see
-       MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX and the Mobile View Project
-       tier unification comment in App.jsx: solving
-       coefficient * 116/100 = 0.68rem gives ~9.38cqw, 9.4 keeps a hair
-       of margin) -- only the unit changed, from cqw (width only) to
-       cqmin (the smaller of this container's own width/height), the
-       same unit .hover-overlay__number's own font-size clamp already
-       uses one screen up, for the same reason: at the calibration tile
-       (116x128), width was already the smaller dimension, so cqmin and
-       cqw were numerically identical there -- this change cannot make
-       the calibrated tile render any smaller than before, and only
-       protects a tile this budget never had a term for: one that's
-       comfortably wide but genuinely short.
-       Floor: 9px, this codebase's own established smallest-ever
-       editorial type size for this exact role (see
-       .hover-overlay__themes' own 9px floor) -- reached only at
-       MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX (80px width, the Medium
-       tier's own lower bound), never below it, since a narrower tile is
-       Thumbnail and renders the separate "+" control instead, not this
-       one.
-       Height budget: the "flagged rather than silently assumed fine"
-       gap this same comment used to note here -- a short Medium tile
-       stacking Archive Number above this control's old, fixed 44px
-       min-height could exceed the tile's own real height -- is closed
-       by the LOCKED-RULE correction immediately above (min-height: 44px
-       is gone; this control's real visible height is now just its own
-       content, comfortably inside even the smallest real Medium tile
-       alongside Archive Number + gap, with no hide fallback needed at
-       all -- see that rule's own comment for the full reasoning). This
-       clamp's job stays purely about WIDTH fit -- keeping the text
-       itself from clipping/wrapping horizontally -- not vertical
-       containment, which the box model above now handles on its own. */
-  font-size: clamp(9px, 9.4cqmin, 0.68rem);
+  /* Final simplification pass: real-device screenshots proved that
+     scaling this down toward its old 9px floor could still produce text
+     that either clipped or was too small to comfortably read -- this
+     typography's job is no longer "shrink however far it takes to try to
+     fit" (HoverOverlay.jsx's own fit-measurement now owns whether this
+     renders at all); it's "modest, proportional scaling within a
+     genuinely readable range," per instruction. Same clamp()-over-
+     container-query-units shape as before (cqmin, the smaller of this
+     container's own width/height, same unit Archive Number's own
+     font-size clamp uses):
+       Ceiling: 0.68rem, unchanged -- a tile with room to spare still
+       looks exactly as it always has.
+       Coefficient: 9.4cqmin, unchanged from the prior pass's own
+       real-device calibration (window.__urbanumMobileDebug(), see that
+       pass's own history for the full derivation) -- kept as-is since
+       raising the floor below doesn't require re-deriving how quickly
+       this scales down, only where it stops.
+       Floor: 11px (was 9px) -- raised specifically so this control can
+       no longer render at a size this file's own editorial floor
+       elsewhere (Archive Number, Themes) intentionally allows for
+       secondary metadata, but that isn't genuinely comfortable for a
+       primary navigation label someone is meant to read and tap. Below
+       whatever tile size would have pushed this clamp under 11px, the
+       fit-measurement effect above now hides the control outright
+       instead -- "better to show Number only than unreadably tiny text,"
+       per instruction, is enforced there, not by letting this floor keep
+       dropping. */
+  font-size: clamp(11px, 9.4cqmin, 0.68rem);
   font-weight: 400;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -1769,6 +1755,39 @@ body {
      it reads purely as small, editorial text sitting under the Archive
      Number, not a button. */
   transition: opacity 0.25s ease;
+}
+
+/* Final simplification pass: the two states HoverOverlay.jsx's own
+   fit-measurement effect toggles this control between. viewProjectFits
+   true renders the base rule above, normally, in flow. false (the
+   default on mount, and the outcome whenever the real measurement
+   determines this control does not fit) applies this modifier class
+   instead -- taken out of flow entirely (position: absolute, not just
+   invisible) so it never affects Archive Number's own centering, and
+   fully non-interactive (opacity: 0 plus pointer-events: none on both
+   this element AND its own ::before expanded hit area just below --
+   pointer-events: none on this element alone would NOT be enough, since
+   ::before declares its own explicit pointer-events: auto, and an
+   ancestor's none does not override a descendant's own explicit auto).
+   This same class covers both "still being measured" (briefly, before
+   HoverOverlay.jsx's useLayoutEffect corrects it -- see that effect's
+   own comment for why this is never actually visible to the user) and
+   "measured and confirmed not to fit" -- both cases look and behave
+   identically: nothing there. top/left: 0 give the out-of-flow box an
+   explicit position (rather than leaving it at browser-dependent
+   "static position" ambiguity); harmless, since opacity: 0 + pointer-
+   events: none mean it's never seen or reachable regardless of where it
+   sits. */
+.hover-overlay__enter-project--measuring {
+  position: absolute;
+  top: 0;
+  left: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.hover-overlay__enter-project--measuring::before {
+  pointer-events: none;
 }
 
 .hover-overlay__enter-project:hover,
@@ -1808,111 +1827,6 @@ body {
   position: absolute;
   inset: -10px;
   pointer-events: auto;
-}
-
-/* Mobile tier unification (clean-slate pass): the Thumbnail tier's own
-   entry control -- see HoverOverlay.jsx's own isThumbnailTier prop and
-   render comment for why this tier gets a single "+" alongside Archive
-   Number. Sits in the same flex column .hover-overlay already lays out;
-   align-self: center mirrors .hover-overlay__enter-project's own
-   centering for the same reason (.hover-overlay itself doesn't set
-   align-items, so a block child would otherwise stretch to the
-   container's full width). No box/pill/background, same "no chrome"
-   instruction .hover-overlay__enter-project's own comment documents
-   just above.
-
-   Text Containment correction pass: min-height/min-width are gone
-   entirely (were a flat 44px; before that, min(44px, 100%) -- final
-   decision pass, superseded either way). The 44px standard tap target
-   is preserved as an invisible, out-of-flow hit area instead (::before,
-   just below the base rule) rather than as visible box size, mirroring
-   .hover-overlay__enter-project's own identical correction and identical
-   reasoning -- see that rule's own comment for the full explanation of
-   why a forced visible box is what caused the overflow this whole pass
-   exists to fix, now that Archive Number renders alongside this control
-   by default. This control's own visible size is now just its glyph's
-   own responsive font-size (below) at line-height: 1 -- a few px at the
-   absolute floor. */
-.hover-overlay__enter-project-plus {
-  align-self: center;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  pointer-events: auto;
-  cursor: pointer;
-  font-family: "GT America", "Helvetica Neue", Helvetica, Arial, sans-serif;
-  /* Text Containment pass: responsive, not fixed (was a flat 1.25rem) --
-     "adapt typography responsively inside the same containment
-     architecture" applied to this card's third and last piece of text/
-     glyph content, alongside Archive Number (cqmin) and View Project
-     (cqmin). Coefficient scaled proportionally from Archive Number's own
-     established 6cqmin/1rem ceiling ratio rather than an independent
-     re-measurement against this glyph specifically (a single "+" has no
-     "worst-case string" to budget against the way Themes/View Project
-     do): 6cqmin * (1.25rem / 1rem) = 7.5cqmin, preserving the same
-     cqmin-to-ceiling relationship Number already established. Floor
-     matches this file's own site-wide 9px minimum editorial size.
-     Flagged, like several of this card's other coefficients, as a
-     reasoned proportional approximation rather than an independently
-     re-derived one -- worth a direct visual check. */
-  font-size: clamp(9px, 7.5cqmin, 1.25rem);
-  font-weight: 400;
-  line-height: 1;
-  color: #1a1a1a;
-  transition: opacity 0.25s ease;
-}
-
-.hover-overlay__enter-project-plus:hover,
-.hover-overlay__enter-project-plus:focus-visible {
-  opacity: 0.7;
-}
-
-/* Text Containment correction pass: the same invisible-hit-area
-   technique .hover-overlay__enter-project::before uses, applied here
-   too -- see that rule's own comment for the full reasoning (position:
-   relative above is what this positions against). Same -10px inset,
-   same conservative reasoning (this control's own gap to Archive Number
-   above is the identical 5.6px flex gap). */
-.hover-overlay__enter-project-plus::before {
-  content: "";
-  position: absolute;
-  inset: -10px;
-  pointer-events: auto;
-}
-
-/* Text Containment correction pass: Thumbnail's own "doesn't fit,
-   Archive Number alone is acceptable" fallback -- explicitly scoped to
-   .hover-overlay--thumbnail-inspected (HoverOverlay.jsx's own class
-   toggle, present only when isThumbnailTier && isInspected are both
-   true -- i.e. only ever on a touch-inspected Thumbnail tile), the most
-   precise class available for this, rather than a bare @container
-   condition -- consistent with this pass's own "gate mobile-only
-   behavior to a mobile-only class, don't rely on a container-size
-   condition alone" correction (see .hover-overlay__number's own
-   equivalent scoping note for the general reasoning). In practice this
-   control never renders outside that class anyway (HoverOverlay.jsx's
-   own isThumbnailTier && isInspected guard), so the scoping here is
-   belt-and-suspenders precision, not a behavior change on its own.
-   Threshold: Archive Number's own audited floor footprint (16.0px) +
-   the flex gap (5.6px) + this control's own floor size (9px, its
-   font-size clamp's own floor immediately above, at line-height: 1) =
-   30.6px of real content-box height for both to stack without
-   overflowing; 32px keeps a small margin above that, the same "round up
-   slightly past a calculated minimum" convention this file already uses
-   (.hover-overlay__themes' own "6.864rem, rounded up slightly"). Below
-   this, Archive Number's own, separately-derived hide threshold (20px,
-   see that rule's own comment) is what decides whether even the Number
-   survives -- so the real degradation ladder is Number+"+", then Number
-   alone, then (only at genuine physical impossibility, a real ~22x14px
-   Thumbnail tile at the extreme) neither. App.jsx's whole-tile-tap
-   exception (handleGalleryTileTap) remains this tier's real fallback
-   entry point regardless of which of these two elements is currently
-   visible. */
-@container hover-overlay (max-height: 32px) {
-  .hover-overlay--thumbnail-inspected .hover-overlay__enter-project-plus {
-    display: none;
-  }
 }
 
 .gallery-overlay {

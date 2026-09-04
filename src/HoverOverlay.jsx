@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { findRelatedArchiveItems } from "./relationshipEngine";
 import { hapticSelect } from "./haptics";
 // Content layer seam (Frontend <-> CMS handshake, Phase 1): no longer a
@@ -50,11 +50,22 @@ import { getArchiveItems } from "./content";
 // already only reports what was hovered.
 //
 // Responsive scaling (large images get more breathing room, small images
-// shrink proportionally) is handled entirely in CSS via container query
+// shrink proportionally) is still handled in CSS via container query
 // units/breakpoints scoped to this component's own root -- not by reading
 // `dimensions` in JS. `dimensions` is accepted here for forward
 // compatibility with later phases that may need it for layout decisions
 // this phase doesn't require; it is intentionally unused for now.
+//
+// Final simplification pass: typography is CSS's job, but WHETHER View
+// Project renders at all is not, any more -- real-device screenshots
+// proved that CSS-only thresholds/clamps (a tile-width/height guess, a
+// container-query pixel cutoff) could still let a clipped, partial label
+// through. View Project's fit is now decided by actually measuring its
+// own rendered box against this card's real padded interior (see the
+// useLayoutEffect below) -- the same "equal inner padding, centered
+// stack" containment model desktop already uses, just verified against
+// real DOM geometry instead of assumed from a formula.
+
 //
 // Theme order: shuffled once per gallery generation, stable afterward.
 // `itemId` and `generation` (passed down from App -- see
@@ -177,16 +188,21 @@ function HoverOverlay({
   // presence/absence -- not a separate isProjectLinked boolean -- is what
   // decides whether EITHER entry control below can render at all.
   onEnterProject,
-  // Mobile tier unification (clean-slate pass): which entry-affordance
-  // SHAPE to render for an inspected, Project-linked tile -- App.jsx's
-  // own MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX/_HEIGHT_PX floor (the same
-  // one that already decides whether a tile is a selection surface at
-  // all), not a separate View-Project-only threshold. false (the
-  // default, Medium/Large) renders Archive Number + View Project; true
-  // (Thumbnail) renders neither of those and instead a single minimal
-  // centered "+" -- see the render below for both branches. Defaults to
-  // false so any hypothetical call site that doesn't pass it keeps the
-  // full card, same as before this prop existed.
+  // Final simplification pass: no longer decides View Project's shape or
+  // eligibility at all -- every inspected, Project-linked tile now
+  // attempts View Project regardless of tier (see the fit-measurement
+  // effect below for what actually decides whether it renders). What
+  // this still does: gate the Thumbnail-only reduced safe-area padding
+  // (.hover-overlay--thumbnail-inspected, see the className below and
+  // that class's own styles.css comment) -- Thumbnail tiles are small
+  // enough that the card's normal padding can meaningfully eat into the
+  // little interior room Archive Number/View Project have to work with.
+  // App.jsx's own MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX/_HEIGHT_PX floor
+  // (the same one that decides whether a tile is a selection surface at
+  // all) is still what this prop is computed from at the call site.
+  // Defaults to false so any hypothetical call site that doesn't pass it
+  // gets the normal (non-reduced) padding, same as before this prop
+  // existed.
   isThumbnailTier = false,
   // Relationship Hover Intent pass: App.jsx's own single fire-time check
   // (isScrollingRef.current || isProjectFilterActiveRef.current ||
@@ -372,19 +388,122 @@ function HoverOverlay({
     onEnterProject?.();
   };
 
+  // Text Containment Fit-Measurement pass (final simplification): View
+  // Project's visibility is decided by actually measuring its own
+  // rendered box against this card's real padded interior -- see the
+  // top-of-file comment for why this replaced the previous CSS-only
+  // approach. overlayRef is the padded box itself (the "equal inner
+  // padding" containment rectangle -- see .hover-overlay's own
+  // styles.css comment); numberRef/viewProjectRef are what's actually
+  // measured against it.
+  const overlayRef = useRef(null);
+  const numberRef = useRef(null);
+  const viewProjectRef = useRef(null);
+  // Mere presence/absence of onEnterProject is still the only thing that
+  // decides whether View Project can exist at all for this tile (Stage
+  // 5's own original contract, see that prop's comment above) --
+  // isThumbnailTier no longer factors in here at all.
+  const canAttemptViewProject = isInspected && Boolean(onEnterProject);
+  // Starts false so the very first paint can never show an unmeasured
+  // (potentially oversized/clipped) control -- see the effect below for
+  // why this is safe (no visible flash on mount or on newly becoming
+  // inspected).
+  const [viewProjectFits, setViewProjectFits] = useState(false);
+
+  useLayoutEffect(() => {
+    if (!canAttemptViewProject) {
+      setViewProjectFits(false);
+      return undefined;
+    }
+    const overlayEl = overlayRef.current;
+    const viewProjectEl = viewProjectRef.current;
+    if (!overlayEl || !viewProjectEl) {
+      setViewProjectFits(false);
+      return undefined;
+    }
+
+    const measure = () => {
+      // The available interior: this card's own real, rendered padded
+      // box -- reading actual computed padding (rather than assuming
+      // 0.5rem/2px) so this stays correct automatically if either
+      // padding value ever changes, and so it's identically correct for
+      // both the normal and the Thumbnail-reduced (--thumbnail-inspected)
+      // padding without this component needing to know which applies.
+      const overlayRect = overlayEl.getBoundingClientRect();
+      const computedStyle = window.getComputedStyle(overlayEl);
+      const innerWidth =
+        overlayRect.width -
+        (parseFloat(computedStyle.paddingLeft) || 0) -
+        (parseFloat(computedStyle.paddingRight) || 0);
+      const innerHeight =
+        overlayRect.height -
+        (parseFloat(computedStyle.paddingTop) || 0) -
+        (parseFloat(computedStyle.paddingBottom) || 0);
+
+      // The real footprint: View Project's own rendered width, and the
+      // real span from Archive Number's top to View Project's bottom --
+      // both read directly from the DOM, so the actual flex gap between
+      // them is already included with no separate gap constant to track
+      // or get out of sync. getBoundingClientRect() reflects whatever
+      // the page's current camera zoom/transform state actually is, so
+      // this comparison is correct at any zoom level without this
+      // component needing to know about the camera at all.
+      const viewProjectRect = viewProjectEl.getBoundingClientRect();
+      const numberEl = numberRef.current;
+      const stackTop = numberEl
+        ? numberEl.getBoundingClientRect().top
+        : viewProjectRect.top;
+      const stackHeight = viewProjectRect.bottom - stackTop;
+
+      // A small epsilon absorbs subpixel rounding between two independent
+      // getBoundingClientRect() reads -- not a fit threshold of its own,
+      // just enough that a mathematically-exact fit isn't rejected by
+      // floating-point noise.
+      const EPSILON_PX = 0.5;
+      setViewProjectFits(
+        viewProjectRect.width <= innerWidth + EPSILON_PX &&
+          stackHeight <= innerHeight + EPSILON_PX,
+      );
+    };
+
+    // Synchronous, before this component's DOM is ever painted (React
+    // guarantees useLayoutEffect runs after DOM mutation but before
+    // paint) -- so a tile whose content genuinely fits still reaches the
+    // user's very first frame already showing it correctly, with no
+    // flash of an unmeasured or oversized control.
+    measure();
+
+    // Re-measure on any genuine size change to this card -- device
+    // rotation, a camera zoom change, or any other real cause -- rather
+    // than trying to enumerate every possible trigger by hand.
+    // ResizeObserver's own callback fires asynchronously (unlike the
+    // synchronous call above), so a LIVE resize can in principle show one
+    // stale frame before this corrects it; the guaranteed-no-flash
+    // property is specifically for mount and for newly becoming
+    // inspected, both covered by the synchronous measure() call above.
+    const resizeObserver = new ResizeObserver(measure);
+    resizeObserver.observe(overlayEl);
+    return () => resizeObserver.disconnect();
+  }, [canAttemptViewProject, archiveNumber]);
+
   return (
     <div
+      ref={overlayRef}
       className={`hover-overlay${
         // Final Mobile Interaction Model pass: Thumbnail tiles get a
         // smaller, thumbnail-specific padding while inspected (see this
         // rule's own comment in styles.css) -- real generated Archive
         // geometry produces Project-linked tiles as small as ~22x14px,
         // where the card's normal 0.5rem safe-area padding alone can
-        // exceed the tile's own height, leaving the centered "+" no room
-        // to render visibly. isThumbnailTier && isInspected keeps this
-        // scoped to exactly the state that needs it -- Medium/Large never
-        // get this class (isThumbnailTier is always false for them), and
-        // desktop never does either (isInspected is always false there).
+        // exceed the tile's own height, leaving Archive Number (and, when
+        // it fits, View Project) little to no room to render visibly.
+        // isThumbnailTier && isInspected keeps this scoped to exactly the
+        // state that needs it -- Medium/Large never get this class
+        // (isThumbnailTier is always false for them), and desktop never
+        // does either (isInspected is always false there). This class is
+        // also what the fit-measurement effect above reads its own
+        // padding from (via getComputedStyle), so the reduced padding is
+        // automatically accounted for there too -- no separate constant.
         isThumbnailTier && isInspected ? " hover-overlay--thumbnail-inspected" : ""
       }`}
       // Stage 5: this card is decorative chrome on desktop (a plain CSS
@@ -406,31 +525,27 @@ function HoverOverlay({
           App.jsx/matched against relatedArchiveNumbers elsewhere; nothing
           about that data or the Relationship Engine's matching changes
           here. */}
-      {/* Text Containment pass (non-Archive-logic mobile overlay pass):
-          previously the Thumbnail tier hid the Archive Number outright
-          whenever inspected ("too small to fit Archive Number + View
-          Project cleanly"), showing the "+" alone instead. That JS-level
-          tier decision is retired in favor of the same containment
-          model desktop already uses for every other piece of this card's
-          text (Themes' own font-size clamp, see styles.css): render the
-          content and let real, measured container geometry -- not a tier
-          label -- decide what actually fits. Archive Number + "+" is now
-          the PREFERRED Thumbnail composition (both attempt to render
-          together); a new container query in styles.css
-          (@container hover-overlay, scoped to .hover-overlay__number and
-          .hover-overlay__enter-project-plus/__enter-project) hides
-          whichever piece doesn't have room, in the same "physical
-          impossibility only, never a separate editorial threshold"
-          spirit .hover-overlay__themes already documents for its own
-          visibility. isInspected is only ever true on a touch device
-          (see this component's own prop comment above), so this never
-          touches desktop's own hover card, which always renders the
-          Number exactly as before -- archiveNumber != null was already
-          the only condition that mattered there (isThumbnailTier &&
-          isInspected is always false on desktop), so dropping the second
-          clause is a no-op for desktop, confirmed. */}
+      {/* Final simplification pass: Archive Number is now the universal
+          selected-state signal on every inspected tile, regardless of
+          tier or whether it's Project-linked -- it always attempts to
+          render (archiveNumber != null is the only condition, same as
+          desktop). Its own fit/never-clip guarantee is unchanged from
+          the prior pass: a responsive font-size clamp with a hard
+          legible floor, plus a container-query hide-fallback for the
+          rare case even that floor can't fit a genuinely extreme sliver
+          (@container hover-overlay, scoped to
+          .gallery-image-wrapper--inspected so it can never affect
+          desktop -- see that rule's own styles.css comment). What's new
+          this pass: numberRef lets the fit-measurement effect above read
+          Number's own real rendered top, which is what "Number + gap +
+          View Project" actually means when measured against real DOM
+          geometry rather than assumed constants. isInspected is only
+          ever true on a touch device (see this component's own prop
+          comment above), so none of this ever touches desktop's own
+          hover card, which always renders the Number exactly as
+          before. */}
       {archiveNumber != null && (
-        <div className="hover-overlay__number">{`[${archiveNumber}]`}</div>
+        <div ref={numberRef} className="hover-overlay__number">{`[${archiveNumber}]`}</div>
       )}
       {/* Discovery: the only editorial gate, checked before container
           queries ever run. Non-discovery tiles never render this markup, so
@@ -507,27 +622,46 @@ function HoverOverlay({
           component's own .hover-overlay__enter-project rule in styles.css,
           the same targeted opt-in .hover-overlay__themes li already uses
           against this card's own pointer-events: none default. */}
-      {/* Mobile tier unification (clean-slate pass): View Project is now
-          gated purely on tier -- Medium/Large (isThumbnailTier false)
-          only, same MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX/_HEIGHT_PX floor
-          as tap-eligibility itself, no separate View-Project-only
-          threshold (that system, and the stale `discovery` requirement
-          before it, are both retired -- see App.jsx's own comment at its
-          former declaration for that history). A Medium tile that's
-          merely narrow doesn't lose this control outright: its font-size
-          is responsive (see .hover-overlay__enter-project's clamp() in
-          styles.css), so it shrinks instead of disappearing or clipping.
-          Thumbnail tiles render the separate "+" control just below
-          instead of this one. */}
-      {isInspected && onEnterProject && !isThumbnailTier && (
+      {/* Final simplification pass: the "+" affordance is gone entirely
+          (it wasn't earning its keep, per real-device review) -- View
+          Project is now the ONLY entry control, attempted on every
+          inspected, Project-linked tile regardless of tier (tier no
+          longer gates this at all; that system, the stale `discovery`
+          requirement before it, and the CSS-threshold system after it
+          are all retired -- see App.jsx's own comment at the former
+          MOBILE_VIEW_PROJECT_MIN_WIDTH_PX declaration for that history).
+          Whether it's actually VISIBLE is decided by the fit-measurement
+          effect above, not by this render condition: canAttemptViewProject
+          (isInspected && onEnterProject) is the same gate this control has
+          always used to exist in the DOM at all; viewProjectFits is new,
+          and is what the className/tabIndex/aria-hidden below key off of.
+          While viewProjectFits is false, this still renders (see
+          hover-overlay__enter-project--measuring in styles.css) --
+          position: absolute, invisible, out of flow -- purely so the
+          effect above has a real box to measure; it never affects Archive
+          Number's own centering in that state, and is never focusable or
+          interactive (tabIndex -1, aria-hidden, and that same modifier
+          class's own pointer-events: none, including on its own invisible
+          expanded hit area -- see that class's styles.css comment). On a
+          Thumbnail tile too small for View Project to ever fit, Archive
+          Number alone is what's visible, and App.jsx's own
+          handleGalleryTileTap still provides its existing whole-tile,
+          second-tap-on-an-already-selected-tile exception as that tier's
+          real fallback entry point -- unchanged, see that function's own
+          comment. */}
+      {canAttemptViewProject && (
         <div
-          className="hover-overlay__enter-project"
+          ref={viewProjectRef}
+          className={`hover-overlay__enter-project${
+            viewProjectFits ? "" : " hover-overlay__enter-project--measuring"
+          }`}
           role="button"
-          tabIndex={0}
+          tabIndex={viewProjectFits ? 0 : -1}
+          aria-hidden={!viewProjectFits}
           onClick={(event) => {
             event.stopPropagation();
             // Section 6: this control only ever renders while isInspected
-            // is true (see the guard immediately above), which itself is
+            // is true (see canAttemptViewProject above), which itself is
             // only ever true on a touch device -- see handleThemeClick's
             // own comment for why that makes an extra gate unnecessary
             // here. An explicit "View Project" tap is one of the
@@ -540,51 +674,6 @@ function HoverOverlay({
           aria-label="View project"
         >
           View Project →
-        </div>
-      )}
-      {/* Final Mobile Interaction Model pass, updated by the Text
-          Containment pass: the Thumbnail tier's own entry control, per
-          the design principle behind this whole pass ("almost every
-          Project-linked Archive image should remain actionable on
-          mobile"). A single centered "+", intentionally minimal: no
-          box/pill/background (matches View Project's own "no chrome"
-          treatment, see that control's styles.css comment). Renders
-          alongside Archive Number by default now (the Text Containment
-          pass removed the old guard that hid the Number whenever this
-          rendered, see that guard's own comment above for why) --
-          styles.css's own shared @container hover-overlay hide
-          threshold is what decides, per real tile geometry, whether
-          both show, only the Number shows, or (genuine physical
-          impossibility only) neither does; this element's own render
-          condition below is unchanged -- tier + inspected + Project-
-          linked -- CSS decides fit, not this guard. Tapping this
-          directly still enters the Project (same stopPropagation/
-          hapticSelect/onEnterProject/keyboard wiring as View Project
-          above, reusing handleEnterProjectKeyDown rather than a second
-          copy of identical Enter/Space handling) -- but it is not the
-          ONLY way in for this tier: App.jsx's handleGalleryTileTap has
-          its own deliberate exception where a second tap ANYWHERE on
-          this already-inspected tile also enters the Project, since a
-          real thumbnail (~22x14px at the extreme) can be smaller than
-          even this control's own container-query-gated minimum. This
-          "+" is the visual affordance that communicates the tile is
-          actionable; the whole tile backs it up. That whole-tile
-          exception is Thumbnail-only -- Medium/Large never get it, see
-          handleGalleryTileTap's own comment. */}
-      {isInspected && onEnterProject && isThumbnailTier && (
-        <div
-          className="hover-overlay__enter-project-plus"
-          role="button"
-          tabIndex={0}
-          onClick={(event) => {
-            event.stopPropagation();
-            hapticSelect();
-            onEnterProject();
-          }}
-          onKeyDown={handleEnterProjectKeyDown}
-          aria-label="View project"
-        >
-          +
         </div>
       )}
     </div>

@@ -147,6 +147,18 @@ function HoverOverlay({
   // everything. Geometry/container queries still decide how much is shown
   // once eligible -- see the `discovery &&` checks below.
   discovery = false,
+  // Mobile Lexicon Removal pass: a second, independent eligibility gate
+  // for Themes specifically -- App.jsx passes !isTouchDevice (see that
+  // call site's own comment), so this is true on every desktop/fine-
+  // pointer device (unchanged) and false on every touch device,
+  // regardless of discovery or isInspected. Defaults to true so this
+  // stays a no-behavior-change addition for any hypothetical call site
+  // that doesn't pass it. This is what makes Josh's "never render Lexicon
+  // on mobile" request literal: below, Themes are gated on
+  // `themesEnabled &&`, not just on discovery/isInspected, so they are
+  // absent from this component's own rendered output on a touch device
+  // under every state, not merely hidden by CSS.
+  themesEnabled = true,
   // Mobile Archive Interaction Pass -- Stage 5 (Touch-Native Image
   // Inspection): App.jsx's own JS-driven visibility signal for touch
   // devices -- the equivalent of the plain CSS :hover this card's own
@@ -383,14 +395,18 @@ function HoverOverlay({
           only genuine physical impossibility at that floor (a container too
           small to hold even the shortest single line) results in no visible
           themes, never a separate editorial decision. */}
-      {/* Mobile Archive Interaction pass (client-approved): Lexicon/theme
-          tags are removed from the mobile tile interaction entirely --
-          isInspected is only ever true on a touch device (see this
-          component's own prop comment above), so gating on !isInspected
-          here hides this list purely for that case, leaving desktop's
-          discovery-tile hover reveal (isInspected always false there)
-          completely unaffected. */}
-      {discovery && !isInspected && shuffledThemes.length > 0 && (
+      {/* Mobile Lexicon Removal pass: themesEnabled (App.jsx's
+          !isTouchDevice, see this component's own prop comment above) is
+          the real, unconditional "never on touch" gate -- false on every
+          touch device regardless of anything else. !isInspected is a
+          second, independent condition kept from the earlier pass: on
+          desktop, where themesEnabled is always true, it still hides
+          Themes for the (touch-only) isInspected case, which is always
+          false there anyway, so it's a harmless no-op on desktop and
+          simply redundant with themesEnabled on touch. Desktop's own
+          discovery-tile hover reveal is completely unaffected either
+          way. */}
+      {themesEnabled && discovery && !isInspected && shuffledThemes.length > 0 && (
         <ul className="hover-overlay__themes">
           {shuffledThemes.map((theme) => (
             <li

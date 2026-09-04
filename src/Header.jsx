@@ -96,17 +96,22 @@ const EMPTY_FILTER_SELECTION = { theme: [], project: [], year: [], type: [] };
 // actually routes to.
 const MENU_LINKS = ["Archive", "Practice", "Journal", "Contact"];
 
-// Mobile Menu order/copy pass (client-approved): the mobile Menu overlay's
-// own link order/labels, deliberately independent of MENU_LINKS above --
-// desktop navigation stays exactly as it is (4 links, its own order); only
-// mobile gets the requested Archive / Projects / Practice / Contact /
-// Search / Journal sequence. Split into two arrays because Search itself
-// isn't a page link (see MobileMenuOverlay.jsx's own comment on why it's
-// rendered separately, via onSearchOpen, not through this link table) but
-// still needs to land in a specific position in the visual list -- between
-// Contact and Journal -- rather than always first.
-const MOBILE_MENU_LINKS_BEFORE_SEARCH = ["Archive", "Projects", "Practice", "Contact"];
-const MOBILE_MENU_LINKS_AFTER_SEARCH = ["Journal"];
+// Mobile Menu order pass: the mobile Menu overlay's own link order/
+// labels, deliberately independent of MENU_LINKS above -- desktop
+// navigation stays exactly as it is (4 links, its own order); only mobile
+// gets the requested Archive / Projects / Practice / Journal / Contact /
+// Search sequence, Search last. Split into two arrays because Search
+// itself isn't a page link (see MobileMenuOverlay.jsx's own comment on
+// why it's rendered separately, via onSearchOpen, not through this link
+// table) but still needs to land in a specific position in the visual
+// list. linksAfterSearch is now empty -- Search renders after every real
+// link with nothing following it (MobileMenuOverlay.jsx's own
+// linksAfterSearch.map(renderLink) is a no-op on an empty array, so
+// Search is simply the last thing rendered) -- kept as an array rather
+// than removing the prop/split entirely, so a future entry after Search
+// is again just one more array item, not a structural change.
+const MOBILE_MENU_LINKS_BEFORE_SEARCH = ["Archive", "Projects", "Practice", "Journal", "Contact"];
+const MOBILE_MENU_LINKS_AFTER_SEARCH = [];
 
 // All links are wired up to real routes; kept as a lookup rather than
 // growing the ternary below, since another page later is one more entry

@@ -1214,9 +1214,29 @@ body {
    matching, so .hover-overlay falls back to its own base opacity: 0 and
    fades out over the same existing 180ms transition -- "closes
    naturally," not a forced cut. The instant scrolling settles again,
-   :hover alone is enough to reactivate it -- no re-dwell, no delay. */
-.gallery-track:not(.is-scrolling) .gallery-image-wrapper:hover .hover-overlay {
-  opacity: 1;
+   :hover alone is enough to reactivate it -- no re-dwell, no delay.
+
+   Mobile Lexicon Removal pass: this bare :hover selector carried no
+   pointer/hover-capability guard, so it also matched on touch --
+   WebKit/Blink both apply :hover on tap and hold it until a later tap
+   elsewhere, per their own documented touch-to-hover emulation. That let
+   this rule reveal .hover-overlay (Lexicon/Themes included) on a touch
+   device completely independently of the JS-driven isInspected/
+   --inspected mechanism Stage 5 built specifically to control mobile
+   reveal -- a real gap, not a hypothetical one: a swipe or a tap could
+   leave a DIFFERENT, non-inspected tile carrying a stale :hover, showing
+   its full desktop-style card (Lexicon included) with none of Stage 5's
+   own gating ever engaged. Wrapping this rule in
+   (hover: hover) and (pointer: fine) confines it to genuine mouse/
+   trackpad devices -- exactly desktop's own existing behavior, completely
+   unchanged there -- and removes it entirely as a possible reveal path on
+   touch, where .gallery-image-wrapper--inspected (below, JS-driven, still
+   unguarded/unchanged) is now the only way .hover-overlay ever reaches
+   opacity: 1. */
+@media (hover: hover) and (pointer: fine) {
+  .gallery-track:not(.is-scrolling) .gallery-image-wrapper:hover .hover-overlay {
+    opacity: 1;
+  }
 }
 
 /* Mobile Archive Interaction Pass -- Stage 5 (Touch-Native Image
@@ -3220,18 +3240,32 @@ html.is-browsing .zoom-controls {
    height (row1's 80px floor) + a 12px gap -- correct everywhere from 0px
    up to ~1143px viewport width UNTIL Section 1's fix, since row1's own
    clamp(80px, 7vw, 102px) never actually exceeds its 80px floor before
-   then. That fix gives row1 a flat 120px height, but ONLY inside the
+   then. That fix gave row1 a flat 120px height, but ONLY inside the
    640px mobile breakpoint (see .site-header__row1's own ≤640px override) --
    so the unconditional rule above stays exactly correct for 641-1143px
-   (untouched, still real row1 height + 12), and this override -- same
-   cascade-order reasoning as .about-content's own ≤640px override just
-   above (later source position wins at equal specificity, regardless of
-   media scoping) -- carves out only the 0-640px range with the new real
-   value: 132px header height (12px .site-header padding + row1's new
-   120px) + the same 12px gap = 144px. */
+   (untouched, still real row1 height + 12).
+
+   Mobile Page-Spacing pass -- Practice gap fix: the 144px this override
+   used to carve out (132px header height + 12px gap) went stale the
+   moment a later pass (Mobile Header Compaction Pass, see
+   .site-header__row1's own ≤640px rule) shrank row1's real mobile height
+   again, to 64px -- .about-content's OWN ≤640px override was re-derived
+   to match at the time (see that rule's "Contact/Shared-Shell Clearance
+   Fix" comment: 12 + 64 + 12 = 88, plus --safe-area-inset-top), but this
+   class-specific override, being the later-source-wins rule at the exact
+   same specificity, kept silently shadowing that correction on every
+   Practice-only page (.about-content--redesign is used only by
+   AboutPage.jsx/Practice -- Journal, Contact, and Projects all render the
+   plain .about-content shell and were never affected). That's the
+   confirmed root cause of Practice's oversized mobile header gap: not a
+   new problem, the same shared-shell clearance formula going stale twice,
+   the second time only on this one page. Fix is the smallest possible
+   one -- reuse .about-content's own already-correct, already-current
+   mobile formula verbatim, rather than re-deriving a third number, per
+   "use the Journal spacing pattern as the source of truth." */
 @media (max-width: 640px) {
   .about-content--redesign {
-    padding-top: 144px;
+    padding-top: calc(var(--safe-area-inset-top) + 88px);
   }
 }
 
@@ -3349,6 +3383,25 @@ html.is-browsing .zoom-controls {
   margin: clamp(32px, 2.6vw, 50px) auto 0;
   max-width: clamp(460px, 39vw, 750px);
   text-align: left;
+}
+
+/* Mobile Page-Spacing pass -- Practice gap fix: with the image field
+   retired from this composition (see this rule's own governing comment
+   above), this box is .about-layout's only child, so its own margin-top
+   is the last remaining stack of extra air between the page's shared
+   header clearance (.about-content--redesign, fixed above to match
+   .about-content's own mobile formula) and the first heading -- the same
+   role .journal-intro's own margin-top plays on the Journal page, which
+   is already reset to 0 at this exact breakpoint for the exact same
+   reason (see that rule's own ≤640px override). Longhand margin-top,
+   not the shorthand `margin` above, so right/left auto-centering and the
+   bottom margin are untouched -- only the top value changes here.
+   Desktop/tablet's own clamp(32px, 2.6vw, 50px) top margin (base rule
+   above) is completely unaffected outside this breakpoint. */
+@media (max-width: 640px) {
+  .about-layout__copy {
+    margin-top: 0;
+  }
 }
 
 /* Title/subtitle, now the opening of .about-layout__copy rather than a

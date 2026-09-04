@@ -799,6 +799,36 @@ const TAP_MOVEMENT_THRESHOLD_PX = 14;
 // out an unusually long touch-and-hold-without-moving from being treated
 // the same as a quick, deliberate tap; ordinary taps land far under this.
 const TAP_MAX_DURATION_MS = 600;
+// Mobile Tile Eligibility pass (Locked Mobile Hierarchy): the physical
+// floor a tile's own rendered box (item.layout.width/height -- real
+// pixel values computed once at gallery-build time, the same numbers
+// getGalleryImageSizes above already parses via Number.parseFloat, and
+// the same box the rendered <img> and .hover-overlay exactly fill) needs
+// to clear before it is a touch selection surface at all -- see
+// handleGalleryTileTap's own use of these below. Below this floor, a
+// tile is "Tiny": no tap-reveal, no card, no Archive Number, ever -- it
+// stays a purely visual archive fragment, and its own tap is treated
+// exactly like a tap on empty Archive canvas (dismiss whatever else is
+// open, nothing more). At/above this floor, a tile is "eligible" --
+// Medium or Large/discovery, per HoverOverlay's own existing `discovery`
+// gate on Themes/View Project, which already reliably separates the two
+// (discovery is the editorial large/hero flag COLUMN_PATTERNS authors
+// directly; every discovery tile is, by construction, comfortably larger
+// than this floor -- it exists to separate genuinely tiny fragments from
+// the ordinary Medium tiles that make up most of the field).
+//
+// Derived the same way this codebase's other physical-fit floors are
+// (see .hover-overlay__themes' and .hover-overlay__enter-project's own
+// derivation comments in styles.css): .hover-overlay's own safe-area
+// padding (0.5rem * 2 = 16px each axis) plus .hover-overlay__number at a
+// comfortable size (its own 0.2rem/0.5rem padding plus roughly one line
+// of text) needs on the order of 65-70px width / 38-40px height to read
+// as "physically fits comfortably," not clipped or crowded -- rounded up
+// to a clean, slightly more generous floor here since this is the gate
+// for whether a tile is a selection surface at all, not just whether one
+// specific piece of content fits inside an already-selected one.
+const MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX = 80;
+const MOBILE_SELECTABLE_TILE_MIN_HEIGHT_PX = 48;
 // How long after a pinch gesture ends a stray touchend on the finger(s)
 // that were part of it should still be treated as "part of that pinch
 // ending," not a fresh tap -- short and purposeful, just enough to absorb
@@ -4025,6 +4055,12 @@ function App() {
     [],
   );
 
+  // Mobile Tile Eligibility pass: MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX/
+  // _HEIGHT_PX (module scope, declared near TAP_MOVEMENT_THRESHOLD_PX
+  // above) are the physical floor a tile's own rendered box needs to
+  // clear before it is a touch selection surface at all -- see their own
+  // declaration comment for the derivation.
+  //
   // Mobile Archive Interaction Pass -- Stage 5 (Touch-Native Image
   // Inspection): the touch-only replacement for this tile's own onClick
   // (see the gallery-image-wrapper render below, gated on isTouchDevice) --
@@ -4047,21 +4083,31 @@ function App() {
   // earlier, client-approved pass had a second tap on an already-inspected
   // Project-linked tile enter the Project directly (a whole-tile tap-to-
   // enter shortcut, meant as a safety net for tiles too small to render
-  // the "View Project" label). That shortcut is removed here: it made the
-  // whole image an implicit second navigation path outside "View Project"
-  // -- functionally a two-tap/double-tap-to-navigate gesture on the image
-  // itself, which this pass's own interaction model explicitly rules out
-  // ("do NOT make the whole image navigate," "do NOT use double tap").
-  // Every tap on a gallery tile now does exactly one thing: toggle this
-  // tile's own inspected state. A tile too small to render "View Project"
-  // (see its own @container floor in styles.css) simply has no in-place
-  // way to enter its Project on touch -- the tile shows its Archive
-  // Number alone, per the approved small-tile treatment, and is not a
-  // dead end: the same image is reachable at full size, with its own
-  // "View Project" control, wherever else the Archive/Project Filter Row
-  // surfaces it. Flagged for a final check with Josh since the removed
-  // behavior was previously described as client-approved.
+  // the "View Project" label). That shortcut was removed in an earlier
+  // pass: it made the whole image an implicit second navigation path
+  // outside "View Project" -- functionally a two-tap/double-tap-to-
+  // navigate gesture on the image itself, which this interaction model
+  // explicitly rules out ("do NOT make the whole image navigate," "do NOT
+  // use double tap").
+  //
+  // Mobile Tile Eligibility pass: this same handler now also enforces the
+  // locked hierarchy's Tiny tier -- a tap on a tile below
+  // MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX/_HEIGHT_PX never opens or toggles
+  // anything for that tile; it only ever dismisses whatever else is
+  // currently inspected, exactly like a tap on empty Archive canvas
+  // (mirroring handleTouchEnd's own background-tap-dismiss branch). This
+  // is also why inspectedItemId can never legitimately hold a tiny tile's
+  // id -- the only place that state is ever set is here.
   const handleGalleryTileTap = useCallback((item) => {
+    const width = Number.parseFloat(item.layout.width);
+    const height = Number.parseFloat(item.layout.height);
+    const isTiny =
+      width < MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX ||
+      height < MOBILE_SELECTABLE_TILE_MIN_HEIGHT_PX;
+    if (isTiny) {
+      setInspectedItemId(null);
+      return;
+    }
     const wasInspected = inspectedItemIdRef.current === item.id;
     // Mobile Header/Search/Menu Refinement Pass -- Section 6 (Haptics): a
     // genuine inspection tap gets a single, subtle tick -- but only on the
@@ -6749,6 +6795,24 @@ function App() {
                     // ever prevents a Discovery tile from showing a theme --
                     // see HoverOverlay's own comment.
                     discovery={item.layout.discovery}
+                    // Mobile Lexicon Removal pass: Josh explicitly asked
+                    // for Lexicon/theme hashtags to never render on the
+                    // mobile Archive -- not on Tiny, Medium, or Large/
+                    // selected tiles -- while leaving the data itself and
+                    // desktop's own Lexicon hover/click-to-filter behavior
+                    // completely untouched. !isTouchDevice mirrors
+                    // relationshipEngineEnabled's own capability-gate
+                    // pattern immediately above: true (render Themes,
+                    // exactly as before) on every desktop/fine-pointer
+                    // device, false on every touch device regardless of
+                    // discovery/isInspected. This is belt-and-suspenders
+                    // alongside styles.css's own fix to the plain :hover
+                    // reveal rule (now scoped to (hover: hover) and
+                    // (pointer: fine), see that rule's own comment) --
+                    // between the two, Themes can neither become visible
+                    // nor even be present in HoverOverlay's own rendered
+                    // output on a touch device, under any state.
+                    themesEnabled={!isTouchDevice}
                     // Mobile Archive Interaction Pass -- Stage 5: isInspected
                     // is this tile's own touch-driven visibility signal --
                     // the JS equivalent of the plain CSS :hover this same

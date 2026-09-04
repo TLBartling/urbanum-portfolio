@@ -462,23 +462,34 @@ function HoverOverlay({
           component's own .hover-overlay__enter-project rule in styles.css,
           the same targeted opt-in .hover-overlay__themes li already uses
           against this card's own pointer-events: none default. */}
-      {/* Mobile Archive Interaction pass: the visible "View Project"
-          label itself is only ever attempted on discovery-tile (large
-          tile) slots -- discovery is the editorial gate checked here in
-          JSX. Whether it actually renders on any given eligible tile is
-          then decided in CSS, by this control's own @container floor in
-          styles.css -- the physical-fit gate, mirroring
-          .hover-overlay__themes' own editorial-gate-in-JSX/physical-fit-
-          gate-in-CSS split above. Below that floor, small tiles show the
-          Archive Number alone rather than a cramped or clipped control.
-          Locked Mobile Interaction Model pass: small, Project-linked
-          tiles are NOT independently tappable to enter the Project via
-          the whole tile anymore -- that whole-tile shortcut was removed
-          in App.jsx's handleGalleryTileTap, since it made the image
-          itself a second, implicit navigation path, which this pass's
-          interaction model rules out. This label (when it fits) is the
-          only in-place way to enter a Project from an inspected tile. */}
-      {isInspected && onEnterProject && discovery && (
+      {/* Mobile View Project Eligibility fix (diagnosis-first pass): this
+          control used to also require `discovery` (the editorial
+          large/hero tile flag) here in JSX, on top of onEnterProject
+          already being conditional on size in App.jsx
+          (isViewProjectEligible). That `discovery` requirement was a
+          holdover from an older design where only large/hero tiles
+          carried the visible label and every OTHER Project-linked tile
+          fell back to a whole-tile tap-to-enter shortcut -- but that
+          whole-tile shortcut was removed in the Locked Mobile
+          Interaction Model pass (the image itself must never navigate).
+          Since pickImage places images into discovery/large slots at
+          random from the whole image pool, independent of whether that
+          image happens to be Project-linked (see App.jsx's
+          pickImage/COLUMN_PATTERNS), a Project-linked image lands on an
+          ordinary (non-discovery) tile far more often than not -- see
+          ARCHIVE_DISCOVERY_TILE_SIZES_HEADROOM's own comment: ordinary
+          tiles are "the large majority of what's on screen at once."
+          With `discovery` still required here, View Project could only
+          ever render on the rare Project-linked tile that also happened
+          to be a discovery tile that same generation -- every other
+          Project-linked tile had no way in at all. This, not the size
+          threshold, is what made "View Project never appears" persist
+          through two rounds of threshold/CSS tuning that never touched
+          this gate. Fit is now decided entirely in App.jsx before
+          onEnterProject is even passed down (undefined on an
+          ineligible tile, exactly like a non-Project tile already
+          gets) -- discovery no longer belongs in this condition. */}
+      {isInspected && onEnterProject && (
         <div
           className="hover-overlay__enter-project"
           role="button"

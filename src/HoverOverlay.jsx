@@ -175,9 +175,19 @@ function HoverOverlay({
   // sequence (handleProjectRowImageClick, reused verbatim -- see the call
   // site's own comment), supplied only for Project-linked tiles. Its mere
   // presence/absence -- not a separate isProjectLinked boolean -- is what
-  // decides whether the "View Project" control below renders at all, so
-  // there is exactly one thing this component needs to check.
+  // decides whether EITHER entry control below can render at all.
   onEnterProject,
+  // Mobile tier unification (clean-slate pass): which entry-affordance
+  // SHAPE to render for an inspected, Project-linked tile -- App.jsx's
+  // own MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX/_HEIGHT_PX floor (the same
+  // one that already decides whether a tile is a selection surface at
+  // all), not a separate View-Project-only threshold. false (the
+  // default, Medium/Large) renders Archive Number + View Project; true
+  // (Thumbnail) renders neither of those and instead a single minimal
+  // centered "+" -- see the render below for both branches. Defaults to
+  // false so any hypothetical call site that doesn't pass it keeps the
+  // full card, same as before this prop existed.
+  isThumbnailTier = false,
   // Relationship Hover Intent pass: App.jsx's own single fire-time check
   // (isScrollingRef.current || isProjectFilterActiveRef.current ||
   // isOverlayActiveRef.current -- see its own declaration comment) --
@@ -364,7 +374,19 @@ function HoverOverlay({
 
   return (
     <div
-      className="hover-overlay"
+      className={`hover-overlay${
+        // Final Mobile Interaction Model pass: Thumbnail tiles get a
+        // smaller, thumbnail-specific padding while inspected (see this
+        // rule's own comment in styles.css) -- real generated Archive
+        // geometry produces Project-linked tiles as small as ~22x14px,
+        // where the card's normal 0.5rem safe-area padding alone can
+        // exceed the tile's own height, leaving the centered "+" no room
+        // to render visibly. isThumbnailTier && isInspected keeps this
+        // scoped to exactly the state that needs it -- Medium/Large never
+        // get this class (isThumbnailTier is always false for them), and
+        // desktop never does either (isInspected is always false there).
+        isThumbnailTier && isInspected ? " hover-overlay--thumbnail-inspected" : ""
+      }`}
       // Stage 5: this card is decorative chrome on desktop (a plain CSS
       // :hover reveal with no keyboard-reachable content of its own,
       // aria-hidden unconditionally before this stage) -- that stays true
@@ -384,7 +406,15 @@ function HoverOverlay({
           App.jsx/matched against relatedArchiveNumbers elsewhere; nothing
           about that data or the Relationship Engine's matching changes
           here. */}
-      {archiveNumber != null && (
+      {/* Mobile tier unification (clean-slate pass): the Thumbnail tier
+          is too small to fit Archive Number + View Project cleanly (the
+          whole reason it gets the minimal "+" affordance below instead)
+          -- so once inspected, it shows the "+" alone, not the Number.
+          isInspected is only ever true on a touch device (see this
+          component's own prop comment above), so this never touches
+          desktop's own hover card, which always renders the Number
+          exactly as before regardless of isThumbnailTier. */}
+      {archiveNumber != null && !(isThumbnailTier && isInspected) && (
         <div className="hover-overlay__number">{`[${archiveNumber}]`}</div>
       )}
       {/* Discovery: the only editorial gate, checked before container
@@ -462,34 +492,19 @@ function HoverOverlay({
           component's own .hover-overlay__enter-project rule in styles.css,
           the same targeted opt-in .hover-overlay__themes li already uses
           against this card's own pointer-events: none default. */}
-      {/* Mobile View Project Eligibility fix (diagnosis-first pass): this
-          control used to also require `discovery` (the editorial
-          large/hero tile flag) here in JSX, on top of onEnterProject
-          already being conditional on size in App.jsx
-          (isViewProjectEligible). That `discovery` requirement was a
-          holdover from an older design where only large/hero tiles
-          carried the visible label and every OTHER Project-linked tile
-          fell back to a whole-tile tap-to-enter shortcut -- but that
-          whole-tile shortcut was removed in the Locked Mobile
-          Interaction Model pass (the image itself must never navigate).
-          Since pickImage places images into discovery/large slots at
-          random from the whole image pool, independent of whether that
-          image happens to be Project-linked (see App.jsx's
-          pickImage/COLUMN_PATTERNS), a Project-linked image lands on an
-          ordinary (non-discovery) tile far more often than not -- see
-          ARCHIVE_DISCOVERY_TILE_SIZES_HEADROOM's own comment: ordinary
-          tiles are "the large majority of what's on screen at once."
-          With `discovery` still required here, View Project could only
-          ever render on the rare Project-linked tile that also happened
-          to be a discovery tile that same generation -- every other
-          Project-linked tile had no way in at all. This, not the size
-          threshold, is what made "View Project never appears" persist
-          through two rounds of threshold/CSS tuning that never touched
-          this gate. Fit is now decided entirely in App.jsx before
-          onEnterProject is even passed down (undefined on an
-          ineligible tile, exactly like a non-Project tile already
-          gets) -- discovery no longer belongs in this condition. */}
-      {isInspected && onEnterProject && (
+      {/* Mobile tier unification (clean-slate pass): View Project is now
+          gated purely on tier -- Medium/Large (isThumbnailTier false)
+          only, same MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX/_HEIGHT_PX floor
+          as tap-eligibility itself, no separate View-Project-only
+          threshold (that system, and the stale `discovery` requirement
+          before it, are both retired -- see App.jsx's own comment at its
+          former declaration for that history). A Medium tile that's
+          merely narrow doesn't lose this control outright: its font-size
+          is responsive (see .hover-overlay__enter-project's clamp() in
+          styles.css), so it shrinks instead of disappearing or clipping.
+          Thumbnail tiles render the separate "+" control just below
+          instead of this one. */}
+      {isInspected && onEnterProject && !isThumbnailTier && (
         <div
           className="hover-overlay__enter-project"
           role="button"
@@ -510,6 +525,44 @@ function HoverOverlay({
           aria-label="View project"
         >
           View Project →
+        </div>
+      )}
+      {/* Final Mobile Interaction Model pass: the Thumbnail tier's own
+          entry control -- too small for Archive Number + View Project
+          (see the Number's own guard above), but per the design
+          principle behind this whole pass ("almost every Project-linked
+          Archive image should remain actionable on mobile"), still not
+          a dead end. A single centered "+", intentionally minimal: no
+          box/pill/background (matches View Project's own "no chrome"
+          treatment, see that control's styles.css comment). Tapping this
+          directly still enters the Project (same stopPropagation/
+          hapticSelect/onEnterProject/keyboard wiring as View Project
+          above, reusing handleEnterProjectKeyDown rather than a second
+          copy of identical Enter/Space handling) -- but it is not the
+          ONLY way in for this tier: App.jsx's handleGalleryTileTap has
+          its own deliberate exception where a second tap ANYWHERE on
+          this already-inspected tile also enters the Project, since a
+          contained, never-overflowing hit target this control's own
+          styles.css min(44px, 100%) guarantees can still end up smaller
+          than a real thumbnail (~22x14px at the extreme) can comfortably
+          host on its own. This "+" is the visual affordance that
+          communicates the tile is actionable; the whole tile backs it
+          up. That whole-tile exception is Thumbnail-only -- Medium/Large
+          never get it, see handleGalleryTileTap's own comment. */}
+      {isInspected && onEnterProject && isThumbnailTier && (
+        <div
+          className="hover-overlay__enter-project-plus"
+          role="button"
+          tabIndex={0}
+          onClick={(event) => {
+            event.stopPropagation();
+            hapticSelect();
+            onEnterProject();
+          }}
+          onKeyDown={handleEnterProjectKeyDown}
+          aria-label="View project"
+        >
+          +
         </div>
       )}
     </div>

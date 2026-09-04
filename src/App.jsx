@@ -829,45 +829,26 @@ const TAP_MAX_DURATION_MS = 600;
 // specific piece of content fits inside an already-selected one.
 const MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX = 80;
 const MOBILE_SELECTABLE_TILE_MIN_HEIGHT_PX = 48;
-// Mobile View Project Eligibility fix (real-device pass): "View Project"
-// used to gate its own visibility with a CSS @container query
-// (.hover-overlay__enter-project's own display: none default, promoted
-// to inline-flex only inside `@container hover-overlay (min-width: 150px)
-// and (min-height: 100px)`, see styles.css). On a real iPhone that never
-// promoted -- the control stayed display: none on every tile, including
-// unambiguously large discovery ones, which is what "View Project never
-// appears anywhere" actually was: not the 150x100 numbers being wrong,
-// the @container mechanism itself never taking effect for this element
-// on that device/engine. The Archive Number, by contrast, is gated
-// entirely by JS (isInspected, which MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX/
-// _HEIGHT_PX above already control) and was confirmed working on the same
-// real device -- real evidence that comparing item.layout.width/height in
-// JS against a fixed floor DOES produce correct, working results here,
-// where the CSS container-query path did not. These two constants move
-// View Project's own "does it physically fit" decision onto that same,
-// now-proven mechanism: computed once per tile below (see isProjectLinked
-// above the render loop), gating whether onEnterProject is even passed to
-// HoverOverlay at all -- not whether a rendered-but-hidden control exists
-// waiting on a CSS promotion that may never come.
-// Width recalibrated (real-device evidence pass): the original 140px
-// figure estimated the label's own footprint at ~133px from a generic
-// 14-chars * ~0.7em-per-character assumption, PLUS a border that no
-// longer exists on this control (removed in the diagnosis-first pass,
-// see .hover-overlay__enter-project's own styles.css comment) -- an
-// estimate, not a measurement, and one that assumed a wider render than
-// this control (GT America/Helvetica Neue fallback, 0.68rem, 0.1em
-// tracking, no border, no box chrome) actually produces. Real iPhone
-// evidence (window.__urbanumMobileDebug(), a genuinely tapped tile --
-// archiveNumber "031", project "wynwood-courtyard") proved a 116x128px
-// tile renders Archive Number + "View Project ->" with no clipping.
-// 116 is set here as an exact floor, not rounded down further: it is
-// the smallest correction that admits that confirmed-working tile,
-// while still excluding anything narrower that has not been shown to
-// fit. Height is unchanged -- 128 already clears the existing 90px
-// floor with room to spare on that same real tile, and nothing in this
-// evidence points at height as ever having been the blocker.
-const MOBILE_VIEW_PROJECT_MIN_WIDTH_PX = 116;
-const MOBILE_VIEW_PROJECT_MIN_HEIGHT_PX = 90;
+// Mobile View Project tier unification (clean-slate pass): the separate
+// MOBILE_VIEW_PROJECT_MIN_WIDTH_PX/_HEIGHT_PX eligibility system (a
+// second, independent size gate layered on top of the tile-eligibility
+// floor immediately above) is retired here. It was never meant to be a
+// second sizing system -- it existed because "does View Project fit"
+// used to be answered separately from "is this tile a selection surface
+// at all," and that split is what kept producing narrow tiles (e.g. a
+// real 116px-wide tile) that were selectable but not "eligible," with no
+// real design reason for the gap. The Archive already has exactly the
+// tiers this interaction needs: Tiny (below
+// MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX/_HEIGHT_PX immediately above) vs.
+// everything at/above it (Medium/Large, Large being the `discovery` tiles
+// COLUMN_PATTERNS itself flags). View Project now uses that same Tiny
+// floor directly (see isThumbnailTier at both call sites below) instead
+// of a second, parallel threshold -- a Project-linked tile is either
+// Tiny (gets the "+" affordance, see HoverOverlay.jsx) or it isn't (gets
+// Archive Number + View Project, with View Project's own font-size now
+// responsive -- see .hover-overlay__enter-project's clamp() in
+// styles.css -- so a merely-narrow Medium tile shrinks the label instead
+// of losing it outright).
 // How long after a pinch gesture ends a stray touchend on the finger(s)
 // that were part of it should still be treated as "part of that pinch
 // ending," not a fresh tap -- short and purposeful, just enough to absorb
@@ -3852,13 +3833,15 @@ function App() {
     lastTappedArchiveNumber: null,
     lastTappedWidthPx: null, // item.layout.width, parsed
     lastTappedHeightPx: null, // item.layout.height, parsed
-    lastTappedSelectableEligible: null, // !isTiny (MOBILE_SELECTABLE_TILE_MIN_*)
-    lastTappedViewProjectEligible: null, // same formula as the render loop's isViewProjectEligible
-    lastTappedOnEnterProjectExists: null, // whether HoverOverlay would receive a real onEnterProject
+    lastTappedIsThumbnailTier: null, // MOBILE_SELECTABLE_TILE_MIN_* floor -- Thumbnail tier gets "+", not View Project
+    lastTappedSelectableEligible: null, // !isThumbnailTier
+    lastTappedViewProjectEligible: null, // isProjectLinked && !isThumbnailTier -- gets the View Project label specifically
+    lastTappedOnEnterProjectExists: null, // isProjectLinked -- true for both "+" and View Project tiers now
     resultingInspectedItemId: null, // what handleGalleryTileTap set/would set
     handleGalleryTileTapRan: false, // proves the click genuinely reached this handler at least once
     handleGalleryTileTapCallCount: 0,
     handleGalleryTileTapLastRanAt: null,
+    lastTappedWholeTileNavigated: false, // true only for the Thumbnail-tier second-tap-anywhere exception
   });
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -4158,79 +4141,115 @@ function App() {
   // dismiss it (see handleTouchEnd/handleTouchMove/handleTouchStart's own
   // Stage 5 additions).
   //
-  // Locked Mobile Interaction Model pass: the tile itself is a
-  // selection/inspection surface only, never a navigation surface -- an
-  // earlier, client-approved pass had a second tap on an already-inspected
-  // Project-linked tile enter the Project directly (a whole-tile tap-to-
-  // enter shortcut, meant as a safety net for tiles too small to render
-  // the "View Project" label). That shortcut was removed in an earlier
-  // pass: it made the whole image an implicit second navigation path
-  // outside "View Project" -- functionally a two-tap/double-tap-to-
-  // navigate gesture on the image itself, which this interaction model
-  // explicitly rules out ("do NOT make the whole image navigate," "do NOT
-  // use double tap").
+  // Final Mobile Interaction Model pass: the tile itself is a
+  // selection/inspection surface for Medium/Large, and stays that way --
+  // an earlier, client-approved pass had a second tap on ANY already-
+  // inspected Project-linked tile enter the Project directly (a whole-
+  // tile shortcut for every tile, not just tiny ones); that was removed
+  // because it made the whole image an implicit second navigation path
+  // outside "View Project" ("do NOT make the whole image navigate," "do
+  // NOT use double tap") and stays removed for Medium/Large here -- only
+  // View Project's own control navigates for that tier.
   //
-  // Mobile Tile Eligibility pass: this same handler now also enforces the
-  // locked hierarchy's Tiny tier -- a tap on a tile below
-  // MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX/_HEIGHT_PX never opens or toggles
-  // anything for that tile; it only ever dismisses whatever else is
-  // currently inspected, exactly like a tap on empty Archive canvas
-  // (mirroring handleTouchEnd's own background-tap-dismiss branch). This
-  // is also why inspectedItemId can never legitimately hold a tiny tile's
-  // id -- the only place that state is ever set is here.
-  const handleGalleryTileTap = useCallback((item) => {
-    const width = Number.parseFloat(item.layout.width);
-    const height = Number.parseFloat(item.layout.height);
-    const isTiny =
-      width < MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX ||
-      height < MOBILE_SELECTABLE_TILE_MIN_HEIGHT_PX;
-    // TEMPORARY MOBILE DIAGNOSTIC HOOK -- proves this handler genuinely
-    // ran for this item (the synthetic click actually reached here) and
-    // snapshots exactly what it decided -- see mobileDebugRef's own
-    // declaration above for the full field list. isViewProjectEligible
-    // recomputed here with the exact same formula the render loop uses,
-    // independent of it, so a real discrepancy between the two would be
-    // visible rather than silently assumed equal.
-    const isProjectLinkedForDebug = Boolean(item.project);
-    const isViewProjectEligibleForDebug =
-      isProjectLinkedForDebug &&
-      width >= MOBILE_VIEW_PROJECT_MIN_WIDTH_PX &&
-      height >= MOBILE_VIEW_PROJECT_MIN_HEIGHT_PX;
-    mobileDebugRef.current.lastTappedItemId = item.id;
-    mobileDebugRef.current.lastTappedProject = item.project ?? null;
-    mobileDebugRef.current.lastTappedArchiveNumber =
-      item.archiveNumber ?? null;
-    mobileDebugRef.current.lastTappedWidthPx = width;
-    mobileDebugRef.current.lastTappedHeightPx = height;
-    mobileDebugRef.current.lastTappedSelectableEligible = !isTiny;
-    mobileDebugRef.current.lastTappedViewProjectEligible =
-      isViewProjectEligibleForDebug;
-    mobileDebugRef.current.lastTappedOnEnterProjectExists =
-      isViewProjectEligibleForDebug;
-    mobileDebugRef.current.handleGalleryTileTapRan = true;
-    mobileDebugRef.current.handleGalleryTileTapCallCount += 1;
-    mobileDebugRef.current.handleGalleryTileTapLastRanAt = performance.now();
-    if (isTiny) {
-      mobileDebugRef.current.resultingInspectedItemId = null;
-      setInspectedItemId(null);
-      return;
-    }
-    const wasInspected = inspectedItemIdRef.current === item.id;
-    mobileDebugRef.current.resultingInspectedItemId = wasInspected
-      ? null
-      : item.id;
-    // Mobile Header/Search/Menu Refinement Pass -- Section 6 (Haptics): a
-    // genuine inspection tap gets a single, subtle tick -- but only on the
-    // tap that OPENS the card, never the second tap that dismisses it (a
-    // plain toggle back to nothing shouldn't buzz). inspectedItemIdRef is
-    // read here, before the state update is scheduled, rather than inside
-    // the setInspectedItemId updater itself -- keeping the updater a pure
-    // function of its previous state, with the one-time side effect
-    // decided from the ref snapshot of what's committed right now.
-    const isOpening = !wasInspected;
-    setInspectedItemId((current) => (current === item.id ? null : item.id));
-    if (isOpening) hapticTap();
-  }, []);
+  // Thumbnail tier gets a DELIBERATE, narrower exception, added back for
+  // that tier only: real generated Archive geometry produces Project-
+  // linked tiles as small as ~22x14px (measured against COLUMN_PATTERNS
+  // at real mobile viewport heights), where a contained, precision "+"
+  // hit target that never overflows the tile is physically impossible
+  // to make comfortably tappable on its own. The centered "+" (rendered
+  // by HoverOverlay once this tile is inspected, see isThumbnailTier
+  // passed to it below) is the visual affordance communicating "this
+  // selected thumbnail is actionable" -- tapping it directly still
+  // enters the Project (its own onClick, stopPropagation'd, unchanged).
+  // The second tap ANYWHERE on that same already-inspected Thumbnail
+  // tile does the same thing, handled here: wasInspected && isThumbnailTier
+  // && isProjectLinked calls handleProjectRowImageClick directly, exactly
+  // the way the old whole-tile shortcut did, but scoped to ONLY the tier
+  // where a real precision target cannot exist -- Medium/Large never
+  // reach this branch (isThumbnailTier is false for both).
+  //
+  // Mobile Tile Eligibility pass, revised: a tap on a tile below
+  // MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX/_HEIGHT_PX -- the Thumbnail tier
+  // -- still never opens the full Archive-Number-plus-View-Project card
+  // (there is no room for it), but it is NOT a dead tap for a
+  // Project-linked image: first tap opens the SAME inspected state
+  // everything else does (HoverOverlay renders the "+" instead of the
+  // full card for this tier); second tap enters the Project, per the
+  // exception above. A Thumbnail tile with no Project keeps the original
+  // behavior exactly -- tapping it only ever dismisses whatever else is
+  // inspected, identical to a tap on empty Archive canvas (mirroring
+  // handleTouchEnd's own background-tap-dismiss branch).
+  const handleGalleryTileTap = useCallback(
+    (item) => {
+      const width = Number.parseFloat(item.layout.width);
+      const height = Number.parseFloat(item.layout.height);
+      const isProjectLinked = Boolean(item.project);
+      const isThumbnailTier =
+        width < MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX ||
+        height < MOBILE_SELECTABLE_TILE_MIN_HEIGHT_PX;
+      // TEMPORARY MOBILE DIAGNOSTIC HOOK -- proves this handler genuinely
+      // ran for this item (the synthetic click actually reached here) and
+      // snapshots exactly what it decided -- see mobileDebugRef's own
+      // declaration above for the full field list. Recomputed here with
+      // the exact same formula the render loop uses, independent of it,
+      // so a real discrepancy between the two would be visible rather
+      // than silently assumed equal.
+      mobileDebugRef.current.lastTappedItemId = item.id;
+      mobileDebugRef.current.lastTappedProject = item.project ?? null;
+      mobileDebugRef.current.lastTappedArchiveNumber =
+        item.archiveNumber ?? null;
+      mobileDebugRef.current.lastTappedWidthPx = width;
+      mobileDebugRef.current.lastTappedHeightPx = height;
+      mobileDebugRef.current.lastTappedIsThumbnailTier = isThumbnailTier;
+      mobileDebugRef.current.lastTappedSelectableEligible = !isThumbnailTier;
+      // onEnterProject exists for any Project-linked tile regardless of
+      // tier -- Thumbnail gets the "+" affordance (plus this handler's
+      // own whole-tile exception below), Medium/Large get View Project
+      // only. This field records whether an entry affordance exists at
+      // all; lastTappedIsThumbnailTier says which shape it takes.
+      mobileDebugRef.current.lastTappedOnEnterProjectExists = isProjectLinked;
+      mobileDebugRef.current.lastTappedViewProjectEligible =
+        isProjectLinked && !isThumbnailTier;
+      mobileDebugRef.current.handleGalleryTileTapRan = true;
+      mobileDebugRef.current.handleGalleryTileTapCallCount += 1;
+      mobileDebugRef.current.handleGalleryTileTapLastRanAt = performance.now();
+      if (isThumbnailTier && !isProjectLinked) {
+        mobileDebugRef.current.resultingInspectedItemId = null;
+        mobileDebugRef.current.lastTappedWholeTileNavigated = false;
+        setInspectedItemId(null);
+        return;
+      }
+      const wasInspected = inspectedItemIdRef.current === item.id;
+      // Final Mobile Interaction Model pass: the Thumbnail-only
+      // whole-tile-tap-to-enter exception -- see this function's own
+      // top comment for the full reasoning. Only ever fires on the
+      // SECOND tap of an already-inspected Thumbnail, Project-linked
+      // tile; the first tap always falls through to the plain
+      // inspect/toggle logic below, identical to every other tile.
+      if (isThumbnailTier && isProjectLinked && wasInspected) {
+        mobileDebugRef.current.resultingInspectedItemId = item.id;
+        mobileDebugRef.current.lastTappedWholeTileNavigated = true;
+        handleProjectRowImageClick(item);
+        return;
+      }
+      mobileDebugRef.current.lastTappedWholeTileNavigated = false;
+      mobileDebugRef.current.resultingInspectedItemId = wasInspected
+        ? null
+        : item.id;
+      // Mobile Header/Search/Menu Refinement Pass -- Section 6 (Haptics): a
+      // genuine inspection tap gets a single, subtle tick -- but only on the
+      // tap that OPENS the card, never the second tap that dismisses it (a
+      // plain toggle back to nothing shouldn't buzz). inspectedItemIdRef is
+      // read here, before the state update is scheduled, rather than inside
+      // the setInspectedItemId updater itself -- keeping the updater a pure
+      // function of its previous state, with the one-time side effect
+      // decided from the ref snapshot of what's committed right now.
+      const isOpening = !wasInspected;
+      setInspectedItemId((current) => (current === item.id ? null : item.id));
+      if (isOpening) hapticTap();
+    },
+    [handleProjectRowImageClick],
+  );
 
   // Shared regeneration sequence -- used on mount, on window resize, and
   // (see handleLogoClick below) when the logo is clicked on the homepage.
@@ -6679,26 +6698,23 @@ function App() {
               // properly separated as their own later task.
               const isProjectLinked = Boolean(item.project);
               const isInteractive = isProjectLinked || imageFocusEnabled;
-              // Mobile View Project Eligibility fix: real-device
-              // replacement for the CSS @container gate that never
-              // promoted on a real iPhone (see
-              // MOBILE_VIEW_PROJECT_MIN_WIDTH_PX/_HEIGHT_PX's own
-              // declaration comment for the full trace). item.layout.width/
-              // height are the same real, already-computed pixel values
-              // handleGalleryTileTap already parses for tap eligibility --
-              // reused here, not re-derived, so both gates agree on what
-              // "this tile's own size" means. Only touch-device tiles need
-              // this at all: on desktop, onEnterProject is never read by
-              // anything (isInspected is always false there, see
-              // HoverOverlay's own guard), so gating it here has no
-              // desktop-visible effect either way -- kept simple by not
-              // special-casing isTouchDevice explicitly.
-              const isViewProjectEligible =
-                isProjectLinked &&
-                Number.parseFloat(item.layout.width) >=
-                  MOBILE_VIEW_PROJECT_MIN_WIDTH_PX &&
-                Number.parseFloat(item.layout.height) >=
-                  MOBILE_VIEW_PROJECT_MIN_HEIGHT_PX;
+              // Mobile tier unification (clean-slate pass): the same
+              // Thumbnail/Tiny-tier formula handleGalleryTileTap already
+              // uses for tap eligibility, reused here (not re-derived) so
+              // both places agree on what "this tile's own size" means.
+              // No separate View-Project-only threshold exists anymore --
+              // see MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX/_HEIGHT_PX's own
+              // declaration comment. Only touch-device tiles need this at
+              // all: on desktop, onEnterProject/isThumbnailTier are never
+              // read by anything meaningful (isInspected is always false
+              // there, see HoverOverlay's own guard), so computing it here
+              // has no desktop-visible effect either way -- kept simple by
+              // not special-casing isTouchDevice explicitly.
+              const isThumbnailTier =
+                Number.parseFloat(item.layout.width) <
+                  MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX ||
+                Number.parseFloat(item.layout.height) <
+                  MOBILE_SELECTABLE_TILE_MIN_HEIGHT_PX;
               // Relationship Visualization (Commit 4), corrected by the
               // state-management bug fix, and now gated by the
               // Relationship Mode Visibility Gate above: consumes only
@@ -6994,28 +7010,31 @@ function App() {
                     // Project" control below -- this component still holds
                     // no state and performs no gesture logic of its own.
                     isInspected={isTouchDevice && inspectedItemId === item.id}
+                    // Mobile tier unification (clean-slate pass): tells
+                    // HoverOverlay which entry-affordance SHAPE to render
+                    // for an inspected, Project-linked tile -- the full
+                    // Archive Number + View Project card (Medium/Large,
+                    // false here) or the minimal centered "+" (Thumbnail,
+                    // true here). See isThumbnailTier's own declaration
+                    // above for the shared formula.
+                    isThumbnailTier={isThumbnailTier}
                     // Stage 5 (hybrid touch-inspection design): only
                     // Project-linked tiles get an onEnterProject callback at
                     // all -- undefined for every other tile, which is what
-                    // tells HoverOverlay not to render the control in the
-                    // first place (see its own prop default/guard).
+                    // tells HoverOverlay not to render EITHER entry control
+                    // (see its own prop default/guard). Every Project-
+                    // linked tile gets a real callback now, regardless of
+                    // tier -- Thumbnail tiles are no longer excluded, per
+                    // the clean-slate pass's own design principle ("almost
+                    // every Project-linked Archive image should remain
+                    // actionable on mobile"); isThumbnailTier above is what
+                    // decides the control's shape, not whether it exists.
                     // handleProjectRowImageClick is the exact same
                     // fade-then-navigate function the Project Filter Row
                     // already calls -- reused verbatim, not a second "enter
                     // a project" implementation.
-                    //
-                    // Mobile View Project Eligibility fix: now also gated
-                    // on isViewProjectEligible (computed above from this
-                    // tile's own real layout.width/height), not just
-                    // isProjectLinked -- undefined for a Project-linked
-                    // tile too small to hold the control comfortably, the
-                    // same way it was already undefined for a non-Project
-                    // tile. This is what actually controls whether the
-                    // control exists in the DOM at all now; styles.css no
-                    // longer relies on a CSS @container promotion to hide
-                    // it on ineligible tiles (see that rule's own comment).
                     onEnterProject={
-                      isViewProjectEligible
+                      isProjectLinked
                         ? () => handleProjectRowImageClick(item)
                         : undefined
                     }

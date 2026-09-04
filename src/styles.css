@@ -1200,6 +1200,27 @@ body {
   will-change: opacity;
 }
 
+/* Final Mobile Interaction Model pass: a Thumbnail-only override of this
+   card's own safe-area padding (0.5rem/8px each side above), applied via
+   HoverOverlay.jsx's own isThumbnailTier && isInspected class toggle --
+   never on Medium/Large (isThumbnailTier is always false for them) and
+   never on desktop (isInspected is always false there), so this cannot
+   touch either, per instruction ("do not change global overlay padding
+   for Medium/Large tiles"). Real generated Archive geometry produces
+   Project-linked Thumbnail tiles as small as ~22x14px (measured against
+   COLUMN_PATTERNS at real mobile viewport heights) -- at that extreme,
+   0.5rem (8px) of padding on every side alone can approach or exceed the
+   tile's own height, leaving the centered "+" (see
+   .hover-overlay__enter-project-plus below) no room to render visibly at
+   all. 2px is the smallest padding that still reads as intentional
+   breathing room rather than the glyph touching the image edge -- below
+   this, on the smallest real tiles, the "+" is still constrained by the
+   tile's own physical size (a real, acknowledged limit, not something
+   padding alone can fully solve), not by this rule. */
+.hover-overlay--thumbnail-inspected {
+  padding: 2px;
+}
+
 /* Reveal is a plain :hover again -- the hover-intent dwell timer (a
    ~150ms delay before a hover was allowed to count) has been removed now
    that Browsing/Exploration mode (below) already filters out the
@@ -1565,28 +1586,16 @@ body {
    layout change of its own. */
 .hover-overlay__enter-project {
   align-self: center;
-  /* Mobile View Project Eligibility fix (real-device pass): this used to
-     default to display: none, promoted to inline-flex only inside an
-     `@container hover-overlay (min-width: 150px) and (min-height: 100px)`
-     rule -- the intended physical-fit gate. On a real iPhone that
-     promotion never took effect: this control stayed display: none on
-     every tile, including unambiguously large discovery ones, which was
-     the confirmed root cause of "View Project never appears anywhere."
-     The physical-fit decision has moved to JS instead (App.jsx's
-     isViewProjectEligible, computed from this tile's own real
-     item.layout.width/height against MOBILE_VIEW_PROJECT_MIN_WIDTH_PX/
-     _HEIGHT_PX) -- the same kind of check Archive Number's own
-     tap-eligibility already uses and that mechanism is confirmed working
-     on a real device. That JS check now controls whether onEnterProject
-     is even passed to HoverOverlay at all (undefined on an ineligible
-     tile, exactly like a non-Project tile already gets), so this element
-     simply never mounts on a tile too small for it -- nothing left here
-     needs to hide a mounted-but-ineligible element, so display goes back
-     to a plain, unconditional inline-flex, same as before the @container
-     gate was introduced. .gallery-image-wrapper's own overflow: hidden
-     is still what would clip this if the JS floor were ever wrong for a
-     specific tile -- unchanged, still the real containment boundary, see
-     that rule's own comment. */
+  /* Mobile tier unification (clean-slate pass): this control now mounts
+     on any inspected, Project-linked Medium/Large tile (App.jsx's
+     isThumbnailTier false) -- no separate View-Project-only size gate
+     exists anymore (retired; see App.jsx's own comment at that former
+     constant's declaration). display stays a plain, unconditional
+     inline-flex -- nothing here decides whether this element exists,
+     only App.jsx/HoverOverlay.jsx's JSX guards do that.
+     .gallery-image-wrapper's own overflow: hidden is still the real
+     containment boundary if a size assumption is ever wrong -- unchanged,
+     see that rule's own comment. */
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1595,18 +1604,57 @@ body {
   margin-top: 0.15rem;
   pointer-events: auto;
   cursor: pointer;
-  /* Without this, a container narrower than the label's natural width
-     could wrap "View Project ->" onto a second line, silently growing
-     this control's own height past what MOBILE_VIEW_PROJECT_MIN_HEIGHT_PX
-     (App.jsx) budgets for -- the width floor there already guarantees
-     room for the label on one line at the sizes it admits; this is that
-     guarantee made explicit in CSS, the same reasoning
-     .hover-overlay__themes li's own white-space: nowrap already documents
-     for the identical failure mode. */
+  /* nowrap still guarantees this never grows past one line regardless of
+     how the responsive font-size below resolves -- the shrinking font is
+     what keeps a narrow Medium tile's text inside its own width instead
+     of wrapping or clipping; nowrap is what stops a wrap from silently
+     growing this control's height if that shrink were ever not enough.
+     Same reasoning .hover-overlay__themes li's own white-space: nowrap
+     already documents for the identical failure mode. */
   white-space: nowrap;
 
   font-family: "GT America", "Helvetica Neue", Helvetica, Arial, sans-serif;
-  font-size: 0.68rem;
+  /* Mobile tier unification (clean-slate pass): responsive, not fixed --
+     "View Project should be allowed to scale down modestly to fit
+     smaller medium tiles rather than disappearing entirely." Same
+     clamp()-over-container-query-units method .hover-overlay__themes
+     already uses one screen up (that rule's own comment has the full
+     methodology this one reuses), tuned for this control's own known,
+     fixed text ("VIEW PROJECT ->", uppercase, 14 characters -- Themes
+     needed a "worst-case across several different strings" budget;
+     this control only ever renders one specific string, so its budget
+     is exact, not a worst case).
+       Ceiling: 0.68rem, this control's own existing size, unchanged --
+       so any tile that already displayed it at full size keeps looking
+       exactly as it did.
+       Coefficient: 9.4cqw. Calibrated directly off real-device evidence
+       (window.__urbanumMobileDebug(), the same 116px-wide tile from the
+       real-device evidence pass -- see MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX
+       and the Mobile View Project tier unification comment in App.jsx)
+       that rendered this exact text at the full 0.68rem with no
+       clipping: solving coefficient * 116/100 = 0.68rem for coefficient
+       gives ~9.38cqw as the smallest value that still saturates (stays
+       at full size) at that confirmed-working width; 9.4cqw keeps a
+       hair of margin above that. Below ~114.5px width the formula
+       produces something smaller than 0.68rem instead -- scaling down
+       smoothly, tied to the same container this text actually has to
+       fit inside, the same guarantee-shape Themes' own budget provides.
+       Floor: 9px, this codebase's own established smallest-ever
+       editorial type size for this exact role (see
+       .hover-overlay__themes' own 9px floor) -- reached only at
+       MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX (80px width, the Medium
+       tier's own lower bound), never below it, since a narrower tile is
+       Thumbnail and renders the separate "+" control instead, not this
+       one. Height is not separately budgeted the way Themes budgets
+       cqh: this control's own min-height (44px, a fixed, standard tap-
+       target minimum, intentionally not scaled down with the font) is
+       what actually governs its vertical footprint, not the glyph
+       size -- a genuinely very short Medium tile close to
+       MOBILE_SELECTABLE_TILE_MIN_HEIGHT_PX (48px) could still be
+       tighter than ideal for stacking Archive Number above a 44px
+       control; not solved by this pass, flagged rather than silently
+       assumed fine. */
+  font-size: clamp(9px, 9.4cqw, 0.68rem);
   font-weight: 400;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -1622,6 +1670,58 @@ body {
 
 .hover-overlay__enter-project:hover,
 .hover-overlay__enter-project:focus-visible {
+  opacity: 0.7;
+}
+
+/* Mobile tier unification (clean-slate pass): the Thumbnail tier's own
+   entry control -- see HoverOverlay.jsx's own isThumbnailTier prop and
+   render comment for why this tier gets a single "+" instead of Archive
+   Number + View Project (too small to fit either cleanly). Sits in the
+   same flex column .hover-overlay already lays out; align-self: center
+   mirrors .hover-overlay__enter-project's own centering for the same
+   reason (.hover-overlay itself doesn't set align-items, so a block
+   child would otherwise stretch to the container's full width). No box/
+   pill/background, same "no chrome" instruction
+   .hover-overlay__enter-project's own comment documents just above.
+
+   Real-device geometry check (final decision pass): a fixed 44px
+   min-height/min-width is NOT always physically possible -- real
+   generated Archive geometry (COLUMN_PATTERNS, measured against
+   getViewportOpeningGeometry's mobile worldCanvasHeight across the
+   realistic iPhone range) produces Project-linked Thumbnail tiles as
+   small as ~22x14px, well under 44px on both axes. min(44px, 100%)
+   below caps this control's own minimum size at whichever is smaller --
+   the standard 44px tap-target floor where a tile has room for it, or
+   the tile's own available space where it doesn't -- so this can never
+   overflow a real tile (explicitly required: "do NOT allow hit targets
+   to overflow neighboring tiles") while still using the full 44px
+   everywhere that isn't the extreme case. This does not fully solve
+   comfort at the smallest real sizes -- a target that's forced to
+   shrink to fit a ~22x14px tile is still a genuinely small target, not
+   a 44px one -- but a precision target that never overflows is
+   physically impossible to guarantee at those sizes, and this control's
+   own single "+" glyph plus App.jsx's whole-tile-tap exception (see
+   handleGalleryTileTap's own comment) is the rest of that answer, not
+   this rule alone. */
+.hover-overlay__enter-project-plus {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: min(44px, 100%);
+  min-width: min(44px, 100%);
+  pointer-events: auto;
+  cursor: pointer;
+  font-family: "GT America", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 1.25rem;
+  font-weight: 400;
+  line-height: 1;
+  color: #1a1a1a;
+  transition: opacity 0.25s ease;
+}
+
+.hover-overlay__enter-project-plus:hover,
+.hover-overlay__enter-project-plus:focus-visible {
   opacity: 0.7;
 }
 

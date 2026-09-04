@@ -406,15 +406,30 @@ function HoverOverlay({
           App.jsx/matched against relatedArchiveNumbers elsewhere; nothing
           about that data or the Relationship Engine's matching changes
           here. */}
-      {/* Mobile tier unification (clean-slate pass): the Thumbnail tier
-          is too small to fit Archive Number + View Project cleanly (the
-          whole reason it gets the minimal "+" affordance below instead)
-          -- so once inspected, it shows the "+" alone, not the Number.
-          isInspected is only ever true on a touch device (see this
-          component's own prop comment above), so this never touches
-          desktop's own hover card, which always renders the Number
-          exactly as before regardless of isThumbnailTier. */}
-      {archiveNumber != null && !(isThumbnailTier && isInspected) && (
+      {/* Text Containment pass (non-Archive-logic mobile overlay pass):
+          previously the Thumbnail tier hid the Archive Number outright
+          whenever inspected ("too small to fit Archive Number + View
+          Project cleanly"), showing the "+" alone instead. That JS-level
+          tier decision is retired in favor of the same containment
+          model desktop already uses for every other piece of this card's
+          text (Themes' own font-size clamp, see styles.css): render the
+          content and let real, measured container geometry -- not a tier
+          label -- decide what actually fits. Archive Number + "+" is now
+          the PREFERRED Thumbnail composition (both attempt to render
+          together); a new container query in styles.css
+          (@container hover-overlay, scoped to .hover-overlay__number and
+          .hover-overlay__enter-project-plus/__enter-project) hides
+          whichever piece doesn't have room, in the same "physical
+          impossibility only, never a separate editorial threshold"
+          spirit .hover-overlay__themes already documents for its own
+          visibility. isInspected is only ever true on a touch device
+          (see this component's own prop comment above), so this never
+          touches desktop's own hover card, which always renders the
+          Number exactly as before -- archiveNumber != null was already
+          the only condition that mattered there (isThumbnailTier &&
+          isInspected is always false on desktop), so dropping the second
+          clause is a no-op for desktop, confirmed. */}
+      {archiveNumber != null && (
         <div className="hover-overlay__number">{`[${archiveNumber}]`}</div>
       )}
       {/* Discovery: the only editorial gate, checked before container
@@ -527,14 +542,22 @@ function HoverOverlay({
           View Project →
         </div>
       )}
-      {/* Final Mobile Interaction Model pass: the Thumbnail tier's own
-          entry control -- too small for Archive Number + View Project
-          (see the Number's own guard above), but per the design
-          principle behind this whole pass ("almost every Project-linked
-          Archive image should remain actionable on mobile"), still not
-          a dead end. A single centered "+", intentionally minimal: no
+      {/* Final Mobile Interaction Model pass, updated by the Text
+          Containment pass: the Thumbnail tier's own entry control, per
+          the design principle behind this whole pass ("almost every
+          Project-linked Archive image should remain actionable on
+          mobile"). A single centered "+", intentionally minimal: no
           box/pill/background (matches View Project's own "no chrome"
-          treatment, see that control's styles.css comment). Tapping this
+          treatment, see that control's styles.css comment). Renders
+          alongside Archive Number by default now (the Text Containment
+          pass removed the old guard that hid the Number whenever this
+          rendered, see that guard's own comment above for why) --
+          styles.css's own shared @container hover-overlay hide
+          threshold is what decides, per real tile geometry, whether
+          both show, only the Number shows, or (genuine physical
+          impossibility only) neither does; this element's own render
+          condition below is unchanged -- tier + inspected + Project-
+          linked -- CSS decides fit, not this guard. Tapping this
           directly still enters the Project (same stopPropagation/
           hapticSelect/onEnterProject/keyboard wiring as View Project
           above, reusing handleEnterProjectKeyDown rather than a second
@@ -542,13 +565,12 @@ function HoverOverlay({
           ONLY way in for this tier: App.jsx's handleGalleryTileTap has
           its own deliberate exception where a second tap ANYWHERE on
           this already-inspected tile also enters the Project, since a
-          contained, never-overflowing hit target this control's own
-          styles.css min(44px, 100%) guarantees can still end up smaller
-          than a real thumbnail (~22x14px at the extreme) can comfortably
-          host on its own. This "+" is the visual affordance that
-          communicates the tile is actionable; the whole tile backs it
-          up. That whole-tile exception is Thumbnail-only -- Medium/Large
-          never get it, see handleGalleryTileTap's own comment. */}
+          real thumbnail (~22x14px at the extreme) can be smaller than
+          even this control's own container-query-gated minimum. This
+          "+" is the visual affordance that communicates the tile is
+          actionable; the whole tile backs it up. That whole-tile
+          exception is Thumbnail-only -- Medium/Large never get it, see
+          handleGalleryTileTap's own comment. */}
       {isInspected && onEnterProject && isThumbnailTier && (
         <div
           className="hover-overlay__enter-project-plus"

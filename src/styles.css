@@ -1322,6 +1322,80 @@ body {
   color: #1a1a1a;
 }
 
+/* Text Containment correction pass: both of the rules below are
+   deliberately scoped under .gallery-image-wrapper--inspected (App.jsx's
+   own JS-driven class, applied only when isTouchDevice is true AND this
+   specific tile is the one currently inspected -- see that class's own
+   comment further up this file) rather than left as bare
+   .hover-overlay__number/@container rules. Archive Number renders on
+   EVERY tile, desktop included, so a container-size condition alone
+   (however unlikely to match a real desktop tile in practice) is not an
+   actual guarantee against ever touching desktop -- only App.jsx's own
+   isTouchDevice-gated class is. Scoping here is what turns "shouldn't
+   happen on desktop" into "structurally cannot happen on desktop":
+   .gallery-image-wrapper--inspected is never present in the DOM at all
+   on a desktop/mouse session, so neither rule below can ever match
+   there, regardless of how small a desktop tile's own geometry gets.
+
+   nowrap: without it, a container narrower than the Number's natural
+   text width would wrap to a second line instead of staying the single
+   line the rest of this card's vertical budget (gap, line-height: 1)
+   assumes -- the same failure mode .hover-overlay__themes li/
+   __enter-project already guard against with their own nowrap. Desktop
+   never had this rule before this pass and still doesn't (the base
+   .hover-overlay__number rule above is back to its pre-this-pass state)
+   -- this is additive, mobile-inspected-only behavior, not a change to
+   any rule desktop's own hover card resolves against. */
+.gallery-image-wrapper--inspected .hover-overlay__number {
+  white-space: nowrap;
+}
+
+/* Text Containment pass: the Archive Number's own "never clip" fallback
+   -- real generated mobile Archive geometry produces Project-linked
+   Thumbnail tiles as small as ~22x14px (the same real-device measurement
+   this engagement's earlier mobile Archive pass established against
+   COLUMN_PATTERNS/getViewportOpeningGeometry), well under what even this
+   text's own floor size can render without overflowing in one or both
+   axes. Rather than let that overflow reach .gallery-image-wrapper's own
+   overflow: hidden and visibly clip mid-character, this hides the Number
+   outright below that point -- the exact same "physical impossibility ->
+   no visible content, never a half-rendered one" principle
+   .hover-overlay__themes already documents for its own visibility.
+     Height branch (max-height: 20px): the Number's font-size floor is a
+     hard 0.6rem (9.6px, clamp()'s own floor in the rule above, reached
+     well before a container this small), plus 0.2rem top+bottom padding
+     (3.2px each) = ~16px total box height; 20px keeps a small margin
+     above that measured floor, matching this file's own "round up
+     slightly past a calculated minimum" convention (see
+     .hover-overlay__themes' own "6.864rem, rounded up slightly").
+     Width branch (max-width: 40px): approximated the same way
+     .hover-overlay__themes' own width budget is documented as an
+     approximation (GT America is proportional, not monospace, and this
+     hasn't been re-measured against its real per-character advance) --
+     assuming roughly the same ~0.7em/character advance that rule's own
+     comment already derives for this font, a 5-character bracketed
+     number ("[031]") at the 9.6px floor plus 0.1em letter-spacing
+     across 4 gaps comes to roughly 37-38px; 40px keeps a small margin
+     above that, same rounding convention as the height branch. Flagged,
+     same as Themes' own coefficient, as a reasoned approximation worth a
+     direct visual check against a real narrow tile rather than treated
+     as exactly measured.
+   Medium/Large never reach this: their own tile-tier floor
+   (MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX/_HEIGHT_PX, 80x48px) is already
+   comfortably above both branches, so this is Thumbnail-tier territory
+   in practice even though nothing here names a tier directly -- it's
+   real geometry deciding, not a tier label (see the .gallery-image-
+   wrapper--inspected scoping note immediately above for why this is
+   desktop-safe regardless). References the same named container
+   (.hover-overlay's own container-type: size/container-name:
+   hover-overlay above) every other responsive rule on this card already
+   queries. */
+@container hover-overlay (max-width: 40px), (max-height: 20px) {
+  .gallery-image-wrapper--inspected .hover-overlay__number {
+    display: none;
+  }
+}
+
 /* Themes: horizontal padding moved to the overlay's own safe-area padding
    above (padding: 0 here just overrides the UA default ul indent, since
    list-style: none alone doesn't zero it). max-height + overflow: hidden
@@ -1599,11 +1673,32 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 44px;
+  /* Text Containment correction pass (LOCKED RULE: Medium/Large must
+     always show Number + View Project when selected -- this control can
+     never be hidden by a size threshold the way it briefly was in the
+     prior pass). min-height: 44px is gone -- it was a rigid VISIBLE
+     floor that, stacked under Archive Number inside a short Medium
+     tile's own real height, is exactly what forced this pass's earlier
+     (now-reverted) height-based hide rule to exist at all. Without it,
+     this control's own visible height is just its natural content size
+     (line-height of whatever the responsive font-size below resolves to
+     -- floor 9px -- plus the 0.15rem margin-top below): a few px at the
+     absolute floor, comfortably inside even the smallest real Medium
+     tile (48px, MOBILE_SELECTABLE_TILE_MIN_HEIGHT_PX) alongside Archive
+     Number and the flex gap, with no hide fallback needed at all. The
+     44px standard tap-target size is preserved as an INVISIBLE hit area
+     instead (position: relative + the ::before rule just below) rather
+     than as visible layout height -- see that rule's own comment. */
   padding: 0 0.75rem;
   margin-top: 0.15rem;
   pointer-events: auto;
   cursor: pointer;
+  /* Text Containment correction pass: position: relative is what lets
+     the ::before rule immediately below position its expanded,
+     invisible hit area relative to THIS element rather than some
+     further-up ancestor -- purely a positioning-context change, no
+     visual effect of its own. */
+  position: relative;
   /* nowrap still guarantees this never grows past one line regardless of
      how the responsive font-size below resolves -- the shrinking font is
      what keeps a narrow Medium tile's text inside its own width instead
@@ -1627,34 +1722,42 @@ body {
        Ceiling: 0.68rem, this control's own existing size, unchanged --
        so any tile that already displayed it at full size keeps looking
        exactly as it did.
-       Coefficient: 9.4cqw. Calibrated directly off real-device evidence
-       (window.__urbanumMobileDebug(), the same 116px-wide tile from the
-       real-device evidence pass -- see MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX
-       and the Mobile View Project tier unification comment in App.jsx)
-       that rendered this exact text at the full 0.68rem with no
-       clipping: solving coefficient * 116/100 = 0.68rem for coefficient
-       gives ~9.38cqw as the smallest value that still saturates (stays
-       at full size) at that confirmed-working width; 9.4cqw keeps a
-       hair of margin above that. Below ~114.5px width the formula
-       produces something smaller than 0.68rem instead -- scaling down
-       smoothly, tied to the same container this text actually has to
-       fit inside, the same guarantee-shape Themes' own budget provides.
+       Coefficient: 9.4cqmin (was 9.4cqw -- Text Containment pass). The
+       underlying number is unchanged from the original real-device
+       calibration (window.__urbanumMobileDebug(), the 116px-wide tile
+       from the real-device evidence pass -- see
+       MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX and the Mobile View Project
+       tier unification comment in App.jsx: solving
+       coefficient * 116/100 = 0.68rem gives ~9.38cqw, 9.4 keeps a hair
+       of margin) -- only the unit changed, from cqw (width only) to
+       cqmin (the smaller of this container's own width/height), the
+       same unit .hover-overlay__number's own font-size clamp already
+       uses one screen up, for the same reason: at the calibration tile
+       (116x128), width was already the smaller dimension, so cqmin and
+       cqw were numerically identical there -- this change cannot make
+       the calibrated tile render any smaller than before, and only
+       protects a tile this budget never had a term for: one that's
+       comfortably wide but genuinely short.
        Floor: 9px, this codebase's own established smallest-ever
        editorial type size for this exact role (see
        .hover-overlay__themes' own 9px floor) -- reached only at
        MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX (80px width, the Medium
        tier's own lower bound), never below it, since a narrower tile is
        Thumbnail and renders the separate "+" control instead, not this
-       one. Height is not separately budgeted the way Themes budgets
-       cqh: this control's own min-height (44px, a fixed, standard tap-
-       target minimum, intentionally not scaled down with the font) is
-       what actually governs its vertical footprint, not the glyph
-       size -- a genuinely very short Medium tile close to
-       MOBILE_SELECTABLE_TILE_MIN_HEIGHT_PX (48px) could still be
-       tighter than ideal for stacking Archive Number above a 44px
-       control; not solved by this pass, flagged rather than silently
-       assumed fine. */
-  font-size: clamp(9px, 9.4cqw, 0.68rem);
+       one.
+       Height budget: the "flagged rather than silently assumed fine"
+       gap this same comment used to note here -- a short Medium tile
+       stacking Archive Number above this control's old, fixed 44px
+       min-height could exceed the tile's own real height -- is closed
+       by the LOCKED-RULE correction immediately above (min-height: 44px
+       is gone; this control's real visible height is now just its own
+       content, comfortably inside even the smallest real Medium tile
+       alongside Archive Number + gap, with no hide fallback needed at
+       all -- see that rule's own comment for the full reasoning). This
+       clamp's job stays purely about WIDTH fit -- keeping the text
+       itself from clipping/wrapping horizontally -- not vertical
+       containment, which the box model above now handles on its own. */
+  font-size: clamp(9px, 9.4cqmin, 0.68rem);
   font-weight: 400;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -1673,47 +1776,87 @@ body {
   opacity: 0.7;
 }
 
+/* Text Containment correction pass: the 44px standard tap-target size,
+   restored -- but as an invisible hit area, not visible layout height
+   (see this control's own min-height removal above for why the old
+   fixed box had to go). ::before is positioned relative to this
+   control (position: relative above) and pulled outward on all sides
+   via a negative inset, so it extends the CLICKABLE region well beyond
+   the control's own small, responsive visible box without adding a
+   single pixel to the flex column's height budget -- absolutely
+   positioned elements are removed from normal flow, so .hover-overlay's
+   own justify-content: center/gap layout never sees this box at all.
+   10px was chosen deliberately conservative, not the full "44px total"
+   math worked backward: at the extra generous end it would need to
+   reach up into Archive Number's own box (only 5.6px of gap separates
+   them), and Number is not itself interactive, but a tap intended to
+   land on Number/elsewhere on the tile should not be silently captured
+   by this control's hit area. 10px on every side still meaningfully
+   grows the real tap target (worth up to 20px in each dimension) well
+   past the control's own thin, responsive visible box, without
+   reaching past the gap into a neighboring element's own space.
+   .gallery-image-wrapper's own overflow: hidden remains the real
+   containment boundary against this ever bleeding into a neighboring
+   tile, exactly as it already is for the visible content -- unchanged,
+   see that rule's own comment. pointer-events: auto is restated
+   explicitly (it would already inherit the host element's own
+   pointer-events: auto above) to keep every opt-in on this card
+   explicit, matching how .hover-overlay__themes li already states its
+   own rather than relying on inheritance silently. */
+.hover-overlay__enter-project::before {
+  content: "";
+  position: absolute;
+  inset: -10px;
+  pointer-events: auto;
+}
+
 /* Mobile tier unification (clean-slate pass): the Thumbnail tier's own
    entry control -- see HoverOverlay.jsx's own isThumbnailTier prop and
-   render comment for why this tier gets a single "+" instead of Archive
-   Number + View Project (too small to fit either cleanly). Sits in the
-   same flex column .hover-overlay already lays out; align-self: center
-   mirrors .hover-overlay__enter-project's own centering for the same
-   reason (.hover-overlay itself doesn't set align-items, so a block
-   child would otherwise stretch to the container's full width). No box/
-   pill/background, same "no chrome" instruction
-   .hover-overlay__enter-project's own comment documents just above.
+   render comment for why this tier gets a single "+" alongside Archive
+   Number. Sits in the same flex column .hover-overlay already lays out;
+   align-self: center mirrors .hover-overlay__enter-project's own
+   centering for the same reason (.hover-overlay itself doesn't set
+   align-items, so a block child would otherwise stretch to the
+   container's full width). No box/pill/background, same "no chrome"
+   instruction .hover-overlay__enter-project's own comment documents
+   just above.
 
-   Real-device geometry check (final decision pass): a fixed 44px
-   min-height/min-width is NOT always physically possible -- real
-   generated Archive geometry (COLUMN_PATTERNS, measured against
-   getViewportOpeningGeometry's mobile worldCanvasHeight across the
-   realistic iPhone range) produces Project-linked Thumbnail tiles as
-   small as ~22x14px, well under 44px on both axes. min(44px, 100%)
-   below caps this control's own minimum size at whichever is smaller --
-   the standard 44px tap-target floor where a tile has room for it, or
-   the tile's own available space where it doesn't -- so this can never
-   overflow a real tile (explicitly required: "do NOT allow hit targets
-   to overflow neighboring tiles") while still using the full 44px
-   everywhere that isn't the extreme case. This does not fully solve
-   comfort at the smallest real sizes -- a target that's forced to
-   shrink to fit a ~22x14px tile is still a genuinely small target, not
-   a 44px one -- but a precision target that never overflows is
-   physically impossible to guarantee at those sizes, and this control's
-   own single "+" glyph plus App.jsx's whole-tile-tap exception (see
-   handleGalleryTileTap's own comment) is the rest of that answer, not
-   this rule alone. */
+   Text Containment correction pass: min-height/min-width are gone
+   entirely (were a flat 44px; before that, min(44px, 100%) -- final
+   decision pass, superseded either way). The 44px standard tap target
+   is preserved as an invisible, out-of-flow hit area instead (::before,
+   just below the base rule) rather than as visible box size, mirroring
+   .hover-overlay__enter-project's own identical correction and identical
+   reasoning -- see that rule's own comment for the full explanation of
+   why a forced visible box is what caused the overflow this whole pass
+   exists to fix, now that Archive Number renders alongside this control
+   by default. This control's own visible size is now just its glyph's
+   own responsive font-size (below) at line-height: 1 -- a few px at the
+   absolute floor. */
 .hover-overlay__enter-project-plus {
   align-self: center;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: min(44px, 100%);
-  min-width: min(44px, 100%);
+  position: relative;
   pointer-events: auto;
   cursor: pointer;
   font-family: "GT America", "Helvetica Neue", Helvetica, Arial, sans-serif;
-  font-size: 1.25rem;
+  /* Text Containment pass: responsive, not fixed (was a flat 1.25rem) --
+     "adapt typography responsively inside the same containment
+     architecture" applied to this card's third and last piece of text/
+     glyph content, alongside Archive Number (cqmin) and View Project
+     (cqmin). Coefficient scaled proportionally from Archive Number's own
+     established 6cqmin/1rem ceiling ratio rather than an independent
+     re-measurement against this glyph specifically (a single "+" has no
+     "worst-case string" to budget against the way Themes/View Project
+     do): 6cqmin * (1.25rem / 1rem) = 7.5cqmin, preserving the same
+     cqmin-to-ceiling relationship Number already established. Floor
+     matches this file's own site-wide 9px minimum editorial size.
+     Flagged, like several of this card's other coefficients, as a
+     reasoned proportional approximation rather than an independently
+     re-derived one -- worth a direct visual check. */
+  font-size: clamp(9px, 7.5cqmin, 1.25rem);
   font-weight: 400;
   line-height: 1;
   color: #1a1a1a;
@@ -1723,6 +1866,53 @@ body {
 .hover-overlay__enter-project-plus:hover,
 .hover-overlay__enter-project-plus:focus-visible {
   opacity: 0.7;
+}
+
+/* Text Containment correction pass: the same invisible-hit-area
+   technique .hover-overlay__enter-project::before uses, applied here
+   too -- see that rule's own comment for the full reasoning (position:
+   relative above is what this positions against). Same -10px inset,
+   same conservative reasoning (this control's own gap to Archive Number
+   above is the identical 5.6px flex gap). */
+.hover-overlay__enter-project-plus::before {
+  content: "";
+  position: absolute;
+  inset: -10px;
+  pointer-events: auto;
+}
+
+/* Text Containment correction pass: Thumbnail's own "doesn't fit,
+   Archive Number alone is acceptable" fallback -- explicitly scoped to
+   .hover-overlay--thumbnail-inspected (HoverOverlay.jsx's own class
+   toggle, present only when isThumbnailTier && isInspected are both
+   true -- i.e. only ever on a touch-inspected Thumbnail tile), the most
+   precise class available for this, rather than a bare @container
+   condition -- consistent with this pass's own "gate mobile-only
+   behavior to a mobile-only class, don't rely on a container-size
+   condition alone" correction (see .hover-overlay__number's own
+   equivalent scoping note for the general reasoning). In practice this
+   control never renders outside that class anyway (HoverOverlay.jsx's
+   own isThumbnailTier && isInspected guard), so the scoping here is
+   belt-and-suspenders precision, not a behavior change on its own.
+   Threshold: Archive Number's own audited floor footprint (16.0px) +
+   the flex gap (5.6px) + this control's own floor size (9px, its
+   font-size clamp's own floor immediately above, at line-height: 1) =
+   30.6px of real content-box height for both to stack without
+   overflowing; 32px keeps a small margin above that, the same "round up
+   slightly past a calculated minimum" convention this file already uses
+   (.hover-overlay__themes' own "6.864rem, rounded up slightly"). Below
+   this, Archive Number's own, separately-derived hide threshold (20px,
+   see that rule's own comment) is what decides whether even the Number
+   survives -- so the real degradation ladder is Number+"+", then Number
+   alone, then (only at genuine physical impossibility, a real ~22x14px
+   Thumbnail tile at the extreme) neither. App.jsx's whole-tile-tap
+   exception (handleGalleryTileTap) remains this tier's real fallback
+   entry point regardless of which of these two elements is currently
+   visible. */
+@container hover-overlay (max-height: 32px) {
+  .hover-overlay--thumbnail-inspected .hover-overlay__enter-project-plus {
+    display: none;
+  }
 }
 
 .gallery-overlay {
@@ -4398,9 +4588,33 @@ html.is-browsing .zoom-controls {
    same 12px gap = 144px. The base rule's own clamp is untouched and stays
    correct for 641px+ (still real row1 height + 12, unaffected by this
    pass outside the 640px breakpoint). */
+/* Mobile Project top-spacing fix (non-Archive mobile refinements round):
+   this override went stale the same way .about-content's own identical
+   override once did (see that rule's Stage 7 comment for the general
+   lesson) -- it was never updated when the Mobile Header Compaction Pass
+   later shrank .site-header__row1's mobile height to 64px and re-derived
+   .about-content's own ≤640px padding-top to
+   calc(var(--safe-area-inset-top) + 88px) (12px header padding + 64px
+   row1 + 12px gap, plus the real safe-area inset). Because .project-
+   content and .about-content are both applied to the same element on
+   this page (see ProjectTemplate.jsx's className) at equal specificity
+   (single class, 0-1-0) within the same @media (max-width: 640px)
+   condition, and this rule is the LATER one in the stylesheet, its own
+   stale flat 144px was silently winning the cascade over .about-content's
+   already-corrected, safe-area-aware formula -- the exact "too much
+   vertical space below the mobile header" symptom reported for this page
+   specifically (Practice/Journal/Contact all use the shared
+   .about-content shell alone, with no page-specific override to go
+   stale, so they never showed this). Fix: reuse that exact same
+   corrected formula here rather than re-deriving a second, page-specific
+   one, so this page's mobile top clearance now matches Practice/Journal/
+   Contact exactly, and will stay in sync with any future change to that
+   shared formula instead of drifting again. Desktop/tablet's own
+   .project-content padding-top (base rule above, 641px+) is completely
+   untouched. */
 @media (max-width: 640px) {
   .project-content {
-    padding-top: 144px;
+    padding-top: calc(var(--safe-area-inset-top) + 88px);
   }
 }
 

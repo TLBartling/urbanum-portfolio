@@ -1565,26 +1565,29 @@ body {
    layout change of its own. */
 .hover-overlay__enter-project {
   align-self: center;
-  /* Mobile Card Containment pass: display: none by default, promoted to
-     inline-flex only inside the @container floor below -- mirrors
-     .hover-overlay__themes' own split between an editorial gate in JSX
-     (isInspected && onEnterProject && discovery, see HoverOverlay.jsx) and
-     a physical-fit gate here in CSS. Previously this control was always
-     inline-flex whenever that JSX condition was true, with no check that
-     the actual rendered container -- which IS the image itself:
-     .hover-overlay fills .gallery-image-wrapper exactly via inset: 0, and
-     .gallery-image-wrapper is overflow: hidden -- had enough room for the
-     Archive Number + gap + this control without the stack's own box
-     extending past that overflow boundary. Below the floor, a browser
-     never paints or dispatches pointer events to content clipped outside
-     an overflow: hidden ancestor's box -- so on any discovery tile
-     smaller than the floor, this control was simultaneously "cut off" and
-     "dead": the same clipping produced both symptoms at once. Below the
-     floor now, this control simply never appears -- same display: none
-     every non-eligible tile already gets -- and the tile shows its
-     Archive Number alone, per the approved small-tile treatment. No
-     cramped/half-clipped state exists anymore. */
-  display: none;
+  /* Mobile View Project Eligibility fix (real-device pass): this used to
+     default to display: none, promoted to inline-flex only inside an
+     `@container hover-overlay (min-width: 150px) and (min-height: 100px)`
+     rule -- the intended physical-fit gate. On a real iPhone that
+     promotion never took effect: this control stayed display: none on
+     every tile, including unambiguously large discovery ones, which was
+     the confirmed root cause of "View Project never appears anywhere."
+     The physical-fit decision has moved to JS instead (App.jsx's
+     isViewProjectEligible, computed from this tile's own real
+     item.layout.width/height against MOBILE_VIEW_PROJECT_MIN_WIDTH_PX/
+     _HEIGHT_PX) -- the same kind of check Archive Number's own
+     tap-eligibility already uses and that mechanism is confirmed working
+     on a real device. That JS check now controls whether onEnterProject
+     is even passed to HoverOverlay at all (undefined on an ineligible
+     tile, exactly like a non-Project tile already gets), so this element
+     simply never mounts on a tile too small for it -- nothing left here
+     needs to hide a mounted-but-ineligible element, so display goes back
+     to a plain, unconditional inline-flex, same as before the @container
+     gate was introduced. .gallery-image-wrapper's own overflow: hidden
+     is still what would clip this if the JS floor were ever wrong for a
+     specific tile -- unchanged, still the real containment boundary, see
+     that rule's own comment. */
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   min-height: 44px;
@@ -1592,14 +1595,14 @@ body {
   margin-top: 0.15rem;
   pointer-events: auto;
   cursor: pointer;
-  /* Mobile Card Containment pass: without this, a container narrower than
-     the label's natural width could wrap "View Project ->" onto a second
-     line, silently growing this control's own height past what the
-     @container floor below is budgeted for. The floor's width term
-     already guarantees room for the label on one line at the sizes it
-     admits -- this is that guarantee made explicit in CSS, the same
-     reasoning .hover-overlay__themes li's own white-space: nowrap already
-     documents for the identical failure mode. */
+  /* Without this, a container narrower than the label's natural width
+     could wrap "View Project ->" onto a second line, silently growing
+     this control's own height past what MOBILE_VIEW_PROJECT_MIN_HEIGHT_PX
+     (App.jsx) budgets for -- the width floor there already guarantees
+     room for the label on one line at the sizes it admits; this is that
+     guarantee made explicit in CSS, the same reasoning
+     .hover-overlay__themes li's own white-space: nowrap already documents
+     for the identical failure mode. */
   white-space: nowrap;
 
   font-family: "GT America", "Helvetica Neue", Helvetica, Arial, sans-serif;
@@ -1608,44 +1611,18 @@ body {
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: #1a1a1a;
-  border: 1px solid rgba(26, 26, 26, 0.28);
-  transition: opacity 0.25s ease, border-color 0.25s ease;
-}
-
-/* Mobile Card Containment pass: the physical floor this control needs in
-   order to render without being clipped by .gallery-image-wrapper's own
-   overflow: hidden -- derived the same way .hover-overlay__themes' own
-   container-query floors are (see that rule's comment for the method),
-   from this card's real box costs at their largest:
-     - .hover-overlay's own safe-area padding, top + bottom: 0.5rem * 2
-       = 16px
-     - .hover-overlay__number at its clamp() ceiling (1rem, line-height 1)
-       plus its own 0.2rem top/bottom padding: 16px + 6.4px = 22.4px
-     - the flex gap between Number and this control: 0.35rem = 5.6px
-     - this control's own box: min-height 44px + 1px top/bottom border
-       (2px) + margin-top 0.15rem (2.4px) = 48.4px
-   16 + 22.4 + 5.6 + 48.4 = 92.4px, rounded up to 100px for sub-pixel/
-   border-box safety -- the same "rounded up slightly for sub-pixel
-   safety" convention .hover-overlay__themes' own floors already use.
-   Width floor: "VIEW PROJECT ->" at this control's own 0.68rem/0.1em
-   uppercase typography, using the same ~0.7em-per-character advance
-   .hover-overlay__themes' own width-budget comment measured for GT
-   America uppercase + 0.1em tracking (14 visible characters including the
-   arrow: 14 * 0.7 * 10.88px =~ 107px), plus this control's own 0.75rem
-   horizontal padding * 2 (24px) plus its 1px border * 2 (2px) =~ 133px,
-   rounded up to 150px for the same safety margin. Below either floor the
-   control stays display: none (its base rule above); the tile still shows
-   its Archive Number alone. */
-@container hover-overlay (min-width: 150px) and (min-height: 100px) {
-  .hover-overlay__enter-project {
-    display: inline-flex;
-  }
+  /* Locked Mobile Interaction pass: no box/border/pill/button chrome
+     around this control, per explicit instruction -- min-height/padding
+     above still give it a real, comfortable tap target (the standard
+     44px), it's just invisible: nothing paints a boundary around it, so
+     it reads purely as small, editorial text sitting under the Archive
+     Number, not a button. */
+  transition: opacity 0.25s ease;
 }
 
 .hover-overlay__enter-project:hover,
 .hover-overlay__enter-project:focus-visible {
   opacity: 0.7;
-  border-color: rgba(26, 26, 26, 0.5);
 }
 
 .gallery-overlay {

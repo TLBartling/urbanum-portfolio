@@ -829,6 +829,38 @@ const TAP_MAX_DURATION_MS = 600;
 // specific piece of content fits inside an already-selected one.
 const MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX = 80;
 const MOBILE_SELECTABLE_TILE_MIN_HEIGHT_PX = 48;
+// Mobile View Project Eligibility fix (real-device pass): "View Project"
+// used to gate its own visibility with a CSS @container query
+// (.hover-overlay__enter-project's own display: none default, promoted
+// to inline-flex only inside `@container hover-overlay (min-width: 150px)
+// and (min-height: 100px)`, see styles.css). On a real iPhone that never
+// promoted -- the control stayed display: none on every tile, including
+// unambiguously large discovery ones, which is what "View Project never
+// appears anywhere" actually was: not the 150x100 numbers being wrong,
+// the @container mechanism itself never taking effect for this element
+// on that device/engine. The Archive Number, by contrast, is gated
+// entirely by JS (isInspected, which MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX/
+// _HEIGHT_PX above already control) and was confirmed working on the same
+// real device -- real evidence that comparing item.layout.width/height in
+// JS against a fixed floor DOES produce correct, working results here,
+// where the CSS container-query path did not. These two constants move
+// View Project's own "does it physically fit" decision onto that same,
+// now-proven mechanism: computed once per tile below (see isProjectLinked
+// above the render loop), gating whether onEnterProject is even passed to
+// HoverOverlay at all -- not whether a rendered-but-hidden control exists
+// waiting on a CSS promotion that may never come.
+// Slightly relaxed from the old CSS floor's 150x100 (explicitly permitted
+// -- "the exact threshold can be less strict than 150x100 if needed"),
+// while staying safely above the label's own real minimum: "VIEW PROJECT
+// ->" at this control's 0.68rem/0.1em uppercase type needs roughly 133px
+// not to overflow its own box (14 chars * ~0.7em advance + padding +
+// border, see .hover-overlay__enter-project's own styles.css comment for
+// the full derivation) and roughly 92px tall (safe-area padding + Number
+// + gap + the control's own 44px min-height + border/margin). 140/90
+// keeps a small margin above both without reintroducing the old
+// (apparently non-functional) mechanism's own extra caution.
+const MOBILE_VIEW_PROJECT_MIN_WIDTH_PX = 140;
+const MOBILE_VIEW_PROJECT_MIN_HEIGHT_PX = 90;
 // How long after a pinch gesture ends a stray touchend on the finger(s)
 // that were part of it should still be treated as "part of that pinch
 // ending," not a fresh tap -- short and purposeful, just enough to absorb
@@ -6531,6 +6563,26 @@ function App() {
               // properly separated as their own later task.
               const isProjectLinked = Boolean(item.project);
               const isInteractive = isProjectLinked || imageFocusEnabled;
+              // Mobile View Project Eligibility fix: real-device
+              // replacement for the CSS @container gate that never
+              // promoted on a real iPhone (see
+              // MOBILE_VIEW_PROJECT_MIN_WIDTH_PX/_HEIGHT_PX's own
+              // declaration comment for the full trace). item.layout.width/
+              // height are the same real, already-computed pixel values
+              // handleGalleryTileTap already parses for tap eligibility --
+              // reused here, not re-derived, so both gates agree on what
+              // "this tile's own size" means. Only touch-device tiles need
+              // this at all: on desktop, onEnterProject is never read by
+              // anything (isInspected is always false there, see
+              // HoverOverlay's own guard), so gating it here has no
+              // desktop-visible effect either way -- kept simple by not
+              // special-casing isTouchDevice explicitly.
+              const isViewProjectEligible =
+                isProjectLinked &&
+                Number.parseFloat(item.layout.width) >=
+                  MOBILE_VIEW_PROJECT_MIN_WIDTH_PX &&
+                Number.parseFloat(item.layout.height) >=
+                  MOBILE_VIEW_PROJECT_MIN_HEIGHT_PX;
               // Relationship Visualization (Commit 4), corrected by the
               // state-management bug fix, and now gated by the
               // Relationship Mode Visibility Gate above: consumes only
@@ -6835,8 +6887,19 @@ function App() {
                     // fade-then-navigate function the Project Filter Row
                     // already calls -- reused verbatim, not a second "enter
                     // a project" implementation.
+                    //
+                    // Mobile View Project Eligibility fix: now also gated
+                    // on isViewProjectEligible (computed above from this
+                    // tile's own real layout.width/height), not just
+                    // isProjectLinked -- undefined for a Project-linked
+                    // tile too small to hold the control comfortably, the
+                    // same way it was already undefined for a non-Project
+                    // tile. This is what actually controls whether the
+                    // control exists in the DOM at all now; styles.css no
+                    // longer relies on a CSS @container promotion to hide
+                    // it on ineligible tiles (see that rule's own comment).
                     onEnterProject={
-                      isProjectLinked
+                      isViewProjectEligible
                         ? () => handleProjectRowImageClick(item)
                         : undefined
                     }

@@ -1663,20 +1663,24 @@ body {
    layout change of its own. */
 .hover-overlay__enter-project {
   align-self: center;
-  /* Final Mobile Interaction Model pass (consistency cleanup): this
+  /* Final Mobile Interaction Model pass (hard-boundary fit check): this
      control mounts on ANY inspected, Project-linked tile now --
      Large/Medium/Thumbnail alike -- per HoverOverlay.jsx's own JSX guard
      (isInspected && onEnterProject, no tier condition). Earlier passes
-     gated this by tier (Medium/Large only) or by a live
-     useLayoutEffect/ResizeObserver DOM-measurement fit check (which
-     failed shut on a real device); neither exists any more. No
-     rendering-eligibility logic lives in this rule -- only containment
-     (wrapping, sizing) does; see the container-query fallback below this
-     rule for the one remaining case (a container too small even for a
-     wrapped 2-line label) where this control is hidden outright, and
-     .gallery-image-wrapper's own overflow: hidden for the backstop if a
-     size assumption is ever still wrong -- unchanged, see that rule's
-     own comment. */
+     gated this by tier (Medium/Large only), by a live
+     useLayoutEffect/ResizeObserver DOM-measurement fit check that
+     compared this control's own unwrapped width and failed shut on a
+     real device, and then by a guessed CSS container-query pixel
+     threshold -- none of that exists any more. Only containment
+     (wrapping, sizing) lives in this rule; the actual show/hide DECISION
+     is HoverOverlay.jsx's own small measurement effect (frameRef/
+     viewProjectFits -- see that effect's own comment), which compares
+     this card's real rendered height against its real available height
+     and toggles the .hover-overlay__enter-project--hidden modifier
+     below this rule accordingly -- a real comparison against the actual
+     DOM, not an approximated breakpoint. .gallery-image-wrapper's own
+     overflow: hidden remains the backstop if a measurement is ever
+     somehow still wrong -- unchanged, see that rule's own comment. */
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1754,40 +1758,21 @@ body {
   opacity: 0.7;
 }
 
-/* Final Mobile Interaction Model pass: View Project's own "never clip"
-   fallback -- the same "physical impossibility -> no visible content,
-   never a half-rendered one" principle Archive Number's own fallback
-   documents just above (@container hover-overlay (max-width: 40px),
-   (max-height: 20px)), applied to this control instead. Below Number's
-   own floor nothing renders at all (Number is hidden there too), so this
-   rule only ever matters in the narrow gap above it: a container just
-   big enough for Number but not for a wrapped, 2-line View Project label
-   at its own 11px font floor.
-     Width branch (max-width: 56px): the longer of the two wrapped words,
-     "PROJECT" (7 characters, uppercase, 0.1em letter-spacing), needs
-     roughly 7 * 0.7em * 11px (this file's own ~0.7em/character advance
-     approximation, see .hover-overlay__number's own derivation comment)
-     + 6 gaps * 0.1em * 11px of tracking =~ 60px, plus this control's own
-     0.75rem (12px) padding on each side. 56px sits just under that --
-     conservatively closer to Number's own 40px floor than to the full
-     ~84px the text plus padding would want, so this only suppresses the
-     genuinely tightest containers, not ordinary narrow Thumbnail tiles.
-     Height branch (max-height: 28px): two wrapped lines at the 11px
-     floor (roughly 13px/line at a normal line-height) plus this
-     control's own margin-top (0.15rem/2.4px) is already ~28px on its
-     own, before Number or the overlay's own gap/padding are even
-     counted -- so 28px is close to the real minimum this control could
-     ever fit in.
-   Both, like Number's own equivalent numbers, are a reasoned
-   approximation (GT America is proportional, not monospace, and this
-   hasn't been re-measured against its real per-character advance) worth
-   a direct visual check against a real narrow tile, not treated as
-   exactly measured. This is a plain CSS breakpoint, not a runtime
-   measurement system -- no JS reads or writes anything related to it. */
-@container hover-overlay (max-width: 56px), (max-height: 28px) {
-  .hover-overlay__enter-project {
-    display: none;
-  }
+/* Final Mobile Interaction Model pass (hard-boundary fit check):
+   View Project's actual hide state -- toggled by HoverOverlay.jsx's own
+   measurement effect (frameRef/viewProjectFits), not by a CSS
+   breakpoint. The previous pass here was a guessed container-query
+   pixel threshold (widths/heights approximated from GT America's
+   per-character advance, flagged as unverified); that's retired in
+   favor of comparing this card's real scrollHeight against its real
+   clientHeight at render time, which needs no such guess. display: none
+   removes this control from flow entirely (not just visually) so
+   Archive Number recenters alone in the frame when this is active --
+   .hover-overlay's own justify-content: center/align-self: center on
+   Number (both unchanged) do the actual centering once View Project is
+   gone from the flex column, no extra rule needed here for that. */
+.hover-overlay__enter-project--hidden {
+  display: none;
 }
 
 /* Text Containment correction pass: the 44px standard tap-target size,

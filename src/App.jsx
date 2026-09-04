@@ -833,9 +833,12 @@ const MOBILE_SELECTABLE_TILE_MIN_HEIGHT_PX = 48;
 // eligibility gate: an earlier MOBILE_VIEW_PROJECT_MIN_WIDTH_PX system,
 // and later isThumbnailTier itself, both retired that role in turn --
 // View Project now always attempts to render on any inspected,
-// Project-linked tile, any tier, and lets CSS wrapping/containment
-// decide how it actually fits (see .hover-overlay__enter-project in
-// styles.css). It also no longer decides which navigation path a
+// Project-linked tile, any tier, and HoverOverlay.jsx's own small
+// measurement effect (frameRef/viewProjectFits, comparing this card's
+// real rendered height against its real available height) decides
+// whether it actually fits (see .hover-overlay__enter-project in
+// styles.css and that effect's own comment). It also no longer decides
+// which navigation path a
 // Project-linked tile gets: a second tap anywhere on an already-
 // inspected, Project-linked tile now navigates uniformly across every
 // tier -- see handleGalleryTileTap below. Its one remaining job, for a
@@ -3827,7 +3830,7 @@ function App() {
     lastTappedHeightPx: null, // item.layout.height, parsed
     lastTappedIsThumbnailTier: null, // MOBILE_SELECTABLE_TILE_MIN_* floor -- only gates a non-Project tile's selection-surface eligibility and HoverOverlay's reduced thumbnail-inspected padding now; no longer decides View Project or navigation
     lastTappedSelectableEligible: null, // !isThumbnailTier || isProjectLinked -- a Project-linked tile is always a selection surface, any tier
-    lastTappedViewProjectEligible: null, // isProjectLinked -- Final Mobile Interaction Model pass: View Project always attempts to render for any inspected, Project-linked tile now (tier-independent); CSS wrapping/containment, not JS, decides whether it ends up actually visible
+    lastTappedViewProjectEligible: null, // isProjectLinked -- Final Mobile Interaction Model pass: View Project always attempts to render for any inspected, Project-linked tile now (tier-independent); HoverOverlay.jsx's own small measurement effect, not tier or a CSS breakpoint, decides whether it ends up actually visible
     lastTappedOnEnterProjectExists: null, // isProjectLinked -- true for every Project-linked tile, any tier (no separate affordance tiers exist any more)
     resultingInspectedItemId: null, // what handleGalleryTileTap set/would set
     handleGalleryTileTapRan: false, // proves the click genuinely reached this handler at least once
@@ -4123,8 +4126,8 @@ function App() {
   //     inspected state every tile gets: HoverOverlay renders Archive
   //     Number, then attempts View Project below it (see
   //     HoverOverlay.jsx's own render -- no tier gate there any more
-  //     either; CSS wrapping/containment decides how much of View
-  //     Project actually shows, not this handler).
+  //     either; that component's own small measurement effect decides
+  //     whether View Project actually fits and shows, not this handler).
   //   - A second tap ANYWHERE on that same already-inspected tile
   //     navigates to its Project -- isProjectLinked && wasInspected,
   //     below, with no isThumbnailTier condition. Tapping the "View
@@ -7005,14 +7008,18 @@ function App() {
                     // View Project now always attempts to render alongside
                     // it (no tier gate in HoverOverlay.jsx any more) --
                     // whether it's actually VISIBLE for a given tile is
-                    // decided by plain CSS (responsive wrapping, plus a
-                    // container-query hide-fallback for the rare container
-                    // too small even for a 2-line wrapped label -- see
-                    // .hover-overlay__enter-project in styles.css), never
-                    // by this prop, isThumbnailTier above, or any JS
-                    // measurement. handleProjectRowImageClick is the exact
-                    // same fade-then-navigate function the Project Filter
-                    // Row already calls -- reused verbatim, not a second
+                    // decided entirely inside HoverOverlay.jsx itself, by
+                    // its own small measurement effect (frameRef/
+                    // viewProjectFits, right before that component's
+                    // return) comparing this card's real rendered height
+                    // against its real available height -- never by this
+                    // prop or by isThumbnailTier above, and not by a
+                    // guessed CSS breakpoint either (an earlier pass tried
+                    // that; retired for the same reason a plain
+                    // measurement is more reliable than an approximated
+                    // one). handleProjectRowImageClick is the exact same
+                    // fade-then-navigate function the Project Filter Row
+                    // already calls -- reused verbatim, not a second
                     // "enter a project" implementation, and it's also what
                     // handleGalleryTileTap's own second-tap-anywhere branch
                     // calls now, so a tap on this control and a tap

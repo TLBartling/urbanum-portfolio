@@ -201,23 +201,45 @@ function HoverOverlay({
   // presence/absence -- not a separate isProjectLinked boolean -- is what
   // decides whether EITHER entry control below can render at all.
   onEnterProject,
-  // Final Mobile Interaction Model pass: no longer decides View
-  // Project's render eligibility at all -- that gate (first a live
-  // DOM-measurement effect, later plain tier classification) is retired.
-  // View Project now always attempts to render alongside Archive Number
-  // on any inspected, Project-linked tile, regardless of this prop (see
-  // the render below). This prop's one remaining job is the
+  // Final Mobile Interaction Model pass: does not decide View Project's
+  // render eligibility -- that's a separate prop now (see
+  // isTooSmallForViewProject just below, and its own comment for why the
+  // two are kept apart). This prop's one remaining job is the
   // Thumbnail-only reduced safe-area padding
   // (.hover-overlay--thumbnail-inspected, see the className below and
   // that class's own styles.css comment) -- still needed so Archive
-  // Number and, where it fits, View Project have real interior room on
-  // the smallest real tiles. App.jsx's own
+  // Number and, where it renders, View Project have real interior room
+  // on the smallest real tiles. App.jsx's own
   // MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX/_HEIGHT_PX floor (the same one
   // that decides whether a non-Project tile is a selection surface at
   // all -- see App.jsx's own handleGalleryTileTap) is still what this
   // prop is computed from at the call site. Defaults to false so any
   // hypothetical call site that doesn't pass it gets the normal padding.
   isThumbnailTier = false,
+  // Density/Legibility separation pass: real-device screenshots showed
+  // true thumbnail-sized Project tiles too small to legibly hold Archive
+  // Number and View Project together -- this prop is the deliberate
+  // presentation switch for that: true means this tile shows Archive
+  // Number alone, by design, never View Project; false (the default)
+  // means the full .hover-overlay__project-stack composition (Number +
+  // View Project) attempts to render as usual. Kept entirely separate
+  // from isThumbnailTier above -- that prop's own 80x48 floor was
+  // derived to fit Archive Number ALONE comfortably, never the
+  // two-element pairing, so reusing it here would still let View
+  // Project attempt to render on tiles too small for it. App.jsx's own
+  // MOBILE_VIEW_PROJECT_PRESENTATION_MIN_WIDTH_PX/_HEIGHT_PX (see that
+  // constant's own declaration comment for the real composition-math
+  // derivation) is what this prop is computed from, at the same call
+  // site, from the same real, build-time-known item.layout geometry --
+  // no live measurement, no ResizeObserver, no useLayoutEffect. This is
+  // purely a presentation choice: it never affects isInspected,
+  // onEnterProject's own presence, or which tap navigates -- a
+  // Project-linked tile showing Archive Number alone because of this
+  // prop still inspects on tap 1 and still navigates on tap 2 anywhere,
+  // identically to a tile showing the full stack. Defaults to false so
+  // any hypothetical call site that doesn't pass it renders the full
+  // composition, unchanged from before this pass.
+  isTooSmallForViewProject = false,
   // Relationship Hover Intent pass: App.jsx's own single fire-time check
   // (isScrollingRef.current || isProjectFilterActiveRef.current ||
   // isOverlayActiveRef.current -- see its own declaration comment) --
@@ -479,9 +501,23 @@ function HoverOverlay({
           different pairing. This condition is false on every desktop
           hover card (isInspected is always false there -- see this
           component's own prop comment above), so desktop always takes
-          the plain, unwrapped branch below, unchanged. */}
+          the plain, unwrapped branch below, unchanged.
+
+          Density/Legibility separation pass: a second, independent
+          condition, !isTooSmallForViewProject, now sits alongside the
+          one above -- see that prop's own comment for the full
+          reasoning. True thumbnail-sized Project tiles are too small to
+          legibly hold this composition at all; forcing it onto every
+          tile regardless of size was the wrong instinct, so those tiles
+          now deliberately render Archive Number alone (the plain,
+          unwrapped branch below), the same intentional presentation
+          Archive Number already gets on a non-Project tile. This is a
+          real design decision, not a squeezed fallback -- the tile's
+          own tap behavior is completely unaffected either way (see
+          isTooSmallForViewProject's own prop comment: it never touches
+          isInspected, onEnterProject, or navigation). */}
       {archiveNumber != null &&
-        (isInspected && onEnterProject ? (
+        (isInspected && onEnterProject && !isTooSmallForViewProject ? (
           <div className="hover-overlay__project-stack">
             <div className="hover-overlay__number">{`[${archiveNumber}]`}</div>
             {/* Mobile Archive Interaction Pass -- Stage 5: the explicit

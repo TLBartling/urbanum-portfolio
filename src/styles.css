@@ -1845,61 +1845,29 @@ body {
   opacity: 0.7;
 }
 
-/* Final Mobile Presentation pass: View Project's tiny-card fallback --
-   the ONE static CSS container-query rule that decides this control's
-   visibility now, replacing every JS-driven version that lived here
-   before (a guessed container-query pixel threshold; then a live
-   height-only scrollHeight-vs-clientHeight measurement; then a corrected
-   live both-axis measurement against .hover-overlay__stack's real
-   rendered rect -- see .hover-overlay__enter-project's own comment
-   further up this rule for that full history). Modeled directly on
-   Archive Number's own pre-existing fallback higher up this file
-   (@container hover-overlay (max-width: 40px), (max-height: 20px)),
-   same "physical impossibility -> no visible content, never a
-   half-rendered one" principle, just sized for a bigger job: Archive
-   Number's own fallback only has to fit Number alone; this one has to
-   fit Number AND View Project together (when View Project can't fit,
-   Number still needs to render, just alone -- see display: none below).
-     Width branch (max-width: 120px): "PROJECT" (7 characters, the
-     longest word View Project ever renders) at its own 11px floor plus
-     0.1em letter-spacing, using this file's own established
-     ~0.7em/character advance approximation (see Archive Number's own
-     fallback comment, and .hover-overlay__themes' own width budget, for
-     the same convention), comes to roughly 70-75px for that word alone,
-     plus this control's own 0.75rem (12px) horizontal padding per side
-     (~24px) and a margin for the frame's own safe-area padding -- rounds
-     up generously past that to 120px, deliberately erring toward "too
-     generous" rather than "too tight" now that there is no live
-     measurement left to catch a rare miss.
-     Height branch (max-height: 72px): Archive Number's own box (~16px,
-     see that rule's own fallback comment) + .hover-overlay__project-
-     stack's own gap (clamp(0.2rem, 3cqmin, 0.4rem), roughly 3.2-6.4px
-     across real sizes) + View Project's own two-line height at its
-     11px floor with the 1.15 line-height above (~2 x 12.65px = 25.3px)
-     + a margin for frame padding -- comes to roughly 65-70px total;
-     72px keeps a small buffer above that, same "round up slightly past
-     a calculated minimum" convention this file already uses elsewhere.
-     Both coefficients are flagged, same as Archive Number's own and
-     Themes' own, as reasoned approximations worth a direct visual check
-     against real narrow tiles rather than treated as exactly measured --
-     the accepted trade-off here is a possible small miss at the exact
-     boundary in exchange for zero runtime measurement and zero flicker.
-   display: none removes this control from flow entirely (not just
-   visually) so Archive Number recenters alone in the frame when this
-   fallback is active -- .hover-overlay__project-stack itself is
-   untouched by this rule and remains in place either way (see that
-   wrapper's own comment); its own justify-content: center/align-items:
-   center does the actual centering, both horizontally and vertically,
-   once View Project is gone from its column -- no separate Number-only
-   layout needed here. References the same named container
-   (.hover-overlay's own container-type: size/container-name:
-   hover-overlay) every other responsive rule on this card already
-   queries. */
-@container hover-overlay (max-width: 120px), (max-height: 72px) {
-  .hover-overlay__enter-project {
-    display: none;
-  }
-}
+/* Density/Legibility separation pass: View Project's tiny-card
+   presentation decision has moved out of this file entirely, into a
+   plain width/height check in App.jsx (see
+   MOBILE_VIEW_PROJECT_PRESENTATION_MIN_WIDTH_PX/_HEIGHT_PX's own
+   declaration comment there for the real composition-math derivation,
+   the same "PROJECT" character-advance and stack-height math a
+   container-query fallback that used to live at this exact spot was
+   already using). That decision is now made once, from the same real,
+   build-time-known item.layout geometry isThumbnailTier itself already
+   uses, and passed down as HoverOverlay's own isTooSmallForViewProject
+   prop -- when true, View Project never mounts in the DOM at all (see
+   that component's own render condition), so there is nothing left for
+   a CSS rule to hide here. This isn't a live-measurement regression:
+   both the old container-query version and the current prop-driven one
+   are static, one-time, no-ResizeObserver decisions -- this pass just
+   consolidated the decision alongside isThumbnailTier's own identical
+   real-geometry check rather than leaving two independent smallness
+   signals (an 80x48 JS tier and a 120x72 CSS breakpoint) answering
+   overlapping questions about the same tile. Archive Number's own
+   extreme-sliver fallback higher up this file (right after its own base
+   rule) is unrelated and untouched -- it still guards the one remaining case neither
+   isThumbnailTier nor isTooSmallForViewProject cover: a tile too small
+   even for Archive Number alone. */
 
 /* Text Containment correction pass: the 44px standard tap-target size,
    restored -- but as an invisible hit area, not visible layout height

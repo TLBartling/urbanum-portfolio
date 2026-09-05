@@ -830,25 +830,52 @@ const MOBILE_SELECTABLE_TILE_MIN_HEIGHT_PX = 48;
 // (.hover-overlay--thumbnail-inspected, see isThumbnailTier at both call
 // sites below) so Archive Number and View Project have real interior
 // room on the smallest real tiles. It is no longer a View Project
-// eligibility gate: an earlier MOBILE_VIEW_PROJECT_MIN_WIDTH_PX system,
-// and later isThumbnailTier itself, both retired that role in turn --
-// View Project now always attempts to render on any inspected,
-// Project-linked tile, any tier, and its actual visibility is decided
-// entirely by plain CSS in styles.css (.hover-overlay__enter-project and
-// its own one container-query tiny-card fallback), not by any JS
-// measurement -- an earlier live DOM-measurement effect in
-// HoverOverlay.jsx (first height-only, then corrected to both axes)
-// caught real horizontal clipping correctly but caused visible flicker
-// on real small tiles, so it was removed entirely in favor of the same
-// static-CSS-container architecture desktop's own hover card has always
-// used (see .hover-overlay__enter-project's own comment in styles.css
-// for the full history). It also no longer decides which navigation
-// path a
-// Project-linked tile gets: a second tap anywhere on an already-
-// inspected, Project-linked tile now navigates uniformly across every
-// tier -- see handleGalleryTileTap below. Its one remaining job, for a
-// non-Project tile, is the plain selection-surface floor described in
-// this constant's own declaration comment above.
+// eligibility gate, and it never decides navigation: a second tap
+// anywhere on an already-inspected, Project-linked tile navigates
+// uniformly across every tier regardless of this constant -- see
+// handleGalleryTileTap below. Its one remaining job, for a non-Project
+// tile, is the plain selection-surface floor described in this
+// constant's own declaration comment above.
+
+// Density/Legibility separation pass: real-device screenshots showed
+// true thumbnail-sized Project tiles too small to legibly hold both
+// Archive Number and View Project -- forcing the composition onto every
+// tile regardless of size was the wrong instinct; some tiles should
+// simply show Archive Number alone, deliberately, not as a squeezed
+// fallback. This is a PRESENTATION decision, kept entirely separate from
+// the constant above and from isThumbnailTier itself: reusing
+// MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX/_HEIGHT_PX's own 80x48 floor here
+// was considered first, but that floor was derived (see its own
+// declaration comment above) to fit Archive Number ALONE comfortably --
+// never the two-element Number + View Project pairing -- so plenty of
+// real tiles clear it (are NOT thumbnail tier, keep full non-Project
+// selectability and normal padding) while still being too cramped in
+// practice for View Project's own two-line composition to read cleanly.
+// A prior pass already tried a dedicated MOBILE_VIEW_PROJECT_MIN_WIDTH_PX
+// system for this and retired it -- but that version conflated
+// PRESENTATION with ELIGIBILITY/NAVIGATION (it gated whether View
+// Project existed at all in a way that got tangled up with tier-based
+// navigation differences the interaction model has since made uniform).
+// This one is deliberately narrower in scope: it decides ONLY whether
+// View Project renders alongside Archive Number inside
+// .hover-overlay__project-stack, or Archive Number renders alone --
+// never whether a tile is selectable, never which tap does what. Values
+// below are the same real composition-math derivation a CSS
+// container-query fallback used for this exact question in an
+// immediately prior pass (see that history in
+// .hover-overlay__enter-project's own styles.css comment): "PROJECT" (7
+// characters) at its own 11px floor plus padding needs on the order of
+// 100-110px width to clear; Archive Number's own box plus the stack's
+// gap plus View Project's own two wrapped lines needs on the order of
+// 65-70px height -- both rounded up to a clean, more generous floor,
+// same rounding convention MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX/
+// _HEIGHT_PX already uses above. Computed from the exact same real,
+// build-time-known item.layout.width/height geometry isThumbnailTier
+// itself already uses -- no live DOM measurement, no ResizeObserver,
+// just a second, independent width/height comparison answering a
+// different question at a different real-world size.
+const MOBILE_VIEW_PROJECT_PRESENTATION_MIN_WIDTH_PX = 120;
+const MOBILE_VIEW_PROJECT_PRESENTATION_MIN_HEIGHT_PX = 72;
 // How long after a pinch gesture ends a stray touchend on the finger(s)
 // that were part of it should still be treated as "part of that pinch
 // ending," not a fresh tap -- short and purposeful, just enough to absorb
@@ -6679,14 +6706,12 @@ function App() {
               // HoverOverlay's own reduced thumbnail-inspected padding
               // (isThumbnailTier prop below), and (2) whether a
               // non-Project tile becomes a selection surface at all
-              // (handleGalleryTileTap's own early-return branch). It no
-              // longer decides View Project eligibility or which
-              // navigation path a Project-linked tile gets -- both are
-              // uniform across tiers now, see
-              // MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX/_HEIGHT_PX's own
-              // declaration comment and handleGalleryTileTap's own top
-              // comment. Only touch-device tiles need this at all: on
-              // desktop, onEnterProject/isThumbnailTier are never read by
+              // (handleGalleryTileTap's own early-return branch). It
+              // still never decides which navigation path a
+              // Project-linked tile gets -- that's uniform across tiers,
+              // see handleGalleryTileTap's own top comment. Only
+              // touch-device tiles need this at all: on desktop,
+              // onEnterProject/isThumbnailTier are never read by
               // anything meaningful (isInspected is always false there,
               // see HoverOverlay's own guard), so computing it here has
               // no desktop-visible effect either way -- kept simple by
@@ -6696,6 +6721,22 @@ function App() {
                   MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX ||
                 Number.parseFloat(item.layout.height) <
                   MOBILE_SELECTABLE_TILE_MIN_HEIGHT_PX;
+              // Density/Legibility separation pass: a second, independent
+              // width/height comparison -- see
+              // MOBILE_VIEW_PROJECT_PRESENTATION_MIN_WIDTH_PX/_HEIGHT_PX's
+              // own declaration comment for why this is deliberately NOT
+              // the same value/variable as isThumbnailTier above.
+              // PRESENTATION only: never read by handleGalleryTileTap,
+              // never affects selectability or which tap does what --
+              // only HoverOverlay's own choice of whether to render View
+              // Project alongside Archive Number, or Archive Number
+              // alone. Same real, build-time-known item.layout geometry,
+              // no live measurement.
+              const isTooSmallForViewProject =
+                Number.parseFloat(item.layout.width) <
+                  MOBILE_VIEW_PROJECT_PRESENTATION_MIN_WIDTH_PX ||
+                Number.parseFloat(item.layout.height) <
+                  MOBILE_VIEW_PROJECT_PRESENTATION_MIN_HEIGHT_PX;
               // Relationship Visualization (Commit 4), corrected by the
               // state-management bug fix, and now gated by the
               // Relationship Mode Visibility Gate above: consumes only
@@ -7004,33 +7045,32 @@ function App() {
                     // own usable interior). See isThumbnailTier's own
                     // declaration above for the shared formula.
                     isThumbnailTier={isThumbnailTier}
+                    // Density/Legibility separation pass: a completely
+                    // separate presentation signal from isThumbnailTier
+                    // above -- see isTooSmallForViewProject's own
+                    // declaration comment for why the two are deliberately
+                    // different values. Tells HoverOverlay to render
+                    // Archive Number alone, never View Project, on tiles
+                    // too small for the two-element composition to read
+                    // cleanly -- a real design intent for true thumbnails,
+                    // not a fallback failure. Never read by
+                    // handleGalleryTileTap; never changes which tap does
+                    // what.
+                    isTooSmallForViewProject={isTooSmallForViewProject}
                     // Stage 5 (hybrid touch-inspection design): only
                     // Project-linked tiles get an onEnterProject callback at
                     // all -- undefined for every other tile, which is what
                     // tells HoverOverlay not to render View Project (see
                     // its own prop default/guard). Every Project-linked
-                    // tile gets a real callback regardless of tier, and
-                    // View Project now always attempts to render alongside
-                    // it (no tier gate in HoverOverlay.jsx any more) --
-                    // whether it's actually VISIBLE for a given tile is
-                    // decided entirely by plain CSS in styles.css
-                    // (.hover-overlay__enter-project's own one
-                    // container-query tiny-card fallback, modeled on
-                    // Archive Number's own pre-existing fallback), never
-                    // by this prop or by isThumbnailTier above. Two live
-                    // JS measurement systems lived in HoverOverlay.jsx in
-                    // turn before this (first height-only, then corrected
-                    // to compare real rendered geometry on all four
-                    // sides) -- the corrected one did catch real
-                    // horizontal clipping real-device screenshots had
-                    // shown, but the render-measure-hide/show-reflow
-                    // cycle it required caused visible flicker on real
-                    // small tiles, so both were removed entirely in favor
-                    // of the same static-CSS-container architecture
-                    // desktop's own hover card has always used (see that
-                    // fallback rule's own comment in styles.css for the
-                    // full history). handleProjectRowImageClick is the
-                    // exact same
+                    // tile that ALSO clears the isTooSmallForViewProject
+                    // floor above attempts to render it, inside
+                    // .hover-overlay__project-stack; a Project-linked tile
+                    // that doesn't clear that floor renders Archive Number
+                    // alone instead (see HoverOverlay.jsx's own render
+                    // condition) -- a plain, static width/height decision
+                    // made once here from real layout geometry, not a live
+                    // measurement of any kind. handleProjectRowImageClick
+                    // is the exact same
                     // fade-then-navigate function the Project Filter Row
                     // already calls -- reused verbatim, not a second
                     // "enter a project" implementation, and it's also what

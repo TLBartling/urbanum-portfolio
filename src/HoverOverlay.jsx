@@ -398,39 +398,50 @@ function HoverOverlay({
     onEnterProject?.();
   };
 
-  // Final Mobile Interaction Model pass -- hard-boundary fit check: a
-  // small, deterministic measurement, not another guessed pixel
-  // threshold. frameRef is this card's own root (.hover-overlay, the
-  // exact box .gallery-image-wrapper's own overflow: hidden clips
-  // against, and the element container-type: size in styles.css already
-  // makes the single source of truth every responsive rule on this card
-  // queries) -- the correct element to measure directly.
+  // Final Mobile Interaction Model pass -- hard-boundary fit check,
+  // corrected to measure BOTH axes: a real-device test proved the
+  // previous (height-only) version wrong. That version compared
+  // frameEl.scrollHeight against frameEl.clientHeight and asserted width
+  // could never overflow because View Project's own max-width: 100%/
+  // box-sizing: border-box (styles.css) bound ITS OWN BOX to the frame's
+  // width. That's true of the box -- but not of a single unbreakable
+  // WORD inside it: max-width caps the box, it does not shrink a word
+  // like "PROJECT" that is, on its own, wider than the box's own
+  // constrained width -- ordinary CSS word-wrap only breaks BETWEEN
+  // words, never inside one, so that word paints past the box's (and
+  // the frame's) right edge instead of respecting max-width. On a
+  // narrow-enough portrait tile that's exactly what real screenshots
+  // showed: a horizontally clipped "PROJECT," invisible to a
+  // height-only check because painting past the right edge doesn't add
+  // height, so scrollHeight <= clientHeight still read true. This
+  // version does not assume the box's own CSS constraints are sufficient
+  // -- it measures the actual rendered geometry of the actual content
+  // against the actual frame, on all four sides, after wrapping has
+  // already happened.
   //
-  // The check is one comparison: frameEl.scrollHeight (the real, natural
-  // height this card's current children need -- Archive Number plus,
-  // while it's still attempting to render, View Project, already laid
-  // out with its own responsive font-size/wrapping from styles.css)
-  // against frameEl.clientHeight (the real space actually available,
-  // i.e. this tile's own height). Width is never measured: View
-  // Project's own max-width: 100%/box-sizing: border-box (styles.css)
-  // already guarantee it can't exceed the frame's own width -- it wraps
-  // onto a second line instead, so overflow, if any, can only be
-  // vertical. If the natural height exceeds what's available, View
-  // Project doesn't fit at any wrap the frame can offer at its own
-  // readable font floor, so it's hidden outright (the --hidden modifier
-  // below, plain display: none) -- removed from flow entirely so Archive
-  // Number recenters alone, exactly STATE B, never a partially-clipped
-  // third state.
-  //
-  // Why this succeeds where an earlier live-measurement attempt failed
-  // shut on a real device: that version compared View Project's own
-  // NATURAL, UNWRAPPED single-line width (white-space was nowrap at the
-  // time) against the frame's width -- "VIEW PROJECT ->" at any readable
-  // size is routinely 120px+ wide, comfortably wider than most real
-  // mobile tiles, so that comparison failed almost everywhere it was
-  // tried. Now that View Project wraps (styles.css, nowrap removed),
-  // width is structurally never the overflow axis, and this checks the
-  // one axis that can actually still overflow: real rendered height.
+  // frameRef is this card's own root (.hover-overlay, the exact box
+  // .gallery-image-wrapper's own overflow: hidden clips against).
+  // stackRef is the new .hover-overlay__stack wrapper around Archive
+  // Number + View Project together (see the render below) -- width-
+  // constrained to the frame's own usable inner width by that wrapper's
+  // own max-width: 100% (styles.css), same mechanism as before, just
+  // applied to the whole stack rather than assumed sufficient on its
+  // own. Given both refs, the actual check is four comparisons, not one:
+  // does the stack's real getBoundingClientRect() -- taken AFTER
+  // wrapping has been laid out, since useLayoutEffect runs after the DOM
+  // commit -- stay within the frame's real inner edges (frame's own
+  // border-box rect, inset by its own computed padding on each side)?
+  // left >= innerLeft, right <= innerRight, top >= innerTop,
+  // bottom <= innerBottom. Any one side failing (including the
+  // horizontal sides the old check couldn't see at all) means the stack
+  // doesn't fit, and View Project is hidden outright (the --hidden
+  // modifier below, plain display: none) -- removed from flow entirely
+  // so Archive Number (now the stack's only child) recenters alone,
+  // exactly STATE B, never a partially-clipped third state. Do NOT rely
+  // on .gallery-image-wrapper's own overflow: hidden to make this look
+  // contained -- if that rule is ever the thing actually cropping
+  // visible text, this check has already failed and needs fixing here,
+  // not papered over there.
   //
   // Runs synchronously before paint (useLayoutEffect) whenever a fresh
   // inspection begins on this tile (isInspected/onEnterProject/itemId/
@@ -438,18 +449,19 @@ function HoverOverlay({
   // are sized once by procedural layout and don't live-resize while
   // already inspected (a window resize regenerates and remounts the
   // whole gallery instead of resizing tiles in place -- see App.jsx's
-  // own regeneration sequence). The ResizeObserver below is real
-  // defense-in-depth for that assumption, not the primary mechanism --
-  // it re-measures on any genuine size change this card's own root
-  // actually experiences. One acknowledged limit, flagged rather than
-  // engineered around: once View Project is hidden (display: none,
-  // occupying no layout space so Number can recenter), it isn't itself
-  // measurable, so a hypothetical later growth of the SAME frame while
-  // still inspected wouldn't bring it back until the next fresh
-  // inspection (close/reopen) -- acceptable given tile sizes don't
-  // change while inspected in this architecture, not something worth a
-  // separate out-of-flow measuring node for.
+  // own regeneration sequence). Both ResizeObservers below are real
+  // defense-in-depth for that assumption (one on the frame, one on the
+  // stack itself, so a reflow from something like late font loading is
+  // also caught), not the primary mechanism. One acknowledged limit,
+  // flagged rather than engineered around: once View Project is hidden
+  // (display: none, occupying no layout space so Number can recenter),
+  // it isn't itself measurable, so a hypothetical later growth of the
+  // SAME frame while still inspected wouldn't bring it back until the
+  // next fresh inspection (close/reopen) -- acceptable given tile sizes
+  // don't change while inspected in this architecture, not something
+  // worth a separate out-of-flow measuring node for.
   const frameRef = useRef(null);
+  const stackRef = useRef(null);
   const [viewProjectFits, setViewProjectFits] = useState(true);
 
   useLayoutEffect(() => {
@@ -462,13 +474,41 @@ function HoverOverlay({
       return undefined;
     }
     const frameEl = frameRef.current;
-    if (!frameEl) return undefined;
+    const stackEl = stackRef.current;
+    if (!frameEl || !stackEl) return undefined;
 
     const measure = () => {
-      // +1px epsilon absorbs ordinary sub-pixel layout rounding -- not a
-      // fit-threshold guess, just enough slack that an exact-fit case
-      // never flips on rounding noise alone.
-      setViewProjectFits(frameEl.scrollHeight <= frameEl.clientHeight + 1);
+      const frameRect = frameEl.getBoundingClientRect();
+      const frameStyle = window.getComputedStyle(frameEl);
+      // The frame's own real computed padding on each side -- not
+      // assumed from the CSS source, read from the actual rendered
+      // element, so this stays correct even under the Thumbnail-only
+      // reduced-padding class (.hover-overlay--thumbnail-inspected).
+      const innerLeft =
+        frameRect.left + (parseFloat(frameStyle.paddingLeft) || 0);
+      const innerRight =
+        frameRect.right - (parseFloat(frameStyle.paddingRight) || 0);
+      const innerTop =
+        frameRect.top + (parseFloat(frameStyle.paddingTop) || 0);
+      const innerBottom =
+        frameRect.bottom - (parseFloat(frameStyle.paddingBottom) || 0);
+
+      // stackEl's own rect, taken after it has already wrapped at its
+      // CSS-constrained width -- this is the "let text wrap naturally,
+      // then measure" step, not a prediction of what it would measure.
+      const stackRect = stackEl.getBoundingClientRect();
+
+      // +1px epsilon absorbs ordinary sub-pixel layout rounding on each
+      // of the four comparisons -- not a fit-threshold guess, just
+      // enough slack that an exact-fit case never flips on rounding
+      // noise alone.
+      const EPSILON_PX = 1;
+      setViewProjectFits(
+        stackRect.left >= innerLeft - EPSILON_PX &&
+          stackRect.right <= innerRight + EPSILON_PX &&
+          stackRect.top >= innerTop - EPSILON_PX &&
+          stackRect.bottom <= innerBottom + EPSILON_PX,
+      );
     };
 
     measure();
@@ -476,6 +516,7 @@ function HoverOverlay({
     if (typeof ResizeObserver === "undefined") return undefined;
     const resizeObserver = new ResizeObserver(measure);
     resizeObserver.observe(frameEl);
+    resizeObserver.observe(stackEl);
     return () => resizeObserver.disconnect();
   }, [isInspected, onEnterProject, itemId, generation]);
 
@@ -508,6 +549,22 @@ function HoverOverlay({
       // card is completely unaffected: isInspected is never true there.
       aria-hidden={!isInspected}
     >
+      {/* .hover-overlay__stack (styles.css) wraps Archive Number + View
+          Project together -- the hard-boundary fit check's own stackRef
+          measures THIS element's real rendered rect, after wrapping, not
+          Number and View Project separately, so the check reflects the
+          combined stack exactly the way it's actually laid out and seen.
+          Deliberately does NOT wrap Themes (below): Themes and this pair
+          are never a meaningful visual unit together (Themes only
+          renders when !isInspected, i.e. desktop hover with nothing from
+          this pair currently attempting View Project), so wrapping them
+          together would just be extra DOM with no measurement purpose.
+          The stack's own max-width: 100%/align-items: center (styles.css)
+          replace what Number's and View Project's individual
+          align-self: center used to do on their own as direct
+          .hover-overlay children -- same visual centering, now achieved
+          one level down since they're this wrapper's children instead. */}
+      <div ref={stackRef} className="hover-overlay__stack">
       {/* Archive-number presentation rule (Josh review): bracketed
           site-wide, e.g. "[033]" -- a display-only wrap of whatever value
           this prop already carries, not a reformat of it. The raw,
@@ -531,52 +588,6 @@ function HoverOverlay({
           before. */}
       {archiveNumber != null && (
         <div className="hover-overlay__number">{`[${archiveNumber}]`}</div>
-      )}
-      {/* Discovery: the only editorial gate, checked before container
-          queries ever run. Non-discovery tiles never render this markup, so
-          styles.css has nothing to measure. Discovery tiles always attempt
-          to render -- responsive typography (see styles.css) decides how
-          large the text appears, shrinking smoothly down to a 9px floor;
-          only genuine physical impossibility at that floor (a container too
-          small to hold even the shortest single line) results in no visible
-          themes, never a separate editorial decision. */}
-      {/* Mobile Lexicon Removal pass: themesEnabled (App.jsx's
-          !isTouchDevice, see this component's own prop comment above) is
-          the real, unconditional "never on touch" gate -- false on every
-          touch device regardless of anything else. !isInspected is a
-          second, independent condition kept from the earlier pass: on
-          desktop, where themesEnabled is always true, it still hides
-          Themes for the (touch-only) isInspected case, which is always
-          false there anyway, so it's a harmless no-op on desktop and
-          simply redundant with themesEnabled on touch. Desktop's own
-          discovery-tile hover reveal is completely unaffected either
-          way. */}
-      {themesEnabled && discovery && !isInspected && shuffledThemes.length > 0 && (
-        <ul className="hover-overlay__themes">
-          {shuffledThemes.map((theme) => (
-            <li
-              key={theme}
-              role="button"
-              tabIndex={isInspected ? 0 : -1}
-              aria-label={`Filter by theme: ${theme}`}
-              onMouseEnter={() => handleThemeHoverStart(theme)}
-              onMouseLeave={handleMetadataHoverEnd}
-              onClick={(event) => handleThemeClick(event, theme)}
-              onKeyDown={(event) => handleThemeKeyDown(event, theme)}
-            >
-              {/* Lexicon "#" presentation rule (Archive metadata typography
-                  pass): display-only prefix, matching the Archive Number's
-                  own bracket treatment above -- `theme` itself (the value
-                  passed to handleThemeClick/handleThemeKeyDown/aria-label
-                  above, and used as this element's own `key`) is completely
-                  untouched, so click-to-filter/Relationship Engine matching
-                  and the stored Sanity value are unaffected. Guarded against
-                  a doubled "##" if a legacy Lexicon entry was ever authored
-                  with its own leading "#". */}
-              {theme.startsWith("#") ? theme : `#${theme}`}
-            </li>
-          ))}
-        </ul>
       )}
       {/* Mobile Archive Interaction Pass -- Stage 5, updated by the Final
           Mobile Interaction Model pass: the explicit "enter the Project"
@@ -665,6 +676,62 @@ function HoverOverlay({
         >
           View Project →
         </div>
+      )}
+      </div>
+      {/* Discovery: the only editorial gate, checked before container
+          queries ever run. Non-discovery tiles never render this markup, so
+          styles.css has nothing to measure. Discovery tiles always attempt
+          to render -- responsive typography (see styles.css) decides how
+          large the text appears, shrinking smoothly down to a 9px floor;
+          only genuine physical impossibility at that floor (a container too
+          small to hold even the shortest single line) results in no visible
+          themes, never a separate editorial decision. */}
+      {/* Mobile Lexicon Removal pass: themesEnabled (App.jsx's
+          !isTouchDevice, see this component's own prop comment above) is
+          the real, unconditional "never on touch" gate -- false on every
+          touch device regardless of anything else. !isInspected is a
+          second, independent condition kept from the earlier pass: on
+          desktop, where themesEnabled is always true, it still hides
+          Themes for the (touch-only) isInspected case, which is always
+          false there anyway, so it's a harmless no-op on desktop and
+          simply redundant with themesEnabled on touch. Desktop's own
+          discovery-tile hover reveal is completely unaffected either
+          way. Deliberately rendered here, AFTER (i.e. as a sibling
+          following) .hover-overlay__stack rather than inside it -- Themes
+          and the Number/View Project stack are mutually exclusive in
+          practice (this renders only when !isInspected; the stack's
+          own View Project only ever attempts to render when isInspected
+          is true), so which one comes first in source order has no
+          visual effect (only one of the two ever exists in the DOM at a
+          time) -- kept as a plain sibling so the stack's own
+          hard-boundary fit measurement only ever includes Archive
+          Number and View Project, never Themes. */}
+      {themesEnabled && discovery && !isInspected && shuffledThemes.length > 0 && (
+        <ul className="hover-overlay__themes">
+          {shuffledThemes.map((theme) => (
+            <li
+              key={theme}
+              role="button"
+              tabIndex={isInspected ? 0 : -1}
+              aria-label={`Filter by theme: ${theme}`}
+              onMouseEnter={() => handleThemeHoverStart(theme)}
+              onMouseLeave={handleMetadataHoverEnd}
+              onClick={(event) => handleThemeClick(event, theme)}
+              onKeyDown={(event) => handleThemeKeyDown(event, theme)}
+            >
+              {/* Lexicon "#" presentation rule (Archive metadata typography
+                  pass): display-only prefix, matching the Archive Number's
+                  own bracket treatment above -- `theme` itself (the value
+                  passed to handleThemeClick/handleThemeKeyDown/aria-label
+                  above, and used as this element's own `key`) is completely
+                  untouched, so click-to-filter/Relationship Engine matching
+                  and the stored Sanity value are unaffected. Guarded against
+                  a doubled "##" if a legacy Lexicon entry was ever authored
+                  with its own leading "#". */}
+              {theme.startsWith("#") ? theme : `#${theme}`}
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

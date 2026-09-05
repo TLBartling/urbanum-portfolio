@@ -834,11 +834,14 @@ const MOBILE_SELECTABLE_TILE_MIN_HEIGHT_PX = 48;
 // and later isThumbnailTier itself, both retired that role in turn --
 // View Project now always attempts to render on any inspected,
 // Project-linked tile, any tier, and HoverOverlay.jsx's own small
-// measurement effect (frameRef/viewProjectFits, comparing this card's
-// real rendered height against its real available height) decides
-// whether it actually fits (see .hover-overlay__enter-project in
-// styles.css and that effect's own comment). It also no longer decides
-// which navigation path a
+// measurement effect (frameRef/stackRef/viewProjectFits, comparing the
+// real rendered rect of Archive Number + View Project together against
+// the frame's real inner edges on all four sides -- not just height;
+// see that effect's own comment for why a height-only version of this
+// check missed real horizontal clipping) decides whether it actually
+// fits (see .hover-overlay__enter-project in styles.css and that
+// effect's own comment). It also no longer decides which navigation
+// path a
 // Project-linked tile gets: a second tap anywhere on an already-
 // inspected, Project-linked tile now navigates uniformly across every
 // tier -- see handleGalleryTileTap below. Its one remaining job, for a
@@ -7009,14 +7012,19 @@ function App() {
                     // it (no tier gate in HoverOverlay.jsx any more) --
                     // whether it's actually VISIBLE for a given tile is
                     // decided entirely inside HoverOverlay.jsx itself, by
-                    // its own small measurement effect (frameRef/
+                    // its own small measurement effect (frameRef/stackRef/
                     // viewProjectFits, right before that component's
-                    // return) comparing this card's real rendered height
-                    // against its real available height -- never by this
-                    // prop or by isThumbnailTier above, and not by a
-                    // guessed CSS breakpoint either (an earlier pass tried
-                    // that; retired for the same reason a plain
-                    // measurement is more reliable than an approximated
+                    // return) comparing the real rendered rect of Archive
+                    // Number + View Project together against the frame's
+                    // real inner edges on all four sides -- left/right as
+                    // well as top/bottom, since a height-only version of
+                    // this check was proven insufficient by real-device
+                    // screenshots (a single unbreakable word can clip
+                    // horizontally without ever changing the content's
+                    // height) -- never by this prop or by isThumbnailTier
+                    // above, and not by a guessed CSS breakpoint either
+                    // (an earlier pass tried that too; retired for the
+                    // same reason a real measurement beats an approximated
                     // one). handleProjectRowImageClick is the exact same
                     // fade-then-navigate function the Project Filter Row
                     // already calls -- reused verbatim, not a second

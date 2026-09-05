@@ -1276,6 +1276,41 @@ body {
   opacity: 1;
 }
 
+/* Final Mobile Interaction Model pass (hard-boundary fit check): wraps
+   Archive Number + View Project as one measurable unit -- HoverOverlay.jsx's
+   own stackRef reads THIS element's getBoundingClientRect() against the
+   frame's real inner edges (see that component's own measurement effect
+   for the full reasoning, including why an earlier height-only version of
+   this check missed real horizontal clipping). Themes (.hover-overlay__themes)
+   is deliberately NOT inside this wrapper -- see that rule's own comment
+   for why (the two are mutually exclusive in practice, so nesting has no
+   visual benefit and would only pollute the fit measurement with content
+   that's never actually part of this stack).
+     display: flex/flex-direction: column/align-items: center/gap: 0.35rem
+     reproduce exactly what Number's and View Project's own individual
+     align-self: center used to do as direct .hover-overlay children
+     (still harmlessly present on both rules below/further down -- align-self
+     on an item whose container already centers everything via
+     align-items is a no-op, not a conflict), plus the 0.35rem gap
+     .hover-overlay's own gap used to provide between them when they were
+     siblings -- same visual spacing and centering, now one level down.
+     align-self: center centers this whole wrapper within .hover-overlay's
+     own column, same as before. max-width: 100%/box-sizing: border-box
+     keep this wrapper itself from ever being wider than the frame's own
+     usable interior -- still useful for ordinary wrapping even though the
+     hard-boundary check no longer ASSUMES this alone is sufficient (a
+     single unbreakable word can still exceed it; the JS measurement is
+     what actually catches that now). */
+.hover-overlay__stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  align-self: center;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
 /* Archive number: typography, font-size scaling, and formatting are exactly
    as before this pass -- unchanged. Only its positioning mechanism changed,
    to fix the composition-centering bias above: rather than being
@@ -1283,7 +1318,12 @@ body {
    own (which pinned it to the exact optical center regardless of the
    theme content below it), it's a normal flex-flow child again, centered
    horizontally via align-self, with the group of it + themes centered
-   together by the parent's justify-content: center. */
+   together by the parent's justify-content: center. Final Mobile
+   Interaction Model pass: this element's parent is now
+   .hover-overlay__stack, not .hover-overlay directly (see that rule's
+   own comment) -- align-self here is harmless, redundant with the
+   stack's own align-items: center, kept rather than removed to minimize
+   the diff since it changes nothing visually. */
 .hover-overlay__number {
   align-self: center;
   /* Dominance-reduction pass: was a uniform 0.5rem on all sides. Horizontal
@@ -1651,9 +1691,11 @@ body {
    touch-inspected (see HoverOverlay.jsx's own isInspected && onEnterProject
    guard). A <div role="button">, not a <button> -- see that component's
    own render comment for why a real nested <button> can't be used here.
-   Sits with the archive number/themes as one more member of the same
-   flex column .hover-overlay already lays out (gap: 0.35rem there provides
-   its own spacing above this), rather than being independently positioned.
+   Final Mobile Interaction Model pass: sits inside .hover-overlay__stack
+   alongside Archive Number now (that wrapper's own gap: 0.35rem provides
+   the spacing between them -- see that rule's own comment for why Number
+   and this moved into a shared wrapper), rather than being independently
+   positioned or a direct .hover-overlay child itself.
    pointer-events: auto is the same targeted opt-in
    .hover-overlay__themes li already uses against this card's own
    pointer-events: none default (see .hover-overlay above) -- required for
@@ -1674,13 +1716,23 @@ body {
      threshold -- none of that exists any more. Only containment
      (wrapping, sizing) lives in this rule; the actual show/hide DECISION
      is HoverOverlay.jsx's own small measurement effect (frameRef/
-     viewProjectFits -- see that effect's own comment), which compares
-     this card's real rendered height against its real available height
-     and toggles the .hover-overlay__enter-project--hidden modifier
-     below this rule accordingly -- a real comparison against the actual
-     DOM, not an approximated breakpoint. .gallery-image-wrapper's own
+     stackRef/viewProjectFits -- see that effect's own comment), which
+     compares .hover-overlay__stack's real rendered rect (Archive Number
+     + this control together) against the frame's real inner edges on
+     ALL FOUR SIDES -- left/right as well as top/bottom -- and toggles
+     the .hover-overlay__enter-project--hidden modifier below this rule
+     accordingly. An earlier version of this check compared only
+     scrollHeight against clientHeight and assumed this rule's own
+     max-width: 100% (below) made width structurally safe; real-device
+     screenshots proved that assumption wrong (a single unbreakable word
+     like "PROJECT" can still paint past max-width's own boundary, since
+     word-wrap only breaks between words, never inside one), so the
+     check now measures actual geometry on both axes instead of
+     trusting either side's CSS alone. .gallery-image-wrapper's own
      overflow: hidden remains the backstop if a measurement is ever
-     somehow still wrong -- unchanged, see that rule's own comment. */
+     somehow still wrong -- unchanged, see that rule's own comment, but
+     is not itself what makes this "look" contained; the JS measurement
+     is what decides containment, this is just insurance. */
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1704,15 +1756,22 @@ body {
   /* Final Mobile Interaction Model pass: white-space is normal (the
      property's own default -- no longer set to nowrap here), and
      max-width/box-sizing below cap this control's own cross-axis size to
-     whatever room the overlay's flex layout actually gives it. Together
+     whatever room the stack's own flex layout actually gives it. Together
      these let "View Project ->" wrap onto a second line on a narrow
-     tile (e.g. "View" / "Project ->") instead of either overflowing past
-     the tile's own edge or being suppressed outright -- "never clip
-     horizontally," per instruction, without a fixed pixel threshold
-     deciding it. text-align centers each wrapped line the same way
-     justify-content already centers the single-line case. If a rare
-     edge-case tile still clips after this pass, the fix belongs here --
-     in this composition -- not in a runtime fit-measurement system or a
+     tile (e.g. "View" / "Project ->") in the ordinary case -- but this is
+     containment, not a guarantee against every possible overflow: a
+     single unbreakable word can still be wider than this box's own
+     max-width, since word-wrap only ever breaks between words, never
+     inside one, and would paint past this box's (and the frame's) edge
+     if left undetected. That real case is what HoverOverlay.jsx's own
+     hard-boundary measurement (frameRef/stackRef, comparing actual
+     rendered geometry on all four sides) exists to catch -- see that
+     effect's own comment; this rule's job is only to make the ordinary
+     case wrap cleanly, not to promise zero overflow on its own.
+     text-align centers each wrapped line the same way justify-content
+     already centers the single-line case. If a rare edge-case tile
+     still clips after this pass, the fix belongs here -- in this
+     composition -- not in a runtime fit-measurement system or a
      global hide. (flex-wrap is not the relevant property here -- this
      element's own content is a single text node, not multiple flex
      children, so flex-wrap has no effect on it; white-space is what
@@ -1760,17 +1819,23 @@ body {
 
 /* Final Mobile Interaction Model pass (hard-boundary fit check):
    View Project's actual hide state -- toggled by HoverOverlay.jsx's own
-   measurement effect (frameRef/viewProjectFits), not by a CSS
-   breakpoint. The previous pass here was a guessed container-query
-   pixel threshold (widths/heights approximated from GT America's
-   per-character advance, flagged as unverified); that's retired in
-   favor of comparing this card's real scrollHeight against its real
-   clientHeight at render time, which needs no such guess. display: none
-   removes this control from flow entirely (not just visually) so
-   Archive Number recenters alone in the frame when this is active --
-   .hover-overlay's own justify-content: center/align-self: center on
-   Number (both unchanged) do the actual centering once View Project is
-   gone from the flex column, no extra rule needed here for that. */
+   measurement effect (frameRef/stackRef/viewProjectFits), not by a CSS
+   breakpoint. Two prior versions lived here in turn: a guessed
+   container-query pixel threshold (widths/heights approximated from GT
+   America's per-character advance, flagged as unverified), then a
+   height-only scrollHeight-vs-clientHeight comparison that missed real
+   horizontal clipping real-device screenshots caught (a single
+   unbreakable word can paint past max-width's own boundary; that
+   comparison only ever measured vertical space). Both retired in favor
+   of comparing .hover-overlay__stack's real rendered rect against the
+   frame's real inner edges on all four sides -- see that measurement
+   effect's own comment. display: none removes this control from flow
+   entirely (not just visually) so Archive Number recenters alone in
+   the frame when this is active -- .hover-overlay__stack's own
+   align-items: center/.hover-overlay's own justify-content: center
+   (both unchanged) do the actual centering, both horizontally and
+   vertically, once View Project is gone from the stack's own flex
+   column -- no extra rule needed here for that. */
 .hover-overlay__enter-project--hidden {
   display: none;
 }

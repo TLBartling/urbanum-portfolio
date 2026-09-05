@@ -155,7 +155,31 @@ export function ProjectInfoTrigger({ isOpen, onToggle }) {
   );
 }
 
-export default function ProjectInfoPanel({ project, image, isOpen }) {
+// Mobile/touch tap-to-toggle Info pass: tapping the open Info overlay
+// itself closes it, in addition to -- never instead of -- the existing
+// Info icon and the existing single-X control (ProjectBreadcrumb.jsx,
+// completely untouched by this pass). `onTap` is only ever passed on
+// touch (see ProjectTemplate.jsx's own isTouchProjectInteraction
+// comment); undefined on desktop, where this is simply never called.
+// Guarded against real interactive content -- a link or button rendered
+// inside RichText's own portable-text output, for instance -- via
+// event.target.closest(...): a tap that lands ON one of those bubbles up
+// with a target inside it, so it's left alone entirely (no toggle, no
+// stopPropagation, no interference with its own click behavior); only a
+// tap that lands on the panel's own text/background, nowhere inside such
+// a control, actually closes Info. This is the one guard needed to keep
+// "tap the Info overlay" and "tap a link inside it" from fighting each
+// other -- nothing else here (isOpen's own render logic, the actual
+// metadata content) changes.
+function handlePanelTap(onTap) {
+  return (event) => {
+    if (!onTap) return;
+    if (event.target.closest("a, button, input, textarea, select")) return;
+    onTap();
+  };
+}
+
+export default function ProjectInfoPanel({ project, image, isOpen, onTap }) {
   // Same derivation ImageMetadata.jsx already established: prefer the
   // richer `themes` array, fall back to the singular `theme` only if
   // `themes` is absent/empty, so a theme is never silently lost.
@@ -191,6 +215,7 @@ export default function ProjectInfoPanel({ project, image, isOpen }) {
     <div
       className={`project-info-panel${isOpen ? " project-info-panel--open" : ""}`}
       aria-hidden={!isOpen}
+      onClick={handlePanelTap(onTap)}
     >
       <div className="project-info-panel__inner">
         <h2 className="project-info-panel__title">{project.title}</h2>

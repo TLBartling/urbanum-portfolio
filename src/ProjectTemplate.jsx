@@ -315,6 +315,19 @@ export default function ProjectTemplate({ slug, imageId }) {
   // surface below -- see useIsHoverCapableInput's own comment.
   const isHoverCapableInput = useIsHoverCapableInput();
 
+  // Mobile/touch tap-to-toggle Info pass: the exact inverse of
+  // isHoverCapableInput above, not a new detector -- reusing this file's
+  // own existing capability signal rather than introducing a second one
+  // (App.jsx's separate useIsTouchDevice is deliberately left alone, per
+  // this pass's own scope). Gates two plain onClick handlers below (the
+  // image column, and ProjectInfoPanel's own container): tap the image
+  // to open Info, tap the open Info overlay to close it, in addition to
+  // -- never instead of -- the existing Info icon and the existing
+  // single-X control (ProjectBreadcrumb.jsx, completely untouched by
+  // this pass). undefined on any fine-pointer/hover-capable device, so
+  // desktop's onClick props below are simply absent, not just inert.
+  const isTouchProjectInteraction = !isHoverCapableInput;
+
   // The invisible scroll container's own DOM node (a real
   // `overflow-x: auto` element, rendered conditionally below), plus the
   // small amount of state its settle-detection effect needs. Kept
@@ -826,7 +839,10 @@ export default function ProjectTemplate({ slug, imageId }) {
             : undefined,
         }}
       >
-        <ProjectBreadcrumb />
+        <ProjectBreadcrumb
+          isInfoOpen={isInfoOpen}
+          onToggleInfo={handleToggleInfo}
+        />
         {currentImage ? (
           // Josh review, final correction pass: a Fragment, not a single
           // wrapper div, since Image Navigation/the Archive Number are no
@@ -840,7 +856,33 @@ export default function ProjectTemplate({ slug, imageId }) {
                 `isInfoOpen` state), so .project-viewer only ever needs
                 its one, constant flex-row rule (see styles.css). */}
             <div className="project-viewer">
-              <div className="project-image-column" ref={imageColumnRef}>
+              <div
+                className="project-image-column"
+                ref={imageColumnRef}
+                // Mobile/touch tap-to-toggle Info pass: only ever wired
+                // when isTouchProjectInteraction is true (undefined
+                // otherwise -- see that const's own comment), and only
+                // ever actually reachable while Info is closed: the
+                // opaque Info overlay (.project-info-panel) covers this
+                // entire column while open and only THEN gains
+                // pointer-events (see that rule's own styles.css
+                // comment), so a tap that lands here at all is already,
+                // structurally, a tap on the image. The `!isInfoOpen`
+                // guard is still explicit here rather than relied on
+                // implicitly, matching this pass's own "tap the image to
+                // open, tap Info to close" one-directional design.
+                // Native browser click-suppression after a real swipe
+                // (this same node's own touchstart/touchmove/touchend
+                // listeners above, unmodified) is what already keeps a
+                // genuine Prev/Next swipe from ever reaching this
+                // handler -- see that effect's own comment; nothing
+                // added here changes it.
+                onClick={
+                  isTouchProjectInteraction && !isInfoOpen
+                    ? handleToggleInfo
+                    : undefined
+                }
+              >
                 <ImageViewer
                   image={currentImage}
                   displayedImage={displayedImage}
@@ -875,6 +917,16 @@ export default function ProjectTemplate({ slug, imageId }) {
                 project={project}
                 image={currentImage}
                 isOpen={isInfoOpen}
+                // Mobile/touch tap-to-toggle Info pass: mirrors the
+                // image column's own onClick immediately above -- only
+                // wired on touch, undefined (no-op) on desktop. Only
+                // ever reachable while isOpen is true, for the same
+                // pointer-events reason documented at the image column's
+                // own onClick, so this is unconditionally "close" in
+                // practice; see ProjectInfoPanel.jsx's own comment for
+                // how it protects real links/controls inside the
+                // content from being swallowed by this same tap.
+                onTap={isTouchProjectInteraction ? handleToggleInfo : undefined}
               />
             </div>
 

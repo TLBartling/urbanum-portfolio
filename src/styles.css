@@ -5230,15 +5230,44 @@ html.is-browsing .zoom-controls {
    (901px+) is completely untouched; safe-area-inset-top resolves to 0px
    on non-notched/desktop browsers via this file's own
    env(safe-area-inset-top, 0px) fallback, so this is a no-op there even
-   if it were ever to apply. Nothing here touches this rule's own
-   display/align-items/justify-content or ImageViewer's fade timing --
-   only the height number itself is corrected. */
+   if it were ever to apply. Originally nothing here touched this rule's
+   own display/align-items/justify-content, only the height number --
+   see the align-items addition immediately below for why that's no
+   longer true.
+
+   Mobile Project image alignment pass: this frame's own height is a
+   RESERVED-SPACE budget (see the base rule's own top comment), not the
+   image's actual rendered size -- align-items: center (base rule,
+   unchanged, still governs 901px+) splits whatever this budget leaves
+   unused evenly above AND below a shorter-than-cap image. On mobile that
+   top half was confirmed dead space between the breadcrumb/X above and
+   the visible top edge of the image, worst on wide/landscape photos,
+   independent of and in addition to the container padding/margin stack
+   already tightened in an earlier pass. align-items: flex-start moves
+   ALL of that unused space to the bottom of this same, completely
+   unchanged reserved height (nothing here touches height/min-height/
+   max-height, the 340px floor, the 300px subtraction, or the dvh unit --
+   only where inside that existing budget the image sits), so the image
+   sits immediately below the X regardless of its own aspect ratio, and
+   .project-image-nav-row's position (a structural sibling below, sized
+   off .project-viewer's own height, itself equal to this frame's height)
+   is completely unaffected -- there is exactly as much room below the
+   image for it as there was before, just now visible as space the image
+   doesn't fill instead of being split invisibly above and below it.
+   .project-image-frame__incoming (the fade-transition overlay, directly
+   below in this file) gets the identical override so the incoming and
+   outgoing image layers stay aligned with each other during a fade --
+   see that rule's own comment. Desktop (901px+) keeps align-items:
+   center, exactly as before; this image's own dimensions, aspect ratio,
+   cropping, and fade timing are completely untouched -- only vertical
+   position within an already-existing, unchanged box changes. */
 @media (max-width: 900px) {
   .project-image-frame {
     height: max(
       340px,
       calc(100dvh - 300px - var(--safe-area-inset-top))
     );
+    align-items: flex-start;
   }
 }
 
@@ -5403,6 +5432,23 @@ html.is-browsing .zoom-controls {
 
 .project-image-frame__incoming--visible {
   opacity: 1;
+}
+
+/* Mobile Project image alignment pass: kept byte-for-byte in sync with
+   .project-image-frame's own mobile align-items change above -- this
+   overlay spans the exact same inset: 0 box (see its own top comment),
+   so if only the base frame's alignment changed, the outgoing (base)
+   image would sit at this box's top edge while the incoming image
+   mid-fade stayed vertically centered, a visible vertical jump the
+   instant this layer starts fading in. Same box, same alignment, on
+   every image -- nothing about opacity, timing, or which layer is on
+   top changes here; only where inside the box each layer's image sits,
+   identically to the base layer. Desktop (901px+) keeps align-items:
+   center on both layers, exactly as before. */
+@media (max-width: 900px) {
+  .project-image-frame__incoming {
+    align-items: flex-start;
+  }
 }
 
 /* Page-level Image Navigation row (Josh review, final correction pass):

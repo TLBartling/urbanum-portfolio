@@ -3006,16 +3006,74 @@ html.is-browsing .zoom-controls {
     color: #111;
   }
 
-  /* Vertically centered in the remaining space beneath the close row --
-     Menu is the sparse counterpart to Search's dense taxonomy grid, so it
-     reads as a short, deliberate list rather than filling the whole
-     screen edge-to-edge. */
+  /* Final mobile correction pass (landscape menu scroll fix): confirmed
+     root cause of Search/Journal being unreachable in short-viewport
+     landscape -- this element used to be both the flex layout AND the
+     vertical-centering mechanism (justify-content: center) for all six
+     links, with no overflow behavior declared anywhere in this component
+     at all (.mobile-menu-overlay itself, the fixed/inset:0 shell, has no
+     overflow-y either). When six links' real rendered height exceeds a
+     landscape phone's short viewport, that excess has nowhere to go --
+     no scroll container exists anywhere in this overlay -- so the tail
+     of the list (Search, Journal) simply renders past the fixed
+     viewport's own edge and is permanently unreachable, not just
+     visually clipped.
+
+     Fix: this element (the <nav>, unchanged in the DOM) becomes the
+     scroll container itself -- flex: 1 1 auto still sizes it to
+     whatever space .mobile-menu-overlay__top-row's own fixed height
+     leaves within the fixed viewport shell, min-height: 0 is required
+     alongside that (without it, a flex item's default min-height: auto
+     lets it grow to fit its content instead of respecting the space
+     .mobile-menu-overlay actually has, which would silently defeat
+     overflow-y below by never letting this box become shorter than its
+     content in the first place), and overflow-y: auto is the actual
+     scroll behavior -- reusing the same -webkit-overflow-scrolling:
+     touch already established on .mobile-search-overlay's own scroll
+     surface for consistent momentum scrolling.
+
+     The actual link buttons (typography, order, gap, and the former
+     justify-content: center) move to a new inner wrapper,
+     .mobile-menu-overlay__links-inner, directly below -- structured this
+     way rather than centering directly on the scroll container itself
+     because centered flex content that later overflows is a well-known
+     cross-browser trap: the overflow gets distributed to BOTH edges
+     (half above, half below), and depending on browser/engine, scrolling
+     to the top edge may not fully reveal content that overflowed
+     upward -- an unreliable way to guarantee "every entry is reachable."
+     auto margins on the inner wrapper (see that rule) are the standard,
+     broadly-supported alternative: they collapse to 0 the moment content
+     no longer fits, so the overflowing case behaves as a plain top-
+     anchored, fully top-to-bottom scrollable list -- no keyword support
+     to worry about (no reliance on the newer, less consistently
+     supported `justify-content: safe center`), and the exact same visual
+     result as before in the common, non-overflowing case (see that
+     rule's own comment). */
   .mobile-menu-overlay__links {
     flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     display: flex;
     flex-direction: column;
-    justify-content: center;
+  }
+
+  /* Carries what .mobile-menu-overlay__links itself used to declare
+     directly (display/flex-direction/gap/justify-content-via-margin) --
+     see that rule's own comment for why this split exists. margin:
+     auto 0 is the actual centering mechanism now: identical visual
+     result to the old justify-content: center while this wrapper's own
+     height is less than its scroll-container parent's available space
+     (portrait, the common case, is effectively unchanged), but the
+     instant content height meets or exceeds the parent's, both auto
+     margins resolve to 0 and this wrapper simply starts flush at the
+     scroll container's own top edge -- ordinary, fully top-to-bottom
+     scrollable content, Archive through Journal, all reachable. */
+  .mobile-menu-overlay__links-inner {
+    display: flex;
+    flex-direction: column;
     gap: clamp(8px, 4vw, 20px);
+    margin: auto 0;
   }
 
   /* Larger than the header's own micro-typography (.text-control's
@@ -4627,6 +4685,17 @@ html.is-browsing .zoom-controls {
   display: flex;
   flex-direction: column;
   gap: clamp(20px, 2.4vw, 32px);
+  /* Final mobile correction pass (Project X structural fix): the smallest
+     necessary positioning context for .project-breadcrumb's mobile/touch
+     absolute positioning further down this file -- see that rule's own
+     comment. Adds nothing else: no static content on this page is
+     offset by declaring this, only descendants that themselves opt into
+     position: absolute resolve against it (and .project-viewer/
+     .project-info-panel already establish their own, nearer positioned
+     ancestor for their own absolutely positioned children, so this is a
+     no-op for them). Desktop is unaffected -- .project-breadcrumb's
+     desktop rule never uses position: absolute. */
+  position: relative;
   /* Project-Page-only spacing, scoped via longhand overrides rather than
      touching .about-content itself (still shared by About/Projects/
      Journal/Contact): equal specificity + later source order lets these three
@@ -4744,37 +4813,53 @@ html.is-browsing .zoom-controls {
    about the padding-top/margin-top VALUES themselves changes here, only
    the condition under which they apply. */
 @media (max-width: 900px), (hover: none) and (pointer: coarse) {
+  /* Final mobile correction pass (Project X structural fix): the previous
+     value here (82px) reserved clearance only for the header itself --
+     .project-breadcrumb (the X) was still a normal-flow sibling at that
+     point, so its own 32px height + margin-bottom + .project-content's
+     own flex `gap` all stacked on top of this padding-top, pushing
+     .project-viewer down further still, undone in the prior pass only by
+     a compensating negative margin-top on .project-viewer (a real fix,
+     but a patch on top of a structural problem, not a removal of it, per
+     this pass's own explicit instruction not to keep compensating with
+     more negative margins).
+
+     .project-breadcrumb is now taken out of normal flow entirely
+     (position: absolute, see that rule's own comment below) -- it no
+     longer occupies a flow row, contributes no margin, and no longer
+     participates in .project-content's flex `gap` at all (gap only ever
+     applies between actual flex-participating siblings; an absolutely
+     positioned element isn't one). .project-viewer is therefore now the
+     FIRST flow child of .project-content, and this padding-top is the
+     ONLY thing standing between the header and the image -- so it now
+     reserves the complete, exact budget for header clearance + the X's
+     own footprint + the small target gap beneath it, nothing more:
+       76px  -- .site-header's real, non-negotiable mobile footprint
+                (12px top padding + 64px row1 height, confirmed by direct
+                read of both rules)
+     +  6px  -- breathing gap above the X (unchanged from the prior
+                pass's own value; the X still starts exactly where it
+                always has, safely clear of the header/safe-area)
+     + 32px  -- the X's own hit-target height (unchanged, never shrunk)
+     + 10px  -- the intended visual gap between the X's bottom edge and
+                the first visible image pixel (within the requested
+                8-12px range)
+     = 124px, plus the real --safe-area-inset-top on top, same as before.
+     .project-viewer's own margin-top is simply 0 here -- there is no
+     flex-gap left to cancel, so no compensating negative value is
+     needed anymore; the obsolete negative-margin hack from the prior
+     pass is removed outright, not just adjusted. Desktop (901px+,
+     outside this block) is untouched: .project-content's own base
+     padding-top and .project-viewer's own base margin-top: 10px still
+     apply there exactly as before, and .project-breadcrumb stays a
+     normal-flow, non-absolute element on desktop (its position: absolute
+     is declared only inside this same mobile/touch block, see below). */
   .project-content {
-    padding-top: calc(var(--safe-area-inset-top) + 82px);
+    padding-top: calc(var(--safe-area-inset-top) + 124px);
   }
 
-  /* Final mobile correction pass -- confirmed root cause of "still too
-     much space" between the X and the image, beyond the breakpoint
-     mismatch fixed elsewhere in this pass: .project-content is a column
-     flex container with its own `gap: clamp(20px, 2.4vw, 32px)` (base
-     rule, shared by every child page), which inserts real, additional
-     space between EVERY pair of its direct flex children -- including
-     .project-breadcrumb and .project-viewer -- independently of and
-     stacking ON TOP OF .project-breadcrumb's own mobile margin-bottom
-     (8px, see that rule's own comment, which assumed -- incorrectly --
-     that its margin-bottom was the sole source of this gap). At mobile
-     widths this gap's own 20px floor governs (2.4vw never reaches 20px
-     below ~833px wide), so the real total space was margin-bottom(8px)
-     + gap(20-32px) = 28-40px, not the intended 8px. A negative
-     margin-top here, sized to exactly cancel .project-content's own gap
-     value via the identical clamp() formula (never a guessed constant),
-     pulls .project-viewer back up through that inserted space so
-     .project-breadcrumb's own margin-bottom becomes the true, sole,
-     exact source of the visible gap, matching what was already
-     documented. This only offsets the space ABOVE .project-viewer: the
-     gap AFTER it, between .project-viewer and .project-image-nav-row
-     (the bottom Image Navigation/Archive Number row), is a separate
-     instance of the same shared `gap` property and is completely
-     untouched, so bottom-row spacing is unaffected. Desktop (901px+,
-     outside this block) keeps the shared gap and margin-top: 10px
-     exactly as before. */
   .project-viewer {
-    margin-top: calc(-1 * clamp(20px, 2.4vw, 32px));
+    margin-top: 0;
   }
 }
 
@@ -4932,25 +5017,50 @@ html.is-browsing .zoom-controls {
    this block (the mobile X, its margin-bottom, hiding the desktop
    chevron) is otherwise completely unchanged. */
 @media (max-width: 900px), (hover: none) and (pointer: coarse) {
-  /* "Top-right": .project-breadcrumb is already the first element in
-     .project-content's normal flow (top), so right-aligning its own row
-     via flex is enough to reach the requested position -- no new
-     position: absolute/fixed layer, no z-index, nothing that could
-     interact with ImageViewer/the trackpad surface/Archive layering. */
-  /* Mobile Project Image Above-the-Fold pass: the shared, desktop-and-
-     mobile margin-bottom above (clamp(14px, 1.8vw, 22px), floors at a
-     flat 14px at every phone width since 1.8vw never reaches 14px below
-     ~778px wide) is overridden here, mobile only, down to a flatter 8px
-     -- a small, deliberate, still-real gap, not zero -- and is now the
-     sole source of the space between the X and the image below it (see
-     .project-viewer's own ≤640px override, immediately above in this
-     file, for why its former 10px margin-top was zeroed out here rather
-     than left stacking alongside this one). Desktop/tablet keep the
-     shared clamp(14px, 1.8vw, 22px) above completely untouched. */
+  /* Final mobile correction pass (Project X structural fix): the prior
+     approach kept the X in normal document flow -- its own row, right-
+     aligned via flex, contributing a real height (32px) plus a margin
+     plus a share of .project-content's own flex `gap` to the layout
+     above the image, no matter how those individual numbers were tuned.
+     Per this pass's explicit instruction, the fix is structural, not
+     another round of compensating: position: absolute removes
+     .project-breadcrumb from flow entirely, so it no longer pushes
+     .project-viewer down by its own height/margin/gap at all --
+     .project-content's own padding-top (see that rule's own comment
+     just above) is now the ONLY thing reserving vertical space above the
+     image, and already accounts for exactly this control's own
+     footprint plus the intended gap beneath it.
+
+     top/right position it precisely where it already visually sat in
+     flow, using the same values/formulas already established rather
+     than guessed ones: top reuses .project-content's own PRIOR
+     padding-top constant (safe-area + 82px = header's real 76px + the
+     existing 6px breathing gap), so the X's own top edge lands exactly
+     where the header-clearance gap already ends; right reuses
+     .project-content's own current mobile/touch padding-right formula
+     (clamp(20px, 5vw, 40px), see that rule's ≤900px override above) so
+     the X's right edge lines up flush with the image/nav-row's own
+     right edge, exactly as it did as a flow child. margin: 0 clears the
+     base rule's shared margin-bottom (clamp(14px, 1.8vw, 22px)) -- moot
+     for layout on an absolutely positioned element, but removed outright
+     so nothing here is ambiguous about what's actually doing the
+     positioning. z-index: 2 is a defensive, not a corrective, addition:
+     with the numbers above there is a real, non-overlapping ~10px gap
+     between the X's own bottom edge and the image's top edge (no
+     overlap occurs), but since this is now an overlay-style,
+     out-of-flow element sitting near the image area, a small stacking
+     guarantee costs nothing. .project-content's own position: relative
+     (see that rule's own comment) is the positioning context this
+     resolves against -- not .project-viewer or any other ancestor.
+     Desktop (901px+, outside this block) is untouched: .project-
+     breadcrumb stays a normal, non-absolute flow element there, exactly
+     as before. */
   .project-breadcrumb {
-    display: flex;
-    justify-content: flex-end;
-    margin-bottom: 8px;
+    position: absolute;
+    top: calc(var(--safe-area-inset-top) + 82px);
+    right: clamp(20px, 5vw, 40px);
+    margin: 0;
+    z-index: 2;
   }
 
   .project-breadcrumb__control {

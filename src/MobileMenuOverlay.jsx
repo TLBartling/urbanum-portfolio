@@ -77,34 +77,55 @@ export default function MobileMenuOverlay({
         </button>
       </div>
 
+      {/* Final mobile correction pass (landscape menu scroll fix): this
+          <nav> is now the independently scrollable region within the
+          fixed-viewport overlay shell above (min-height: 0 + overflow-y:
+          auto, see styles.css's own comment on .mobile-menu-overlay__links)
+          -- .mobile-menu-overlay__top-row and its close button, a
+          separate flow sibling above this <nav>, is never inside this
+          scroll container, so it stays reliably on-screen and tappable no
+          matter how far the list beneath it scrolls. The actual link
+          buttons move one level deeper, into a new
+          .mobile-menu-overlay__links-inner wrapper, so the scroll
+          container itself and the centering/gap layer are two separate
+          elements (see that class's own styles.css comment for why: auto
+          margins on this inner wrapper replace the old justify-content:
+          center, so centering still looks identical when everything fits,
+          but the moment it doesn't, the wrapper simply starts flush at
+          the scroll container's own top and every entry -- Search and
+          Journal included -- becomes reachable by scrolling). No link,
+          order, label, or click handler changes here -- purely an added
+          wrapping element. */}
       <nav className="mobile-menu-overlay__links" aria-label="Site navigation">
-        {linksBeforeSearch.map(renderLink)}
-        {/* Mobile Header/Search/Menu Refinement Pass -- Section 8 (Mobile
-            Search Relocation): Search moved here from the mobile top
-            header (see Header.jsx's own Section 8 comment). Deliberately
-            NOT part of linksBeforeSearch/linksAfterSearch/onSelect above --
-            those are a real page-navigation table (active-state
-            highlighting, actual routes) and Search isn't a page, it opens
-            the existing mobile Search/discovery overlay instead.
-            onSearchOpen is the same handleMobileSearchOpen the header's
-            old visible Search button used to call -- no new search logic,
-            just a different trigger surface. Reuses the exact
-            .mobile-menu-overlay__link class the page links use (same type
-            family/size/weight/spacing, same generous touch target) so it
-            reads as one consistent list, not a bolted-on extra control --
-            just never gets aria-current/--active since it isn't a
-            "current page." Mobile Menu order/copy pass: now positioned
-            between linksBeforeSearch and linksAfterSearch (Contact and
-            Journal) per the client-approved order, rather than always
-            first. */}
-        <button
-          type="button"
-          className="mobile-menu-overlay__link"
-          onClick={onSearchOpen}
-        >
-          Search
-        </button>
-        {linksAfterSearch.map(renderLink)}
+        <div className="mobile-menu-overlay__links-inner">
+          {linksBeforeSearch.map(renderLink)}
+          {/* Mobile Header/Search/Menu Refinement Pass -- Section 8 (Mobile
+              Search Relocation): Search moved here from the mobile top
+              header (see Header.jsx's own Section 8 comment). Deliberately
+              NOT part of linksBeforeSearch/linksAfterSearch/onSelect above --
+              those are a real page-navigation table (active-state
+              highlighting, actual routes) and Search isn't a page, it opens
+              the existing mobile Search/discovery overlay instead.
+              onSearchOpen is the same handleMobileSearchOpen the header's
+              old visible Search button used to call -- no new search logic,
+              just a different trigger surface. Reuses the exact
+              .mobile-menu-overlay__link class the page links use (same type
+              family/size/weight/spacing, same generous touch target) so it
+              reads as one consistent list, not a bolted-on extra control --
+              just never gets aria-current/--active since it isn't a
+              "current page." Mobile Menu order/copy pass: now positioned
+              between linksBeforeSearch and linksAfterSearch (Contact and
+              Journal) per the client-approved order, rather than always
+              first. */}
+          <button
+            type="button"
+            className="mobile-menu-overlay__link"
+            onClick={onSearchOpen}
+          >
+            Search
+          </button>
+          {linksAfterSearch.map(renderLink)}
+        </div>
       </nav>
     </div>
   );

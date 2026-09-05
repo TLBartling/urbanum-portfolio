@@ -6005,12 +6005,48 @@ html.is-browsing .zoom-controls {
    the top-right mobile back control, so neither is affected by this at
    all. Desktop's base rule (901px+, justify-content: center) is
    completely untouched -- this whole block stays scoped to the same
-   ~900px breakpoint this page's other mobile/touch fixes already use. */
+   ~900px breakpoint this page's other mobile/touch fixes already use.
+
+   Mobile Info width widening pass: the note directly above ("this
+   element's own margin: 0 auto/max-width... are on the opposite axis and
+   are untouched") was accurate when written but is superseded by the
+   max-width override added here -- confirmed via direct inspection to be
+   the ONLY width constraint anywhere in this component (.project-info-
+   panel itself is inset: 0, full width; none of __title/__location/
+   __year/__themes/__description carry any width, max-width, inline-size,
+   or ch-based limit of their own -- .project-info-panel__description
+   specifically was checked given its own historical comment about the
+   420px measure, and has none). The base rule's max-width: min(420px,
+   60%) is a single, shared value for both desktop and mobile: on a
+   desktop/tablet viewport 60% rarely governs (420px usually does, a
+   deliberate, comfortable editorial column width there -- left
+   completely untouched, this override only applies ≤900px), but on a
+   phone the 60% term dominates instead (max-width caps below the 420px
+   floor at any viewport under 700px wide) -- e.g. ~225px on a 375px-wide
+   phone, confirmed the direct cause of "excessive empty space left/
+   right" and body copy wrapping far more aggressively than the image
+   above it, which spans nearly the page's full content width. Widened,
+   mobile-only, to min(560px, 90%): a substantially larger measure that
+   still preserves a real, deliberate side gutter (10% of the available
+   width split evenly by the unchanged margin: 0 auto centering, roughly
+   a symmetric 15-20px gutter at typical phone widths once .project-
+   viewer's own padding is factored in) rather than reading as full-
+   bleed, and still visually relates to the image's own width instead of
+   reading as a narrow, desktop-style editorial column. The 560px cap
+   (up from 420px) keeps this from staying pinned to a small fixed width
+   on a larger touch tablet, for the same reason the 420px floor existed
+   in the first place, just rescaled to this pass's own wider intent.
+   text-align: center, the identity block/Themes line's own inherited
+   centering, and every font-size/font-weight/line-height in this
+   component are completely untouched -- only the measure widens.
+   Desktop (901px+, outside this block) keeps the exact min(420px, 60%)
+   value it always had. */
 @media (max-width: 900px) {
   .project-info-panel__inner {
     justify-content: flex-start;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    max-width: min(560px, 90%);
   }
 }
 

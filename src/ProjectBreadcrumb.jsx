@@ -61,7 +61,7 @@ import { navigate } from "./navigation";
 //   See .project-breadcrumb's own comment in styles.css for the exact
 //   mechanism -- a calc() pulling it back by the difference between the
 //   two padding formulas, scoped to desktop only.
-export default function ProjectBreadcrumb() {
+export default function ProjectBreadcrumb({ isInfoOpen = false, onToggleInfo } = {}) {
   return (
     <div className="project-breadcrumb">
       <button
@@ -96,11 +96,30 @@ export default function ProjectBreadcrumb() {
           .project-breadcrumb__mobile-close in styles.css), the same
           breakpoint useIsMobileUiMode already uses elsewhere for "mobile
           UI mode," so no JS mobile-detection branch was needed here. */}
+      {/* Mobile Project Info X fix (non-Archive mobile refinements round):
+          this is still the one and only mobile "X" -- never a second
+          control -- but what it DOES now depends on whether Project
+          Information is open. Previously this always called navigate("/"),
+          so opening Info (a full-screen-reading opaque overlay on mobile)
+          left this same top-right X still visibly meaning "leave Project,"
+          which is confusing and, worse, actually did exit the Project
+          instead of closing Info. isInfoOpen/onToggleInfo are the exact
+          same isInfoOpen state and handleToggleInfo function
+          ProjectInfoTrigger/ProjectArchiveIndex already share (see
+          ProjectTemplate.jsx's own comment on why there is only ever one
+          open/closed boolean with multiple entry points) -- passed down
+          from ProjectTemplate.jsx so this control becomes a third entry
+          point to that same toggle, not a new, independently tracked
+          state. While Info is open this X closes Info only (same image,
+          same index, no navigation); once Info is closed it goes back to
+          meaning "leave Project" exactly as before. Purely a behavior/
+          aria-label change -- glyph, sizing, and position are completely
+          unchanged. */}
       <button
         type="button"
         className="project-breadcrumb__mobile-close"
-        onClick={() => navigate("/")}
-        aria-label="Back to Archive"
+        onClick={isInfoOpen ? onToggleInfo : () => navigate("/")}
+        aria-label={isInfoOpen ? "Close project information" : "Back to Archive"}
       >
         <span aria-hidden="true">&times;</span>
       </button>

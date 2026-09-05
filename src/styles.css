@@ -1299,11 +1299,16 @@ body {
    from the parent. width: 100%/max-width: 100%/box-sizing: border-box
    keep this wrapper itself from ever exceeding the frame's own usable
    interior, same role .hover-overlay__enter-project's own max-width
-   already played for itself. When the tiny-card fallback further down
-   this file hides View Project, this SAME wrapper remains in the DOM
-   with Archive Number as its only child -- still centered both axes by
-   the properties below, no separate Number-only layout needed (see
-   that fallback's own comment). */
+   already played for itself. Single Presentation Authority pass: this
+   wrapper only ever mounts when isThumbnailTier is false (see
+   HoverOverlay.jsx's own render condition) -- there is no longer a
+   separate CSS or JS fallback that hides View Project WITHIN this
+   wrapper while leaving it mounted; below isThumbnailTier's own 80x48
+   floor, this wrapper (and View Project) simply never renders at all,
+   and Archive Number is a plain .hover-overlay child instead (see that
+   rule's own comment). This wrapper's job is now solely to protect
+   Archive Number + View Project from colliding across every size it
+   DOES render at, all the way down to that 80x48 floor. */
 .hover-overlay__project-stack {
   display: flex;
   flex-direction: column;
@@ -1313,15 +1318,19 @@ body {
   max-width: 100%;
   box-sizing: border-box;
   /* Explicit, responsive, and owned solely by this wrapper -- the ONE
-     source of spacing between Archive Number and View Project now
-     (View Project's own former margin-top, which duplicated/competed
-     with the parent's shared gap, has been removed -- see that rule's
-     own comment). cqmin-based like every other responsive value on
-     this card, so it scales down gracefully alongside both labels'
-     own font-size clamps rather than staying a fixed absolute value
-     while the text around it shrinks -- floor and ceiling keep it from
-     ever collapsing to nothing or growing disproportionately large. */
-  gap: clamp(0.2rem, 3cqmin, 0.4rem);
+     source of spacing between Archive Number and View Project (View
+     Project's own former margin-top, which duplicated/competed with
+     this gap, has been removed -- see that rule's own comment).
+     cqmin-based like every other responsive value on this card, so it
+     scales down gracefully alongside both labels' own font-size clamps
+     rather than staying fixed while the text around it shrinks.
+     Minimum Box Fit pass: floor lowered from 0.2rem (3.2px) to 1px --
+     at the smallest size this wrapper now actually has to serve (a
+     Project-linked tile right at isThumbnailTier's own 80x48 floor,
+     the smallest a non-Thumbnail tile can be), 1px is the real
+     "still a visible, deliberate gap, not touching" minimum; ceiling
+     (0.4rem) is unchanged, so large tiles look exactly as before. */
+  gap: clamp(1px, 3cqmin, 0.4rem);
 }
 
 /* Archive number: typography, font-size scaling, and formatting are exactly
@@ -1381,9 +1390,9 @@ body {
   color: #1a1a1a;
 }
 
-/* Text Containment correction pass: both of the rules below are
-   deliberately scoped under .gallery-image-wrapper--inspected (App.jsx's
-   own JS-driven class, applied only when isTouchDevice is true AND this
+/* Text Containment correction pass: the rules below are deliberately
+   scoped under .gallery-image-wrapper--inspected (App.jsx's own
+   JS-driven class, applied only when isTouchDevice is true AND this
    specific tile is the one currently inspected -- see that class's own
    comment further up this file) rather than left as bare
    .hover-overlay__number/@container rules. Archive Number renders on
@@ -1404,9 +1413,29 @@ body {
    never had this rule before this pass and still doesn't (the base
    .hover-overlay__number rule above is back to its pre-this-pass state)
    -- this is additive, mobile-inspected-only behavior, not a change to
-   any rule desktop's own hover card resolves against. */
+   any rule desktop's own hover card resolves against.
+
+   Minimum Box Fit pass: font-size and padding are also overridden here,
+   for the same desktop-safety reason nowrap already is -- the base
+   .hover-overlay__number rule above keeps its own 0.6rem/9.6px floor
+   and 0.2rem vertical padding completely unchanged (desktop's Number
+   still looks exactly as it always has), while this touch-only-scoped
+   override gets its own, LOWER floor on both: font-size down to an 8px
+   floor, padding down to a 1px vertical / 2px horizontal floor. This is
+   what makes Archive Number + View Project (in
+   .hover-overlay__project-stack, see that rule's own comment) fit
+   inside the smallest real non-Thumbnail box (isThumbnailTier's own
+   80x48 floor) with real margin to spare, without a second size
+   threshold -- see that constant's own App.jsx comment for why a
+   second threshold was rejected in favor of this. Ceilings match the
+   base rule exactly (1rem font, 0.2rem/0.5rem padding), so at any
+   container large enough to already resolve near those ceilings, this
+   override is visually a no-op -- only genuinely small non-Thumbnail
+   tiles, near the 80x48 floor, actually see a difference. */
 .gallery-image-wrapper--inspected .hover-overlay__number {
   white-space: nowrap;
+  font-size: clamp(8px, 6cqmin, 1rem);
+  padding: clamp(1px, 2cqmin, 0.2rem) clamp(2px, 4cqmin, 0.5rem);
 }
 
 /* Text Containment pass: the Archive Number's own "never clip" fallback
@@ -1741,17 +1770,24 @@ body {
      instruction not to patch a live measurement system further. This
      control is a plain declarative flex child again, the same
      architecture desktop's own hover card has always used: responsive
-     cqmin typography (below) with a hard min/max, natural wrapping, and
-     exactly ONE static CSS container-query fallback for genuinely tiny
-     cards (see .hover-overlay__enter-project's own visibility rule
-     further below, modeled directly on Archive Number's own pre-existing
-     fallback higher up this file) -- no JS decides this control's
-     visibility any more. This is a deliberate trade: a hand-derived,
-     approximate breakpoint in exchange for zero flicker, not a claim
-     that this is pixel-perfect against every possible tile geometry.
-     .gallery-image-wrapper's own overflow: hidden remains the backstop
-     if a real tile is ever still wrong -- unchanged, see that rule's own
-     comment. */
+     cqmin typography (below) with a hard min/max, natural wrapping.
+     Single Presentation Authority pass: this control's own visibility is
+     no longer decided by anything in this file at all -- not a CSS
+     container-query fallback (an earlier version of this rule had one,
+     modeled on Archive Number's own pre-existing fallback higher up this
+     file; removed), not a second JS threshold (a version after that
+     added its own isTooSmallForViewProject prop at 120x72; also
+     removed). The parent JSX's render condition
+     (isInspected && onEnterProject && !isThumbnailTier, see
+     HoverOverlay.jsx's own comment) is the single, only place this
+     control's mounting is decided, reusing the exact same isThumbnailTier
+     boundary (80x48) that already decides this card's padding and a
+     non-Project tile's selectability. This rule's own job, below, is
+     purely to make this control fit and read cleanly at every size it
+     DOES mount at, all the way down to that boundary -- not to add a
+     second cutoff of its own. .gallery-image-wrapper's own
+     overflow: hidden remains the backstop if a real tile is ever still
+     wrong -- unchanged, see that rule's own comment. */
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1767,7 +1803,14 @@ body {
      by .hover-overlay__project-stack's own gap (see that rule's own
      comment), so there is exactly one source of spacing between the
      two, not a gap plus a competing margin. */
-  padding: 0 0.75rem;
+  /* Minimum Box Fit pass: horizontal padding is now responsive, floor
+     lowered from a fixed 0.75rem (12px) to 2px -- at isThumbnailTier's
+     own 80x48 floor, this control's own real available width (the
+     tile's own width, less this card's own safe-area padding) is tight
+     enough that 12px fixed padding on each side would crowd out
+     "PROJECT ->"'s own text width; ceiling (0.75rem) is unchanged, so
+     large tiles keep exactly the same visible padding as before. */
+  padding: 0 clamp(2px, 4cqmin, 0.75rem);
   pointer-events: auto;
   cursor: pointer;
   /* position: relative is what lets the ::before rule immediately below
@@ -1809,13 +1852,20 @@ body {
        calibration (window.__urbanumMobileDebug(), see
        MOBILE_SELECTABLE_TILE_MIN_WIDTH_PX in App.jsx for the full
        derivation history).
-       Floor: 11px -- kept at the raised, genuinely-readable floor from
-       an earlier pass (was 9px) rather than reverted, per instruction
-       ("responsive typography stays"/"do not shrink the text into
-       unreadability just to keep it on one line"). Below the floor, a
-       narrower container gets more help from wrapping (above) than from
-       shrinking further. */
-  font-size: clamp(11px, 9.4cqmin, 0.68rem);
+       Floor: Minimum Box Fit pass -- lowered from 11px to 8px. The
+       11px floor predates isThumbnailTier becoming this control's only
+       mounting condition; now that the smallest container this control
+       ever actually renders in is isThumbnailTier's own 80x48 floor
+       (not some arbitrary smaller size a CSS/JS fallback used to also
+       have to defend against), 8px is what that specific box's own real
+       composition math needs -- paired with the lowered gap/padding
+       elsewhere on this card, the full stack fits with real margin to
+       spare at 80x48 (see App.jsx's own MOBILE_SELECTABLE_TILE_MIN_
+       WIDTH_PX comment for that math). Below the floor, a narrower
+       container gets more help from wrapping (above) than from
+       shrinking further -- and below isThumbnailTier's own boundary,
+       this control simply never mounts at all any more. */
+  font-size: clamp(8px, 9.4cqmin, 0.68rem);
   font-weight: 400;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -1825,12 +1875,17 @@ body {
      the frame's own vertical budget rather than inheriting the ambient
      line-height (1.4-1.5 in most browsers' default stylesheet), which
      would push a two-line wrap noticeably taller than this control
-     actually needs to be. 1.15 is snug without crowding the ascenders/
-     descenders of this uppercase, letter-spaced text -- Archive Number's
-     own single line already sits at the tightest safe floor (line-height:
-     1, see that rule); two wrapped lines need a hair more than that,
-     hence 1.15 rather than 1. */
-  line-height: 1.15;
+     actually needs to be. Minimum Box Fit pass: tightened again, from
+     1.15 to 1.05 -- at isThumbnailTier's own 80x48 floor (the smallest
+     box this control now ever has to fit inside, see this rule's own
+     font-size comment), two wrapped lines at the 8px floor plus Archive
+     Number's own box plus the stack's own gap need every remaining
+     pixel of headroom; 1.05 is still comfortably clear of ascender/
+     descender clipping for this uppercase, letter-spaced text -- Archive
+     Number's own single line sits at the absolute floor (line-height: 1,
+     see that rule) since it never wraps; two lines keep a hair more than
+     that. */
+  line-height: 1.05;
   /* Locked Mobile Interaction pass: no box/border/pill/button chrome
      around this control, per explicit instruction -- min-height/padding
      above still give it a real, comfortable tap target (the standard
@@ -1845,29 +1900,24 @@ body {
   opacity: 0.7;
 }
 
-/* Density/Legibility separation pass: View Project's tiny-card
-   presentation decision has moved out of this file entirely, into a
-   plain width/height check in App.jsx (see
-   MOBILE_VIEW_PROJECT_PRESENTATION_MIN_WIDTH_PX/_HEIGHT_PX's own
-   declaration comment there for the real composition-math derivation,
-   the same "PROJECT" character-advance and stack-height math a
-   container-query fallback that used to live at this exact spot was
-   already using). That decision is now made once, from the same real,
-   build-time-known item.layout geometry isThumbnailTier itself already
-   uses, and passed down as HoverOverlay's own isTooSmallForViewProject
-   prop -- when true, View Project never mounts in the DOM at all (see
-   that component's own render condition), so there is nothing left for
-   a CSS rule to hide here. This isn't a live-measurement regression:
-   both the old container-query version and the current prop-driven one
-   are static, one-time, no-ResizeObserver decisions -- this pass just
-   consolidated the decision alongside isThumbnailTier's own identical
-   real-geometry check rather than leaving two independent smallness
-   signals (an 80x48 JS tier and a 120x72 CSS breakpoint) answering
-   overlapping questions about the same tile. Archive Number's own
-   extreme-sliver fallback higher up this file (right after its own base
-   rule) is unrelated and untouched -- it still guards the one remaining case neither
-   isThumbnailTier nor isTooSmallForViewProject cover: a tile too small
-   even for Archive Number alone. */
+/* Single Presentation Authority pass: View Project's tiny-card
+   presentation decision lives entirely in HoverOverlay.jsx's own JSX
+   now -- isInspected && onEnterProject && !isThumbnailTier (see that
+   component's own render condition and prop comment). Two prior
+   versions lived at this exact spot in turn: a CSS container-query
+   fallback (its own breakpoint, modeled on Archive Number's fallback
+   higher up this file), then a dedicated isTooSmallForViewProject JS
+   prop at its own 120x72 thresholds -- both removed. There is no
+   second smallness signal any more: isThumbnailTier (80x48, the same
+   real, build-time-known item.layout geometry it always used) is the
+   one and only presentation authority for View Project, exactly the
+   same boundary that already decides this card's padding and a
+   non-Project tile's selectability. Nothing left for a CSS rule to
+   hide here -- when isThumbnailTier is true, View Project simply never
+   mounts in the DOM. Archive Number's own extreme-sliver fallback
+   higher up this file (right after its own base rule) is unrelated and
+   untouched -- it still guards the one remaining case isThumbnailTier
+   doesn't cover: a tile too small even for Archive Number alone. */
 
 /* Text Containment correction pass: the 44px standard tap-target size,
    restored -- but as an invisible hit area, not visible layout height

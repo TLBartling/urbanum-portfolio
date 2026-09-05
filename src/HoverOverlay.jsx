@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { findRelatedArchiveItems } from "./relationshipEngine";
 import { hapticSelect } from "./haptics";
 // Content layer seam (Frontend <-> CMS handshake, Phase 1): no longer a
@@ -56,25 +56,29 @@ import { getArchiveItems } from "./content";
 // compatibility with later phases that may need it for layout decisions
 // this phase doesn't require; it is intentionally unused for now.
 //
-// Final Mobile Interaction Model pass (hard-boundary fit check): View
-// Project's own history had gotten contradictory across several passes
-// -- a live useLayoutEffect/ResizeObserver DOM-measurement gate that
-// failed shut on a real device (no tile ever showed View Project), a
-// rollback to tier classification (Medium/Large only, Thumbnail never),
-// then a guessed CSS container-query pixel threshold -- all retired now.
-// The render condition below is simply `isInspected && onEnterProject`:
-// ANY inspected, Project-linked tile attempts View Project, regardless
-// of tier. Typography scales responsively (cqmin-based clamp) down to a
-// hard floor, and the label wraps onto a second line rather than
-// clipping (white-space is not nowrap, see styles.css) -- both mean
-// width can never be the reason this overflows. What decides whether it
-// actually fits is a small, deterministic measurement (frameRef/
-// viewProjectFits below): does this card's real, currently-rendered
-// content genuinely fit its own real height at that floor? If not, View
-// Project is hidden outright (display: none, out of flow) and Archive
-// Number alone recenters in the frame -- a clean binary, never a
-// partially-clipped third state. See that effect's own comment for why
-// this measurement succeeds where the earlier live-DOM attempt failed.
+// Final Mobile Presentation pass (CSS-only, no runtime measurement):
+// View Project's own history had gotten genuinely contradictory across
+// several passes -- a live useLayoutEffect/ResizeObserver DOM-measurement
+// gate that failed shut on a real device (no tile ever showed View
+// Project), a rollback to tier classification (Medium/Large only,
+// Thumbnail never), a guessed CSS container-query pixel threshold, then
+// a CORRECTED live measurement (comparing real rendered geometry against
+// the frame on all four sides, catching a real horizontal-clipping bug
+// the first live version missed) -- that corrected version was, in turn,
+// still a live render -> measure -> hide/show -> reflow cycle, and it
+// visibly flickered/glitched on small real tiles. All of it is retired
+// now, not tuned again: there is no ref, no state, no effect, no
+// ResizeObserver anywhere in this file any more. The render condition
+// below is simply `isInspected && onEnterProject` -- ANY inspected,
+// Project-linked tile attempts View Project, regardless of tier -- and
+// what decides whether it's actually VISIBLE is plain, declarative CSS,
+// the same architecture desktop's own hover card has always used:
+// responsive cqmin-based typography down to a hard floor, natural
+// wrapping onto a second line, and exactly one simple container-query
+// fallback (styles.css) that hides this control outright on a
+// genuinely tiny card, leaving Archive Number alone -- see that
+// control's own render comment below and its styles.css rule for the
+// full reasoning.
 //
 // Theme order: shuffled once per gallery generation, stable afterward.
 // `itemId` and `generation` (passed down from App -- see
@@ -398,131 +402,8 @@ function HoverOverlay({
     onEnterProject?.();
   };
 
-  // Final Mobile Interaction Model pass -- hard-boundary fit check,
-  // corrected to measure BOTH axes: a real-device test proved the
-  // previous (height-only) version wrong. That version compared
-  // frameEl.scrollHeight against frameEl.clientHeight and asserted width
-  // could never overflow because View Project's own max-width: 100%/
-  // box-sizing: border-box (styles.css) bound ITS OWN BOX to the frame's
-  // width. That's true of the box -- but not of a single unbreakable
-  // WORD inside it: max-width caps the box, it does not shrink a word
-  // like "PROJECT" that is, on its own, wider than the box's own
-  // constrained width -- ordinary CSS word-wrap only breaks BETWEEN
-  // words, never inside one, so that word paints past the box's (and
-  // the frame's) right edge instead of respecting max-width. On a
-  // narrow-enough portrait tile that's exactly what real screenshots
-  // showed: a horizontally clipped "PROJECT," invisible to a
-  // height-only check because painting past the right edge doesn't add
-  // height, so scrollHeight <= clientHeight still read true. This
-  // version does not assume the box's own CSS constraints are sufficient
-  // -- it measures the actual rendered geometry of the actual content
-  // against the actual frame, on all four sides, after wrapping has
-  // already happened.
-  //
-  // frameRef is this card's own root (.hover-overlay, the exact box
-  // .gallery-image-wrapper's own overflow: hidden clips against).
-  // stackRef is the new .hover-overlay__stack wrapper around Archive
-  // Number + View Project together (see the render below) -- width-
-  // constrained to the frame's own usable inner width by that wrapper's
-  // own max-width: 100% (styles.css), same mechanism as before, just
-  // applied to the whole stack rather than assumed sufficient on its
-  // own. Given both refs, the actual check is four comparisons, not one:
-  // does the stack's real getBoundingClientRect() -- taken AFTER
-  // wrapping has been laid out, since useLayoutEffect runs after the DOM
-  // commit -- stay within the frame's real inner edges (frame's own
-  // border-box rect, inset by its own computed padding on each side)?
-  // left >= innerLeft, right <= innerRight, top >= innerTop,
-  // bottom <= innerBottom. Any one side failing (including the
-  // horizontal sides the old check couldn't see at all) means the stack
-  // doesn't fit, and View Project is hidden outright (the --hidden
-  // modifier below, plain display: none) -- removed from flow entirely
-  // so Archive Number (now the stack's only child) recenters alone,
-  // exactly STATE B, never a partially-clipped third state. Do NOT rely
-  // on .gallery-image-wrapper's own overflow: hidden to make this look
-  // contained -- if that rule is ever the thing actually cropping
-  // visible text, this check has already failed and needs fixing here,
-  // not papered over there.
-  //
-  // Runs synchronously before paint (useLayoutEffect) whenever a fresh
-  // inspection begins on this tile (isInspected/onEnterProject/itemId/
-  // generation) -- the case that matters here, since this app's tiles
-  // are sized once by procedural layout and don't live-resize while
-  // already inspected (a window resize regenerates and remounts the
-  // whole gallery instead of resizing tiles in place -- see App.jsx's
-  // own regeneration sequence). Both ResizeObservers below are real
-  // defense-in-depth for that assumption (one on the frame, one on the
-  // stack itself, so a reflow from something like late font loading is
-  // also caught), not the primary mechanism. One acknowledged limit,
-  // flagged rather than engineered around: once View Project is hidden
-  // (display: none, occupying no layout space so Number can recenter),
-  // it isn't itself measurable, so a hypothetical later growth of the
-  // SAME frame while still inspected wouldn't bring it back until the
-  // next fresh inspection (close/reopen) -- acceptable given tile sizes
-  // don't change while inspected in this architecture, not something
-  // worth a separate out-of-flow measuring node for.
-  const frameRef = useRef(null);
-  const stackRef = useRef(null);
-  const [viewProjectFits, setViewProjectFits] = useState(true);
-
-  useLayoutEffect(() => {
-    if (!isInspected || !onEnterProject) {
-      // Nothing is attempting to render, or nothing to measure -- reset
-      // optimistically so the next real inspection starts from a clean
-      // slate rather than an assumption inherited from whatever tile
-      // last used this component instance under virtualization.
-      setViewProjectFits(true);
-      return undefined;
-    }
-    const frameEl = frameRef.current;
-    const stackEl = stackRef.current;
-    if (!frameEl || !stackEl) return undefined;
-
-    const measure = () => {
-      const frameRect = frameEl.getBoundingClientRect();
-      const frameStyle = window.getComputedStyle(frameEl);
-      // The frame's own real computed padding on each side -- not
-      // assumed from the CSS source, read from the actual rendered
-      // element, so this stays correct even under the Thumbnail-only
-      // reduced-padding class (.hover-overlay--thumbnail-inspected).
-      const innerLeft =
-        frameRect.left + (parseFloat(frameStyle.paddingLeft) || 0);
-      const innerRight =
-        frameRect.right - (parseFloat(frameStyle.paddingRight) || 0);
-      const innerTop =
-        frameRect.top + (parseFloat(frameStyle.paddingTop) || 0);
-      const innerBottom =
-        frameRect.bottom - (parseFloat(frameStyle.paddingBottom) || 0);
-
-      // stackEl's own rect, taken after it has already wrapped at its
-      // CSS-constrained width -- this is the "let text wrap naturally,
-      // then measure" step, not a prediction of what it would measure.
-      const stackRect = stackEl.getBoundingClientRect();
-
-      // +1px epsilon absorbs ordinary sub-pixel layout rounding on each
-      // of the four comparisons -- not a fit-threshold guess, just
-      // enough slack that an exact-fit case never flips on rounding
-      // noise alone.
-      const EPSILON_PX = 1;
-      setViewProjectFits(
-        stackRect.left >= innerLeft - EPSILON_PX &&
-          stackRect.right <= innerRight + EPSILON_PX &&
-          stackRect.top >= innerTop - EPSILON_PX &&
-          stackRect.bottom <= innerBottom + EPSILON_PX,
-      );
-    };
-
-    measure();
-
-    if (typeof ResizeObserver === "undefined") return undefined;
-    const resizeObserver = new ResizeObserver(measure);
-    resizeObserver.observe(frameEl);
-    resizeObserver.observe(stackEl);
-    return () => resizeObserver.disconnect();
-  }, [isInspected, onEnterProject, itemId, generation]);
-
   return (
     <div
-      ref={frameRef}
       className={`hover-overlay${
         // Final Mobile Interaction Model pass: Thumbnail tiles get a
         // smaller, thumbnail-specific padding while inspected (see this
@@ -549,22 +430,6 @@ function HoverOverlay({
       // card is completely unaffected: isInspected is never true there.
       aria-hidden={!isInspected}
     >
-      {/* .hover-overlay__stack (styles.css) wraps Archive Number + View
-          Project together -- the hard-boundary fit check's own stackRef
-          measures THIS element's real rendered rect, after wrapping, not
-          Number and View Project separately, so the check reflects the
-          combined stack exactly the way it's actually laid out and seen.
-          Deliberately does NOT wrap Themes (below): Themes and this pair
-          are never a meaningful visual unit together (Themes only
-          renders when !isInspected, i.e. desktop hover with nothing from
-          this pair currently attempting View Project), so wrapping them
-          together would just be extra DOM with no measurement purpose.
-          The stack's own max-width: 100%/align-items: center (styles.css)
-          replace what Number's and View Project's individual
-          align-self: center used to do on their own as direct
-          .hover-overlay children -- same visual centering, now achieved
-          one level down since they're this wrapper's children instead. */}
-      <div ref={stackRef} className="hover-overlay__stack">
       {/* Archive-number presentation rule (Josh review): bracketed
           site-wide, e.g. "[033]" -- a display-only wrap of whatever value
           this prop already carries, not a reformat of it. The raw,
@@ -572,112 +437,27 @@ function HoverOverlay({
           App.jsx/matched against relatedArchiveNumbers elsewhere; nothing
           about that data or the Relationship Engine's matching changes
           here. */}
-      {/* Archive Number is the universal selected-state signal on every
-          inspected tile, regardless of tier or whether it's
-          Project-linked -- it always attempts to render (archiveNumber
-          != null is the only condition, same as desktop). Its own
-          fit/never-clip guarantee: a responsive font-size clamp with a
-          hard legible floor, plus a container-query hide-fallback for
-          the rare case even that floor can't fit a genuinely extreme
-          sliver (@container hover-overlay, scoped to
-          .gallery-image-wrapper--inspected so it can never affect
-          desktop -- see that rule's own styles.css comment). isInspected
-          is only ever true on a touch device (see this component's own
-          prop comment above), so none of this ever touches desktop's own
-          hover card, which always renders the Number exactly as
-          before. */}
+      {/* Final Mobile Presentation pass (CSS-only, no runtime
+          measurement -- see this file's own top comment for why a live
+          JS fit system was tried twice and removed both times): Archive
+          Number is the universal selected-state signal on every
+          inspected tile, regardless of whether it's Project-linked -- it
+          always attempts to render (archiveNumber != null is the only
+          condition, same as desktop). Its own fit/never-clip guarantee
+          is entirely declarative, exactly like desktop's own
+          composition: a responsive font-size clamp (cqmin-based, see
+          styles.css) with a hard legible floor, plus a plain
+          container-query hide-fallback for the rare case even that
+          floor can't fit a genuinely extreme sliver (@container
+          hover-overlay, scoped to .gallery-image-wrapper--inspected so
+          it can never affect desktop -- see that rule's own styles.css
+          comment). isInspected is only ever true on a touch device (see
+          this component's own prop comment above), so none of this ever
+          touches desktop's own hover card, which always renders the
+          Number exactly as before. */}
       {archiveNumber != null && (
         <div className="hover-overlay__number">{`[${archiveNumber}]`}</div>
       )}
-      {/* Mobile Archive Interaction Pass -- Stage 5, updated by the Final
-          Mobile Interaction Model pass: the explicit "enter the Project"
-          control -- only ever rendered while this specific tile is
-          inspected AND it's actually Project-linked (onEnterProject is
-          undefined otherwise, see this component's own prop comment
-          above). Tapping it directly navigates immediately (its own
-          onClick, stopPropagation'd, below). It is no longer the ONLY way
-          a touch visitor enters the Project from here, though: a second
-          tap anywhere else on that same already-inspected tile now does
-          the same thing -- see App.jsx's own handleGalleryTileTap, which
-          calls the identical handleProjectRowImageClick this control's
-          onEnterProject already wraps. The two paths just converge on the
-          same navigation; this control's own explicit affordance/label is
-          still what tells a visitor the tap will navigate.
-
-          Deliberately a <div role="button"> rather than a real <button>:
-          this whole component is rendered as a child of the gallery tile's
-          own outer <button> (.gallery-image-wrapper, see App.jsx's render)
-          -- a nested <button> inside a <button> is invalid HTML, and
-          browsers do not render/behave predictably once one appears (the
-          exact reason Header.jsx's own filter-control wraps its Clear-All
-          "x" as a sibling rather than a nested button, see that file's own
-          comment). role="button" + tabIndex={0} + explicit onKeyDown
-          (below) is what keeps this a REAL focusable, keyboard-operable
-          control despite not being a literal <button> element -- not a
-          div with a bare onClick.
-
-          event.stopPropagation() mirrors handleThemeClick's own reasoning
-          immediately above: without it, this tap would also reach the
-          outer tile's own onClick (handleGalleryTileTap) and double-fire
-          the same navigation it's already about to trigger directly --
-          harmless in practice (both resolve to the same
-          handleProjectRowImageClick call, guarded against re-entry there),
-          but stopping it here keeps this control's own click the single,
-          direct cause of navigation when it's the one actually tapped.
-          pointer-events are opted back in via this component's own
-          .hover-overlay__enter-project rule in styles.css, the same
-          targeted opt-in .hover-overlay__themes li already uses against
-          this card's own pointer-events: none default. */}
-      {/* Final Mobile Interaction Model pass (hard-boundary fit check):
-          the render condition is just isInspected && onEnterProject --
-          no tier gate. Every earlier tier-dependent version of this
-          (the Thumbnail-only "+" affordance; later, isThumbnailTier
-          deciding Medium/Large-only; a live DOM-measurement fit gate
-          that failed shut; a guessed CSS container-query threshold) is
-          retired -- View Project attempts to render on ANY inspected,
-          Project-linked tile, Large/Medium/Thumbnail alike, same as
-          Archive Number always has. What decides whether it's actually
-          VISIBLE is viewProjectFits (see the measurement effect above,
-          right before this component's return) -- a real comparison of
-          this card's own rendered height against its own available
-          height, not a guessed pixel threshold. className/tabIndex/
-          aria-hidden below all key off that one value: when it doesn't
-          fit, --hidden (styles.css: display: none) takes this control
-          out of flow entirely so Archive Number recenters alone -- a
-          clean binary (fits / doesn't), never a partially-clipped third
-          state. That extreme tile's entry point into the Project is
-          still App.jsx's own second-tap-anywhere-on-an-already-inspected
-          -tile rule (uniform across every tier, see
-          handleGalleryTileTap) -- unchanged. The 44px standard tap
-          target is still an invisible, out-of-flow hit area (::before,
-          styles.css) rather than reserved visible layout height. */}
-      {isInspected && onEnterProject && (
-        <div
-          className={`hover-overlay__enter-project${
-            viewProjectFits ? "" : " hover-overlay__enter-project--hidden"
-          }`}
-          role="button"
-          tabIndex={viewProjectFits ? 0 : -1}
-          aria-hidden={!viewProjectFits}
-          onClick={(event) => {
-            event.stopPropagation();
-            // Section 6: this control only ever renders while isInspected
-            // is true (see the guard immediately above), which itself is
-            // only ever true on a touch device -- see handleThemeClick's
-            // own comment for why that makes an extra gate unnecessary
-            // here. An explicit "View Project" tap is one of the
-            // enumerated commit interactions, so it gets the same
-            // hapticSelect() a filter/search/theme commit gets.
-            hapticSelect();
-            onEnterProject();
-          }}
-          onKeyDown={handleEnterProjectKeyDown}
-          aria-label="View project"
-        >
-          View Project →
-        </div>
-      )}
-      </div>
       {/* Discovery: the only editorial gate, checked before container
           queries ever run. Non-discovery tiles never render this markup, so
           styles.css has nothing to measure. Discovery tiles always attempt
@@ -696,16 +476,7 @@ function HoverOverlay({
           false there anyway, so it's a harmless no-op on desktop and
           simply redundant with themesEnabled on touch. Desktop's own
           discovery-tile hover reveal is completely unaffected either
-          way. Deliberately rendered here, AFTER (i.e. as a sibling
-          following) .hover-overlay__stack rather than inside it -- Themes
-          and the Number/View Project stack are mutually exclusive in
-          practice (this renders only when !isInspected; the stack's
-          own View Project only ever attempts to render when isInspected
-          is true), so which one comes first in source order has no
-          visual effect (only one of the two ever exists in the DOM at a
-          time) -- kept as a plain sibling so the stack's own
-          hard-boundary fit measurement only ever includes Archive
-          Number and View Project, never Themes. */}
+          way. */}
       {themesEnabled && discovery && !isInspected && shuffledThemes.length > 0 && (
         <ul className="hover-overlay__themes">
           {shuffledThemes.map((theme) => (
@@ -732,6 +503,99 @@ function HoverOverlay({
             </li>
           ))}
         </ul>
+      )}
+      {/* Mobile Archive Interaction Pass -- Stage 5: the explicit "enter
+          the Project" control -- only ever rendered while this specific
+          tile is inspected AND it's actually Project-linked
+          (onEnterProject is undefined otherwise, see this component's
+          own prop comment above). Tapping it directly navigates
+          immediately (its own onClick, stopPropagation'd, below). It is
+          not the ONLY way a touch visitor enters the Project from here:
+          a second tap anywhere else on that same already-inspected tile
+          does the same thing -- see App.jsx's own handleGalleryTileTap,
+          which calls the identical handleProjectRowImageClick this
+          control's onEnterProject already wraps. The two paths just
+          converge on the same navigation; this control's own explicit
+          affordance/label is still what tells a visitor the tap will
+          navigate.
+
+          Deliberately a <div role="button"> rather than a real <button>:
+          this whole component is rendered as a child of the gallery tile's
+          own outer <button> (.gallery-image-wrapper, see App.jsx's render)
+          -- a nested <button> inside a <button> is invalid HTML, and
+          browsers do not render/behave predictably once one appears (the
+          exact reason Header.jsx's own filter-control wraps its Clear-All
+          "x" as a sibling rather than a nested button, see that file's own
+          comment). role="button" + tabIndex={0} + explicit onKeyDown
+          (below) is what keeps this a REAL focusable, keyboard-operable
+          control despite not being a literal <button> element -- not a
+          div with a bare onClick.
+
+          event.stopPropagation() mirrors handleThemeClick's own reasoning
+          immediately above: without it, this tap would also reach the
+          outer tile's own onClick (handleGalleryTileTap) and double-fire
+          the same navigation it's already about to trigger directly --
+          harmless in practice (both resolve to the same
+          handleProjectRowImageClick call, guarded against re-entry there),
+          but stopping it here keeps this control's own click the single,
+          direct cause of navigation when it's the one actually tapped.
+          pointer-events are opted back in via this component's own
+          .hover-overlay__enter-project rule in styles.css, the same
+          targeted opt-in .hover-overlay__themes li already uses against
+          this card's own pointer-events: none default. */}
+      {/* Final Mobile Presentation pass (CSS-only, no runtime
+          measurement): render condition is simply isInspected &&
+          onEnterProject -- no tier gate, and no JS fit decision of any
+          kind. Two earlier passes here tried deciding View Project's
+          actual visibility with a live useLayoutEffect/ResizeObserver
+          measurement (first height-only, then corrected to measure both
+          axes against the frame's real geometry via extra frameRef/
+          stackRef refs and a viewProjectFits state) -- technically more
+          precise, but the render -> measure -> hide/show -> reflow cycle
+          it required was visibly flickering/glitching on real small
+          tiles. That entire system (the refs, the state, the effect, the
+          ResizeObservers, the --hidden modifier class) is removed
+          entirely -- not tuned, replaced. This card now works exactly
+          like desktop's own composition: a plain, declarative CSS
+          container (.hover-overlay's own container-type: size,
+          unchanged) with responsive cqmin typography and ONE simple
+          container-query fallback (styles.css, on this control's own
+          rule) that hides it outright on a genuinely tiny card -- the
+          same mechanism Archive Number's own extreme-sliver fallback
+          already uses just above, not a second layout engine. Font-size
+          stays responsive (clamp() in styles.css) down to an 11px
+          floor, and the label wraps naturally onto a second line on a
+          narrow tile (e.g. "VIEW" / "PROJECT ->") -- see that rule's own
+          comment. A tile too small even for that hides this control via
+          the CSS fallback, leaving Archive Number alone, centered --
+          App.jsx's own second-tap-anywhere-on-an-already-inspected-tile
+          rule (unaffected by any of this, uniform across every tier) is
+          still that tile's entry point into the Project. The 44px
+          standard tap target is still an invisible, out-of-flow hit
+          area (::before, styles.css) rather than reserved visible
+          layout height. */}
+      {isInspected && onEnterProject && (
+        <div
+          className="hover-overlay__enter-project"
+          role="button"
+          tabIndex={0}
+          onClick={(event) => {
+            event.stopPropagation();
+            // Section 6: this control only ever renders while isInspected
+            // is true (see the guard immediately above), which itself is
+            // only ever true on a touch device -- see handleThemeClick's
+            // own comment for why that makes an extra gate unnecessary
+            // here. An explicit "View Project" tap is one of the
+            // enumerated commit interactions, so it gets the same
+            // hapticSelect() a filter/search/theme commit gets.
+            hapticSelect();
+            onEnterProject();
+          }}
+          onKeyDown={handleEnterProjectKeyDown}
+          aria-label="View project"
+        >
+          View Project →
+        </div>
       )}
     </div>
   );

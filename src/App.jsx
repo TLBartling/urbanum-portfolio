@@ -833,14 +833,16 @@ const MOBILE_SELECTABLE_TILE_MIN_HEIGHT_PX = 48;
 // eligibility gate: an earlier MOBILE_VIEW_PROJECT_MIN_WIDTH_PX system,
 // and later isThumbnailTier itself, both retired that role in turn --
 // View Project now always attempts to render on any inspected,
-// Project-linked tile, any tier, and HoverOverlay.jsx's own small
-// measurement effect (frameRef/stackRef/viewProjectFits, comparing the
-// real rendered rect of Archive Number + View Project together against
-// the frame's real inner edges on all four sides -- not just height;
-// see that effect's own comment for why a height-only version of this
-// check missed real horizontal clipping) decides whether it actually
-// fits (see .hover-overlay__enter-project in styles.css and that
-// effect's own comment). It also no longer decides which navigation
+// Project-linked tile, any tier, and its actual visibility is decided
+// entirely by plain CSS in styles.css (.hover-overlay__enter-project and
+// its own one container-query tiny-card fallback), not by any JS
+// measurement -- an earlier live DOM-measurement effect in
+// HoverOverlay.jsx (first height-only, then corrected to both axes)
+// caught real horizontal clipping correctly but caused visible flicker
+// on real small tiles, so it was removed entirely in favor of the same
+// static-CSS-container architecture desktop's own hover card has always
+// used (see .hover-overlay__enter-project's own comment in styles.css
+// for the full history). It also no longer decides which navigation
 // path a
 // Project-linked tile gets: a second tap anywhere on an already-
 // inspected, Project-linked tile now navigates uniformly across every
@@ -7011,21 +7013,24 @@ function App() {
                     // View Project now always attempts to render alongside
                     // it (no tier gate in HoverOverlay.jsx any more) --
                     // whether it's actually VISIBLE for a given tile is
-                    // decided entirely inside HoverOverlay.jsx itself, by
-                    // its own small measurement effect (frameRef/stackRef/
-                    // viewProjectFits, right before that component's
-                    // return) comparing the real rendered rect of Archive
-                    // Number + View Project together against the frame's
-                    // real inner edges on all four sides -- left/right as
-                    // well as top/bottom, since a height-only version of
-                    // this check was proven insufficient by real-device
-                    // screenshots (a single unbreakable word can clip
-                    // horizontally without ever changing the content's
-                    // height) -- never by this prop or by isThumbnailTier
-                    // above, and not by a guessed CSS breakpoint either
-                    // (an earlier pass tried that too; retired for the
-                    // same reason a real measurement beats an approximated
-                    // one). handleProjectRowImageClick is the exact same
+                    // decided entirely by plain CSS in styles.css
+                    // (.hover-overlay__enter-project's own one
+                    // container-query tiny-card fallback, modeled on
+                    // Archive Number's own pre-existing fallback), never
+                    // by this prop or by isThumbnailTier above. Two live
+                    // JS measurement systems lived in HoverOverlay.jsx in
+                    // turn before this (first height-only, then corrected
+                    // to compare real rendered geometry on all four
+                    // sides) -- the corrected one did catch real
+                    // horizontal clipping real-device screenshots had
+                    // shown, but the render-measure-hide/show-reflow
+                    // cycle it required caused visible flicker on real
+                    // small tiles, so both were removed entirely in favor
+                    // of the same static-CSS-container architecture
+                    // desktop's own hover card has always used (see that
+                    // fallback rule's own comment in styles.css for the
+                    // full history). handleProjectRowImageClick is the
+                    // exact same
                     // fade-then-navigate function the Project Filter Row
                     // already calls -- reused verbatim, not a second
                     // "enter a project" implementation, and it's also what

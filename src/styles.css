@@ -4643,16 +4643,59 @@ html.is-browsing .zoom-controls {
    vertical space below the mobile header" symptom reported for this page
    specifically (Practice/Journal/Contact all use the shared
    .about-content shell alone, with no page-specific override to go
-   stale, so they never showed this). Fix: reuse that exact same
-   corrected formula here rather than re-deriving a second, page-specific
-   one, so this page's mobile top clearance now matches Practice/Journal/
-   Contact exactly, and will stay in sync with any future change to that
-   shared formula instead of drifting again. Desktop/tablet's own
-   .project-content padding-top (base rule above, 641px+) is completely
-   untouched. */
+   stale, so they never showed this). Fix (at the time): reuse that exact
+   same corrected formula here rather than re-deriving a second,
+   page-specific one, so this page's mobile top clearance matched
+   Practice/Journal/Contact exactly. Desktop/tablet's own .project-content
+   padding-top (base rule above, 641px+) is completely untouched by any
+   of this. */
+/* Mobile Project Image Above-the-Fold pass (separate mobile cleanup
+   round, non-Archive; Archive itself untouched -- see this pass's own
+   scope): the fix immediately above was correct to stop this page's
+   value from silently drifting away from .about-content's, but Josh's
+   explicit ask this round is that the Project image page specifically
+   should read as image-first on mobile -- the X near the top-right safe
+   area, the image immediately below it -- which calls for a smaller,
+   still-real gap below the header than Practice/Journal/Contact use.
+   The header's own actual mobile footprint is unchanged and
+   non-negotiable (.site-header's 12px top padding + .site-header__row1's
+   64px height = a real 76px, confirmed by direct read of both rules,
+   plus the real --safe-area-inset-top on top -- shrinking below this
+   would tuck the X behind the fixed header itself, which this pass never
+   does): 76px + a smaller 6px breathing gap = 82px, six pixels less than
+   the shared formula's 88px (76 + a 12px gap), still a small, deliberate,
+   real gap below the header's true edge, never zero. This is now a
+   documented, Project-only divergence from .about-content's own formula
+   -- not a second guess at the same number, and not the kind of
+   accidental byte-for-byte duplicate the stale-144px bug above was --
+   so Practice/Journal/Contact (still just .about-content, no override)
+   keep exactly the clearance they already had; only this page's own top
+   clearance changes.
+
+   .project-viewer's own margin-top (see that rule's own "Image top
+   padding refinement" comment further down -- a flat, unscoped 10px) is
+   zeroed out here, mobile only: that 10px and .project-breadcrumb's own
+   margin-bottom (see that rule's own ≤640px block below) were two
+   independent rules both aiming at the exact same job -- the small gap
+   between the X and the image below it -- and because both sit on plain
+   block-level siblings under .project-content with nothing between them,
+   their margins were only ever collapsing to whichever was larger
+   (.project-breadcrumb's own 14px floor, never a summed 24px), leaving
+   the 10px here silently redundant. That is exactly the kind of
+   "duplicated offset from multiple rules" this pass was asked to find.
+   .project-breadcrumb's own mobile margin-bottom is now the sole source
+   of this gap (tightened there to 8px); zeroing this rule's margin-top,
+   mobile only, makes that single ownership unambiguous instead of
+   leaving a second, now-purely-redundant number sitting alongside it.
+   Desktop/tablet's own .project-viewer margin-top (base rule, 641px+) is
+   completely untouched. */
 @media (max-width: 640px) {
   .project-content {
-    padding-top: calc(var(--safe-area-inset-top) + 88px);
+    padding-top: calc(var(--safe-area-inset-top) + 82px);
+  }
+
+  .project-viewer {
+    margin-top: 0;
   }
 }
 
@@ -4787,9 +4830,20 @@ html.is-browsing .zoom-controls {
      via flex is enough to reach the requested position -- no new
      position: absolute/fixed layer, no z-index, nothing that could
      interact with ImageViewer/the trackpad surface/Archive layering. */
+  /* Mobile Project Image Above-the-Fold pass: the shared, desktop-and-
+     mobile margin-bottom above (clamp(14px, 1.8vw, 22px), floors at a
+     flat 14px at every phone width since 1.8vw never reaches 14px below
+     ~778px wide) is overridden here, mobile only, down to a flatter 8px
+     -- a small, deliberate, still-real gap, not zero -- and is now the
+     sole source of the space between the X and the image below it (see
+     .project-viewer's own ≤640px override, immediately above in this
+     file, for why its former 10px margin-top was zeroed out here rather
+     than left stacking alongside this one). Desktop/tablet keep the
+     shared clamp(14px, 1.8vw, 22px) above completely untouched. */
   .project-breadcrumb {
     display: flex;
     justify-content: flex-end;
+    margin-bottom: 8px;
   }
 
   .project-breadcrumb__control {

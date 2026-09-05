@@ -404,6 +404,42 @@ export default function Header({
   useEffect(() => {
     if (!isMobileUiMode) setMobileOverlay(null);
   }, [isMobileUiMode]);
+
+  // Responsive interaction/state audit pass -- the missing symmetric half
+  // of the fix immediately above: that effect only ever closes the gap
+  // crossing OUT of mobile UI mode (mobileOverlay left stale-open on the
+  // way back in). drawerSection (the desktop Filter/Menu drawer, derived
+  // into isFilterOpen/isMenuOpen/isDrawerOpen just below) was never given
+  // the same treatment crossing INTO mobile UI mode: .index-drawer itself
+  // renders unconditionally, with no isMobileUiMode guard of its own (see
+  // that element's own comment further down), so a drawer left open
+  // while narrowing past the mobile breakpoint kept rendering its desktop
+  // content and kept feeding its own live-measured height into
+  // onDrawerHeightChange -- which every content-page shell (Contact/
+  // Practice/Journal/Projects/Project, see each page's own marginTop
+  // wiring) adds on top of its own CSS header-clearance padding-top. That
+  // stale, still-open desktop drawer height was the confirmed root cause
+  // of page content ending up misaligned against the fixed header after
+  // a resize across breakpoints -- not a per-page spacing bug, so it is
+  // fixed once, here, rather than patched on each page.
+  // notifyIfFilterCloses(null) then setDrawerSection(null) is the exact
+  // same idempotent close pair every other close path in this file
+  // already uses (the Escape-key handler, handleFilterClearAll, both
+  // further below) -- notifyIfFilterCloses(null) so onFilterOpenChange
+  // still fires exactly when Filter itself actually transitions,
+  // setDrawerSection(null) for the state change that drives the drawer's
+  // existing open/close animation the same way any other close already
+  // does. Nothing here touches that animation, the ResizeObserver, or
+  // desktop's own behavior -- isMobileUiMode is always false on desktop,
+  // so a drawer left open there is completely unaffected, exactly as
+  // before.
+  useEffect(() => {
+    if (isMobileUiMode) {
+      notifyIfFilterCloses(null);
+      setDrawerSection(null);
+    }
+  }, [isMobileUiMode]);
+
   // Search Query Wiring: null until the homepage's own Enter-to-commit
   // (see handleSearchKeyDown) sets it -- the one flag that decides whether
   // the input line or the compact chip renders below. Deliberately starts

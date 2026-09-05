@@ -4824,7 +4824,27 @@ html.is-browsing .zoom-controls {
   display: none;
 }
 
-@media (max-width: 640px) {
+/* Responsive interaction/state audit pass: this breakpoint used to be a
+   flat `(max-width: 640px)`, so a touch/no-hover tablet (an iPad, either
+   orientation -- both well past 640px wide) never matched it and always
+   fell back to the desktop "‹ Archive" chevron control just above,
+   which was never given the Info-aware onClick this block's own mobile
+   X already has -- meaning Info could never be closed from that control
+   on a touch tablet, only ever exited straight back to the Archive. The
+   condition is now the same OR this pass already added to
+   useIsMobileUiMode.js: the original width term, plus the exact
+   capability query useIsTouchDevice already uses
+   (`(hover: none) and (pointer: coarse)`) -- so this block's own mobile
+   X (and its already-correct isInfoOpen ? onToggleInfo : navigate("/")
+   behavior, untouched here) is what any touch/no-hover device gets,
+   regardless of width, reusing this existing control rather than
+   teaching the desktop chevron a second, redundant Info-aware branch.
+   Still exactly one X, never two: the desktop chevron above is simply
+   hidden (display: none, below) whenever this condition matches, the
+   same way it already was below 640px. Fine-pointer/hover-capable
+   desktop and tablet browsers are unaffected outside the width clause,
+   exactly as before. */
+@media (max-width: 640px), (hover: none) and (pointer: coarse) {
   /* "Top-right": .project-breadcrumb is already the first element in
      .project-content's normal flow (top), so right-aligning its own row
      via flex is enough to reach the requested position -- no new

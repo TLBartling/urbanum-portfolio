@@ -868,13 +868,45 @@ export default function Header({
     hapticTap();
   };
 
-  // Section 4/5: the shared close path for either mobile overlay's own X
-  // control -- MobileSearchOverlay and MobileMenuOverlay both call this via
-  // their onClose prop, so there is exactly one place that resolves the
-  // mobile chrome back to its collapsed state.
+  // Section 4/5: the close path for the mobile Menu overlay's own X
+  // control -- a pure "cancel, stay on this page" dismissal: it only ever
+  // collapses the overlay state, never navigates.
+  // Final mobile correction pass: MobileSearchOverlay's own X no longer
+  // shares this handler -- see the dedicated handleMobileSearchClose
+  // immediately below, which always exits to the Archive root instead of
+  // just collapsing the overlay -- so this handler is now Menu-only.
   const handleMobileOverlayClose = () => {
     setMobileOverlay(null);
     hapticTap();
+  };
+
+  // Final mobile correction pass: dedicated close handler for the mobile
+  // Search overlay's own X control. It used to share handleMobileOverlayClose
+  // above, which only ever collapses the overlay state and never navigates
+  // -- correct for Menu (a pure "cancel, stay on this page" dismissal), but
+  // wrong for Search, whose authoritative behavior is to ALWAYS exit to the
+  // Archive root ("/"), regardless of which page Search happened to be
+  // opened from (a Project, Practice, Contact, ...) and never by relying on
+  // browser history. Mirrors handleMobileMenuSelect's own "already there?"
+  // guard just below (an active/no-op navigation is skipped so it never
+  // fades to itself) and reuses the exact same beginPageTransition/navigate
+  // pair every other programmatic navigation on this page already uses --
+  // deliberately not beginGentleReturnHome, which carries a search
+  // "intent" onward to the homepage (the committed-search-submit path
+  // above, a genuinely different action from a plain X dismissal); this
+  // close must land on a bare Archive, no query/intent riding along. The
+  // overlay itself always closes immediately, synchronously with the tap,
+  // exactly like every other mobile overlay dismissal on this page --
+  // Search's own query/results/committedSearch state is untouched by this
+  // close (only handleMobileSearchSubmit/handleMobileClearAll ever change
+  // those), so reopening Search still shows whatever was last committed.
+  const handleMobileSearchClose = () => {
+    const isAlreadyHome = path === MENU_LINK_PATHS.Archive;
+    setMobileOverlay(null);
+    hapticTap();
+    if (!isAlreadyHome) {
+      beginPageTransition(() => navigate(MENU_LINK_PATHS.Archive));
+    }
   };
 
   // Mobile Archive Interaction Pass -- Stage 4: the overlay's onOptionToggle
@@ -1865,14 +1897,15 @@ export default function Header({
           handleMobileSearchSubmit/handleMobileClearAll) that call straight
           into the exact same functions the desktop drawer already uses --
           see this component's own header comment in MobileSearchOverlay.jsx
-          for the full reasoning. onClose is now the shared
-          handleMobileOverlayClose (Section 5) rather than a boolean setter,
-          so closing via this overlay's own X resolves through the exact
-          same single path Menu's own X does. */}
+          for the full reasoning. onClose is handleMobileSearchClose (Final
+          mobile correction pass) rather than a boolean setter or the
+          Menu-shared handleMobileOverlayClose -- this overlay's own X
+          always exits to the Archive root, never just collapses back to
+          whatever page Search happened to be opened from. */}
       {isMobileUiMode && (
         <MobileSearchOverlay
           isOpen={isMobileSearchOverlayOpen}
-          onClose={handleMobileOverlayClose}
+          onClose={handleMobileSearchClose}
           entries={INDEX_ENTRIES}
           entryValues={entryValues}
           entryLabels={entryLabels}

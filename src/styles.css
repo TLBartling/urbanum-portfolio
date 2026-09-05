@@ -2273,7 +2273,42 @@ html.is-browsing .zoom-controls {
   }
 }
 
-@media (max-width: 640px) {
+/* Responsive interaction/state audit pass -- landscape correction: this
+   entire block (site-header/top-menu/index-drawer-at-mobile-scale/
+   zoom-controls/.mobile-search-overlay/.mobile-menu-toggle/
+   .mobile-menu-overlay -- everything from here down to this block's own
+   closing brace) is the complete mobile header/menu/search presentation,
+   and was still a flat `(max-width: 640px)`, entirely unrelated to
+   isMobileUiMode's own broadened, capability-aware query
+   (useIsMobileUiMode.js). A touch/no-hover phone rotated to landscape
+   (commonly wider than 640px) already correctly gets isMobileUiMode=true
+   in JS -- Header.jsx still renders the mobile hamburger toggle, the
+   mobile Search/Menu overlays, hides the desktop Filter/Search controls
+   -- but none of the CSS in this block matched anymore, so those mobile-
+   only elements rendered with NONE of their styling: .mobile-menu-toggle
+   lost its border:none/background:none/padding/sizing (falling back to
+   the browser's own default, unstyled button chrome -- the confirmed
+   source of the "blue/link-like" header reported on real devices) and
+   .site-header/.site-header__row1 lost their mobile-compact height and
+   safe-area padding, reverting to the desktop clamp() formula instead --
+   a taller header than mobile expects. That taller, live-measured header
+   height is what fed into App.jsx's getViewportOpeningGeometry (headerHeightPx,
+   ResizeObserver-driven, not a static guess), which is the confirmed
+   root cause of the Archive appearing to adopt desktop-sized clearance
+   in landscape too -- a knock-on effect of this one CSS mismatch, not a
+   second, independent Archive-specific bug (no other width-only
+   `@media` block in this file references any gallery-/hover-overlay-
+   related selector; Archive's own tap-to-inspect model was already
+   capability-based via isTouchDevice and unaffected). Fixed at its
+   actual source: this block's own condition now matches
+   useIsMobileUiMode's exact query, so it activates under precisely the
+   same rule the JS hook already uses -- not a new landscape-specific
+   design, not a second block, just this one already-correct-in-spirit
+   block now agreeing with the JS state that has always driven what it
+   renders. Every rule inside is completely unchanged otherwise -- same
+   mobile presentation phones already had below 640px, now also applied
+   whenever a device is genuinely touch/no-hover regardless of width. */
+@media (max-width: 640px), (hover: none) and (pointer: coarse) {
 .site-header{
     min-height:60px;
     /* Mobile Archive Interaction Pass -- Stage 1C (Safe Area): adds the
@@ -4689,13 +4724,57 @@ html.is-browsing .zoom-controls {
    leaving a second, now-purely-redundant number sitting alongside it.
    Desktop/tablet's own .project-viewer margin-top (base rule, 641px+) is
    completely untouched. */
-@media (max-width: 640px) {
+/* Landscape/touch-tablet correction pass: this block was still gated at
+   a flat `(max-width: 640px)`, disagreeing with .project-image-frame's
+   own `(max-width: 900px)` breakpoint just below in this file (itself
+   now also touch-aware, see that rule's own comment) -- a real,
+   confirmed mismatch, not a guess: at any width between 641px and 900px
+   (many phones' own landscape width, and some smaller tablets), the
+   frame was already flex-start-aligning the image close to its own top
+   edge, but this block's own padding-top/margin-top had already
+   reverted to .about-content's/.project-viewer's larger, desktop-shell
+   values (the base rules further up this file) -- reintroducing exactly
+   the "too much space above the image" symptom this pass exists to
+   remove, for that whole width range. Reusing the shared capability
+   term now established across this file (`(hover: none) and
+   (pointer: coarse)`) also means any touch/no-hover device gets this
+   page's own tightened mobile top clearance regardless of width, not
+   just narrow phones -- matching .project-breadcrumb's own visibility
+   breakpoint just below, which already made this exact change. Nothing
+   about the padding-top/margin-top VALUES themselves changes here, only
+   the condition under which they apply. */
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
   .project-content {
     padding-top: calc(var(--safe-area-inset-top) + 82px);
   }
 
+  /* Final mobile correction pass -- confirmed root cause of "still too
+     much space" between the X and the image, beyond the breakpoint
+     mismatch fixed elsewhere in this pass: .project-content is a column
+     flex container with its own `gap: clamp(20px, 2.4vw, 32px)` (base
+     rule, shared by every child page), which inserts real, additional
+     space between EVERY pair of its direct flex children -- including
+     .project-breadcrumb and .project-viewer -- independently of and
+     stacking ON TOP OF .project-breadcrumb's own mobile margin-bottom
+     (8px, see that rule's own comment, which assumed -- incorrectly --
+     that its margin-bottom was the sole source of this gap). At mobile
+     widths this gap's own 20px floor governs (2.4vw never reaches 20px
+     below ~833px wide), so the real total space was margin-bottom(8px)
+     + gap(20-32px) = 28-40px, not the intended 8px. A negative
+     margin-top here, sized to exactly cancel .project-content's own gap
+     value via the identical clamp() formula (never a guessed constant),
+     pulls .project-viewer back up through that inserted space so
+     .project-breadcrumb's own margin-bottom becomes the true, sole,
+     exact source of the visible gap, matching what was already
+     documented. This only offsets the space ABOVE .project-viewer: the
+     gap AFTER it, between .project-viewer and .project-image-nav-row
+     (the bottom Image Navigation/Archive Number row), is a separate
+     instance of the same shared `gap` property and is completely
+     untouched, so bottom-row spacing is unaffected. Desktop (901px+,
+     outside this block) keeps the shared gap and margin-top: 10px
+     exactly as before. */
   .project-viewer {
-    margin-top: 0;
+    margin-top: calc(-1 * clamp(20px, 2.4vw, 32px));
   }
 }
 
@@ -4844,7 +4923,15 @@ html.is-browsing .zoom-controls {
    same way it already was below 640px. Fine-pointer/hover-capable
    desktop and tablet browsers are unaffected outside the width clause,
    exactly as before. */
-@media (max-width: 640px), (hover: none) and (pointer: coarse) {
+/* Landscape/touch-tablet correction pass: widened from
+   `(max-width: 640px)` to `(max-width: 900px)` (the capability clause
+   was already added in an earlier pass) so this block's own width term
+   matches .project-image-frame's and .project-content's own breakpoint
+   exactly -- see .project-content's own comment just above in this file
+   for the confirmed 641-900px mismatch this closes. Everything inside
+   this block (the mobile X, its margin-bottom, hiding the desktop
+   chevron) is otherwise completely unchanged. */
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
   /* "Top-right": .project-breadcrumb is already the first element in
      .project-content's normal flow (top), so right-aligning its own row
      via flex is enough to reach the requested position -- no new
@@ -5261,7 +5348,14 @@ html.is-browsing .zoom-controls {
    center, exactly as before; this image's own dimensions, aspect ratio,
    cropping, and fade timing are completely untouched -- only vertical
    position within an already-existing, unchanged box changes. */
-@media (max-width: 900px) {
+/* Landscape/touch-tablet correction pass: adds the same capability
+   clause this file now uses elsewhere (`(hover: none) and
+   (pointer: coarse)`) so a touch tablet in landscape (routinely wider
+   than 900px, e.g. a full-size iPad) still gets this mobile height
+   formula and flex-start alignment, rather than reverting to the
+   desktop 100vh/center-aligned rule above it. The width term (900px)
+   and every value inside are otherwise unchanged. */
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
   .project-image-frame {
     height: max(
       340px,
@@ -5343,7 +5437,15 @@ html.is-browsing .zoom-controls {
    the image's own cap and the frame's real height would silently
    disagree on mobile. No change to width/height:auto, transition, or
    any other property on this rule. */
-@media (max-width: 900px) {
+/* Landscape/touch-tablet correction pass: this rule's own comment above
+   already establishes it must stay byte-for-byte in sync with
+   .project-image-frame's own mobile formula -- so it gets the identical
+   capability clause added there, for the identical reason (a touch
+   tablet in landscape must not fall back to this rule's desktop
+   max-height while the frame itself uses the mobile one, which would
+   let the image's own cap and the frame's real height silently
+   disagree again). Nothing about the max-height value itself changes. */
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
   .project-image-frame__img {
     max-height: max(
       340px,
@@ -5445,7 +5547,12 @@ html.is-browsing .zoom-controls {
    top changes here; only where inside the box each layer's image sits,
    identically to the base layer. Desktop (901px+) keeps align-items:
    center on both layers, exactly as before. */
-@media (max-width: 900px) {
+/* Landscape/touch-tablet correction pass: same capability clause added
+   to .project-image-frame just above, for the same reason -- without
+   it, a touch tablet in landscape would flex-start the outgoing (base)
+   image but keep centering this incoming fade layer, a visible jump the
+   instant it starts fading in. */
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
   .project-image-frame__incoming {
     align-items: flex-start;
   }

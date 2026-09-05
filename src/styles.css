@@ -1276,6 +1276,54 @@ body {
   opacity: 1;
 }
 
+/* Composition correction pass: real-device screenshots showed Archive
+   Number and View Project visibly colliding on some medium-sized cards.
+   Both were only ever independent .hover-overlay flex children,
+   separated by .hover-overlay's own single shared gap (0.35rem, also
+   the value between Number and Themes in the non-inspected
+   composition) plus View Project's own uncoordinated margin-top --
+   never composed as one guaranteed-non-overlapping unit, so at
+   container sizes partway down each element's own independent cqmin
+   font-size clamp, their combined natural height could close in on
+   that fixed, shared gap. This wrapper is the fix: it exists ONLY when
+   HoverOverlay.jsx is about to render Archive Number and View Project
+   together (isInspected && onEnterProject -- see that component's own
+   render comment), and owns its OWN explicit gap between just those
+   two children, so their separation is never again a side effect of
+   spacing meant for a different pairing (Number/Themes). display:
+   flex/flex-direction: column/align-items: center/justify-content:
+   center reproduce exactly what Number's own individual align-self:
+   center + .hover-overlay's own justify-content: center used to do as
+   direct .hover-overlay children -- centered horizontally, centered as
+   a group vertically -- just owned locally now instead of borrowed
+   from the parent. width: 100%/max-width: 100%/box-sizing: border-box
+   keep this wrapper itself from ever exceeding the frame's own usable
+   interior, same role .hover-overlay__enter-project's own max-width
+   already played for itself. When the tiny-card fallback further down
+   this file hides View Project, this SAME wrapper remains in the DOM
+   with Archive Number as its only child -- still centered both axes by
+   the properties below, no separate Number-only layout needed (see
+   that fallback's own comment). */
+.hover-overlay__project-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  /* Explicit, responsive, and owned solely by this wrapper -- the ONE
+     source of spacing between Archive Number and View Project now
+     (View Project's own former margin-top, which duplicated/competed
+     with the parent's shared gap, has been removed -- see that rule's
+     own comment). cqmin-based like every other responsive value on
+     this card, so it scales down gracefully alongside both labels'
+     own font-size clamps rather than staying a fixed absolute value
+     while the text around it shrinks -- floor and ceiling keep it from
+     ever collapsing to nothing or growing disproportionately large. */
+  gap: clamp(0.2rem, 3cqmin, 0.4rem);
+}
+
 /* Archive number: typography, font-size scaling, and formatting are exactly
    as before this pass -- unchanged. Only its positioning mechanism changed,
    to fix the composition-centering bias above: rather than being
@@ -1283,15 +1331,15 @@ body {
    own (which pinned it to the exact optical center regardless of the
    theme content below it), it's a normal flex-flow child again, centered
    horizontally via align-self, with the group of it + themes centered
-   together by the parent's justify-content: center. Final Mobile
-   Presentation pass: back to being a direct .hover-overlay flex child
-   again -- the .hover-overlay__stack wrapper a prior pass introduced (to
-   support a live JS fit-measurement system comparing this element and
-   View Project together against the frame) has been removed entirely,
-   along with that measurement system itself (see
-   .hover-overlay__enter-project's own comment for the full history).
-   align-self here is unchanged and still redundant with .hover-overlay's
-   own align-items: center -- kept for the same reason it always was. */
+   together by the parent's justify-content: center. Composition
+   correction pass: when Archive Number renders alongside View Project,
+   its parent is .hover-overlay__project-stack (see that rule's own
+   comment for why), not .hover-overlay directly; on every other tile
+   (desktop's own hover card, or a non-Project mobile tile with nothing
+   to pair Number with) it remains a direct .hover-overlay flex child
+   exactly as before. align-self here is unchanged and harmless either
+   way -- redundant with whichever parent's own centering (align-items
+   or justify-content) is active. */
 .hover-overlay__number {
   align-self: center;
   /* Dominance-reduction pass: was a uniform 0.5rem on all sides. Horizontal
@@ -1659,13 +1707,12 @@ body {
    touch-inspected (see HoverOverlay.jsx's own isInspected && onEnterProject
    guard). A <div role="button">, not a <button> -- see that component's
    own render comment for why a real nested <button> can't be used here.
-   Final Mobile Presentation pass: a direct .hover-overlay flex child
-   again, the same as Archive Number and Themes -- the
-   .hover-overlay__stack wrapper a prior pass introduced (and the live JS
-   fit-measurement system it existed to support) has been removed
-   entirely; .hover-overlay's own gap: 0.35rem (unchanged, see that rule)
-   provides the same spacing between Number and this that the wrapper
-   used to.
+   Composition correction pass: this control only ever renders inside
+   .hover-overlay__project-stack now, alongside Archive Number (see
+   that wrapper's own comment) -- that wrapper's own explicit gap is
+   what separates them, not a value borrowed from .hover-overlay's own
+   Number/Themes spacing. This is a real, owned pairing now, not two
+   independent flex children incidentally sharing a parent's gap.
    pointer-events: auto is the same targeted opt-in
    .hover-overlay__themes li already uses against this card's own
    pointer-events: none default (see .hover-overlay above) -- required for
@@ -1710,14 +1757,17 @@ body {
   justify-content: center;
   /* No min-height: this control's own visible height is just its natural
      content size (one or two lines at whatever the responsive font-size
-     below resolves to, plus the margin-top below) -- comfortably small
-     at any real tile size. The 44px standard tap-target size is
-     preserved as an INVISIBLE hit area instead (position: relative + the
-     ::before rule just below) rather than as visible layout height, per
-     instruction ("do not reserve a rigid 44px box in the visible
-     layout"). */
+     below resolves to) -- comfortably small at any real tile size. The
+     44px standard tap-target size is preserved as an INVISIBLE hit area
+     instead (position: relative + the ::before rule just below) rather
+     than as visible layout height, per instruction ("do not reserve a
+     rigid 44px box in the visible layout"). Composition correction
+     pass: this control's own margin-top (0.15rem) has been removed --
+     its vertical separation from Archive Number is now owned entirely
+     by .hover-overlay__project-stack's own gap (see that rule's own
+     comment), so there is exactly one source of spacing between the
+     two, not a gap plus a competing margin. */
   padding: 0 0.75rem;
-  margin-top: 0.15rem;
   pointer-events: auto;
   cursor: pointer;
   /* position: relative is what lets the ::before rule immediately below
@@ -1822,13 +1872,13 @@ body {
      generous" rather than "too tight" now that there is no live
      measurement left to catch a rare miss.
      Height branch (max-height: 72px): Archive Number's own box (~16px,
-     see that rule's own fallback comment) + .hover-overlay's own
-     0.35rem gap (~5.6px) + View Project's own two-line height at its
+     see that rule's own fallback comment) + .hover-overlay__project-
+     stack's own gap (clamp(0.2rem, 3cqmin, 0.4rem), roughly 3.2-6.4px
+     across real sizes) + View Project's own two-line height at its
      11px floor with the 1.15 line-height above (~2 x 12.65px = 25.3px)
-     + this control's own margin-top (0.15rem, ~2.4px) + a margin for
-     frame padding -- comes to roughly 65-70px total; 72px keeps a small
-     buffer above that, same "round up slightly past a calculated
-     minimum" convention this file already uses elsewhere.
+     + a margin for frame padding -- comes to roughly 65-70px total;
+     72px keeps a small buffer above that, same "round up slightly past
+     a calculated minimum" convention this file already uses elsewhere.
      Both coefficients are flagged, same as Archive Number's own and
      Themes' own, as reasoned approximations worth a direct visual check
      against real narrow tiles rather than treated as exactly measured --
@@ -1836,10 +1886,12 @@ body {
      boundary in exchange for zero runtime measurement and zero flicker.
    display: none removes this control from flow entirely (not just
    visually) so Archive Number recenters alone in the frame when this
-   fallback is active -- .hover-overlay's own justify-content: center
-   (unchanged) does the actual centering, both horizontally and
-   vertically, once View Project is gone from the flex column -- no
-   extra rule needed here for that. References the same named container
+   fallback is active -- .hover-overlay__project-stack itself is
+   untouched by this rule and remains in place either way (see that
+   wrapper's own comment); its own justify-content: center/align-items:
+   center does the actual centering, both horizontally and vertically,
+   once View Project is gone from its column -- no separate Number-only
+   layout needed here. References the same named container
    (.hover-overlay's own container-type: size/container-name:
    hover-overlay) every other responsive rule on this card already
    queries. */

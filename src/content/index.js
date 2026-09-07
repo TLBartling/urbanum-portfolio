@@ -14,3 +14,5 @@ export { getThemes, loadThemes } from "./themes";
 export { getJournalEntries, loadJournalEntries } from "./journalEntries";
 export { getAboutPage, loadAboutPage } from "./aboutPage";
 export { getContactPage, loadContactPage } from "./contactPage";
+export { getPracticeQuestionsPage, loadPracticeQuestionsPage } from "./practiceQuestionsPage";
+export { getSiteInformationPage, loadSiteInformationPage } from "./siteInformationPage";

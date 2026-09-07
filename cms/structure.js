@@ -72,3 +72,28 @@ export const aboutPageStructure = (S) =>
 // it differs here beyond the schema type and document id.
 export const contactPageStructure = (S) =>
   S.document().schemaType('contactPage').documentId('contactPage')
+
+// Surgical CMS pass: same singleton pattern as contactPageStructure
+// immediately above.
+//
+// Correction: the previous pass added an explicit .id()/.title() chain
+// here, on the theory that the "New Q&A Page" label and the
+// SerializeError both came from this resolver. That did not fix either
+// symptom, which is itself evidence the resolver was never the cause --
+// reverted back to the exact bare pattern aboutPageStructure/
+// contactPageStructure already use and already prove works, per
+// "prefer the same pattern unless there's a concrete reason not to."
+// The real, concrete difference was on the schema side: an array field
+// whose `of` member used `defineField` instead of `defineArrayMember`,
+// plus a document-level `initialValue` -- both removed in this same
+// pass (see practiceQuestionsPageType.js / siteInformationPageType.js's
+// own comments). "New <title>" is Studio's own placeholder for a
+// singleton whose document doesn't exist in the dataset yet -- it
+// disappears the same way it already has for About Page/Contact Page,
+// once a real document exists at this fixed id (see
+// cms/seedSingletonContent.js).
+export const practiceQuestionsPageStructure = (S) =>
+  S.document().schemaType('practiceQuestionsPage').documentId('practiceQuestionsPage')
+
+export const siteInformationPageStructure = (S) =>
+  S.document().schemaType('siteInformationPage').documentId('siteInformationPage')

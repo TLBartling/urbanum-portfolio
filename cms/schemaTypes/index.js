@@ -5,6 +5,8 @@ import {typeType} from './typeType'
 import {journalEntryType} from './journalEntryType'
 import {aboutPageType} from './aboutPageType'
 import {contactPageType} from './contactPageType'
+import {practiceQuestionsPageType} from './practiceQuestionsPageType'
+import {siteInformationPageType} from './siteInformationPageType'
 import {richTextLinkType} from './richTextLinkType'
 import {richTextType} from './richTextType'
 
@@ -22,6 +24,8 @@ export const schemaTypes = [
   journalEntryType,
   aboutPageType,
   contactPageType,
+  practiceQuestionsPageType,
+  siteInformationPageType,
   richTextLinkType,
   richTextType,
 ]

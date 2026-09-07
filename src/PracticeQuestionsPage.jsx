@@ -1,5 +1,6 @@
 import { Fragment, useState } from "react";
 import Header from "./Header";
+import { getPracticeQuestionsPage } from "./content";
 
 // SEO/AEO Phase 3 -- About the Practice (public page name; the route
 // stays /practice/questions by deliberate decision -- see
@@ -51,7 +52,12 @@ import Header from "./Header";
 // This is a static page: content is hand-authored, not CMS-driven, so
 // there is no getX()/loadX() content-layer import here the way
 // AboutPage.jsx has for its own CMS fields.
-const QUESTIONS = [
+// Surgical CMS pass: renamed from QUESTIONS to DEFAULT_QUESTIONS -- this
+// exact array is now the fallback used whenever the Sanity
+// practiceQuestionsPage document is missing or has no questions yet, so
+// the page never goes blank before Josh publishes it (see the CMS-backed
+// `questions` derivation in the component below). Wording unchanged.
+const DEFAULT_QUESTIONS = [
   {
     question: "What kind of architecture does Urbānum practice?",
     answer:
@@ -110,6 +116,16 @@ export default function PracticeQuestionsPage() {
   const [isIndexDrawerOpen, setIsIndexDrawerOpen] = useState(false);
   const [indexDrawerHeight, setIndexDrawerHeight] = useState(0);
 
+  // Surgical CMS pass: prefer the live Sanity document's questions when
+  // it exists and actually has at least one item; otherwise fall back to
+  // the exact original hardcoded copy above, so a missing/unpublished
+  // CMS document degrades to today's page instead of an empty one.
+  const cmsQuestions = getPracticeQuestionsPage()?.questions;
+  const questions =
+    Array.isArray(cmsQuestions) && cmsQuestions.length > 0
+      ? cmsQuestions
+      : DEFAULT_QUESTIONS;
+
   return (
     <div className="about-page">
       <Header
@@ -138,7 +154,7 @@ export default function PracticeQuestionsPage() {
                 rule (see AboutPage.jsx's own Philosophy split for the same
                 mechanism) supply "new question" spacing automatically,
                 with no new CSS needed for it. */}
-            {QUESTIONS.map(({ question, answer }) => (
+            {questions.map(({ question, answer }) => (
               <Fragment key={question}>
                 <h2 className="about-layout__heading">{question}</h2>
                 <p className="about-layout__paragraph">{answer}</p>

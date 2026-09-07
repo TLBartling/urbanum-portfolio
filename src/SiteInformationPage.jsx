@@ -1,6 +1,8 @@
 import { useState } from "react";
 import Header from "./Header";
 import { navigate } from "./navigation";
+import { getSiteInformationPage } from "./content";
+import RichText from "./RichText";
 
 // Utility Information Phase: the canonical, crawlable /site-information
 // page. Its two jobs are (1) real, sparse Accessibility and Copyright
@@ -23,6 +25,36 @@ export default function SiteInformationPage() {
   const [isIndexDrawerOpen, setIsIndexDrawerOpen] = useState(false);
   const [indexDrawerHeight, setIndexDrawerHeight] = useState(0);
 
+  // Surgical CMS pass: each field falls back to the exact original
+  // hardcoded copy (below, inline) whenever the Sanity siteInformationPage
+  // document is missing or a given field is empty, so a not-yet-published
+  // document degrades to today's page rather than showing blank copy.
+  const cms = getSiteInformationPage();
+  const accessibilityText =
+    cms?.accessibilityText ||
+    "Urb\u0101num is committed to providing a website that is accessible to the widest possible audience. If you experience difficulty accessing any part of this site, please contact the office so the issue can be reviewed.";
+  const copyrightText =
+    cms?.copyrightText ||
+    "Unless otherwise indicated, the text, images, drawings, and other material presented on this website are the property of Urb\u0101num or their respective copyright holders. Materials may not be reproduced, distributed, or used without permission from the applicable rights holder.";
+
+  // Surgical correction: Fine Print is now one Portable Text field
+  // (finePrintRichText), rendered through the same shared RichText
+  // component/link renderer every other rich-text field on this site
+  // already uses -- same "meaningful content" presence check
+  // ContactPage.jsx's own hasRichBody already established, reused here
+  // rather than re-derived differently. Falls back to the exact original
+  // hardcoded paragraph (including its own client-side navigate()
+  // handler) only when the CMS document doesn't exist yet or the field is
+  // empty.
+  const hasFinePrintRichText = (cms?.finePrintRichText ?? []).some(
+    (block) =>
+      Array.isArray(block?.children) &&
+      block.children.some(
+        (child) =>
+          typeof child?.text === "string" && child.text.trim() !== "",
+      ),
+  );
+
   return (
     <div className="about-page">
       <Header
@@ -42,50 +74,46 @@ export default function SiteInformationPage() {
       >
         <div className="about-layout">
           <main className="about-layout__copy">
-            <h1 className="about-layout__heading">Site Information</h1>
+            <h1 className="visually-hidden">Site Information</h1>
 
             <h2 className="about-layout__heading">Accessibility</h2>
-            <p className="about-layout__paragraph">
-              Urbānum is committed to providing a website that is
-              accessible to the widest possible audience. If you
-              experience difficulty accessing any part of this site,
-              please contact the office so the issue can be reviewed.
-            </p>
+            <p className="about-layout__paragraph">{accessibilityText}</p>
 
             <h2 className="about-layout__heading">Copyright</h2>
-            <p className="about-layout__paragraph">
-              Unless otherwise indicated, the text, images, drawings, and
-              other material presented on this website are the property
-              of Urbānum or their respective copyright holders. Materials
-              may not be reproduced, distributed, or used without
-              permission from the applicable rights holder.
-            </p>
+            <p className="about-layout__paragraph">{copyrightText}</p>
 
-            <h2 className="about-layout__heading">About the Practice</h2>
-            <p className="about-layout__paragraph">
-              For additional information about Urbānum&rsquo;s services,
-              areas of practice, and approach to architecture, visit{" "}
-              <a
-                href="/practice/questions"
-                onClick={(event) => {
-                  if (
-                    event.defaultPrevented ||
-                    event.button !== 0 ||
-                    event.metaKey ||
-                    event.ctrlKey ||
-                    event.shiftKey ||
-                    event.altKey
-                  ) {
-                    return;
-                  }
-                  event.preventDefault();
-                  navigate("/practice/questions");
-                }}
-              >
-                About the Practice
-              </a>
-              .
-            </p>
+            {hasFinePrintRichText ? (
+              <RichText
+                value={cms.finePrintRichText}
+                paragraphClassName="site-information__fine-print"
+              />
+            ) : (
+              <p className="site-information__fine-print">
+                For additional information about Urbānum’s services,
+                areas of practice, and approach to architecture, visit
+                {" "}
+                <a
+                  href="/practice/questions"
+                  onClick={(event) => {
+                    if (
+                      event.defaultPrevented ||
+                      event.button !== 0 ||
+                      event.metaKey ||
+                      event.ctrlKey ||
+                      event.shiftKey ||
+                      event.altKey
+                    ) {
+                      return;
+                    }
+                    event.preventDefault();
+                    navigate("/practice/questions");
+                  }}
+                >
+                  About the Practice
+                </a>
+                .
+              </p>
+            )}
           </main>
         </div>
       </div>

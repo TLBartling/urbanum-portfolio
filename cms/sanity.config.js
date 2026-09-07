@@ -1,7 +1,7 @@
 import {defineConfig} from 'sanity'
 import {structureTool} from 'sanity/structure'
 import {schemaTypes} from './schemaTypes'
-import {archiveItemsStructure, projectsStructure, themesStructure, photoJournalStructure, aboutPageStructure, contactPageStructure} from './structure'
+import {archiveItemsStructure, projectsStructure, themesStructure, photoJournalStructure, aboutPageStructure, contactPageStructure, practiceQuestionsPageStructure, siteInformationPageStructure} from './structure'
 import {ARCHIVE_SECTIONS} from './archiveSections'
 import {StudioIcon} from './components/StudioIcon'
 import {importWorkspaceTool} from './importWorkspaceTool'
@@ -42,6 +42,8 @@ const STRUCTURE_BY_SECTION_NAME = {
   photoJournal: photoJournalStructure,
   aboutPage: aboutPageStructure,
   contactPage: contactPageStructure,
+  practiceQuestionsPage: practiceQuestionsPageStructure,
+  siteInformationPage: siteInformationPageStructure,
 }
 
 export default defineConfig({

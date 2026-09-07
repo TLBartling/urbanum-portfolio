@@ -177,6 +177,22 @@ export const ARCHIVE_SECTIONS = [
     icon: DocumentTextIcon,
     group: 'Journal',
   },
+  {
+    // Surgical CMS pass: same singleton shape/group as About Page and
+    // Contact Page directly above.
+    name: 'practiceQuestionsPage',
+    title: 'Q&A Page',
+    schemaType: 'practiceQuestionsPage',
+    icon: DocumentTextIcon,
+    group: 'Journal',
+  },
+  {
+    name: 'siteInformationPage',
+    title: 'Site Information',
+    schemaType: 'siteInformationPage',
+    icon: DocumentTextIcon,
+    group: 'Journal',
+  },
 ]
 
 // The section Josh lands on the moment he clicks "Archive" in the top nav,

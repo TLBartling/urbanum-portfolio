@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 import Router from "./Router";
 import SplashScreen from "./SplashScreen";
-import { loadArchiveItems, loadProjects, loadThemes, loadJournalEntries, loadAboutPage, loadContactPage } from "./content";
+import { loadArchiveItems, loadProjects, loadThemes, loadJournalEntries, loadAboutPage, loadContactPage, loadPracticeQuestionsPage, loadSiteInformationPage } from "./content";
 import "./styles.css";
 
 // Repository milestone (startup-experience fix): Archive Items come from
@@ -60,6 +60,8 @@ function Root() {
       loadJournalEntries(),
       loadAboutPage(),
       loadContactPage(),
+      loadPracticeQuestionsPage(),
+      loadSiteInformationPage(),
     ]).finally(() => {
       if (!cancelled) setIsRepositoryReady(true);
     });

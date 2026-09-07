@@ -499,3 +499,106 @@ export async function fetchContactPage() {
   const raw = await client.fetch(CONTACT_PAGE_QUERY);
   return normalizeContactPage(raw);
 }
+
+// -----------------------------------------------------------------------
+// Practice Questions Page (Surgical CMS pass). Same singleton pattern as
+// Contact Page immediately above. `questions` is returned as an array of
+// plain {question, answer} objects, in stored (author-controlled) order
+// -- src/PracticeQuestionsPage.jsx renders them in exactly that order.
+// -----------------------------------------------------------------------
+export const PRACTICE_QUESTIONS_PAGE_QUERY = `
+  *[_type == "practiceQuestionsPage" && !(_id in path("drafts.**"))][0] {
+    question1,
+    answer1,
+    question2,
+    answer2,
+    question3,
+    answer3,
+    question4,
+    answer4,
+    question5,
+    answer5,
+    question6,
+    answer6,
+    question7,
+    answer7,
+    question8,
+    answer8,
+    question9,
+    answer9
+  }
+`;
+
+// Simplification pass: the CMS field shape is now 9 flat pairs
+// (question1/answer1 .. question9/answer9, practiceQuestionsPageType.js's
+// own field declaration order) rather than an array -- reconstructed
+// here, in that same fixed order, back into the `questions` array shape
+// src/PracticeQuestionsPage.jsx already reads (`cms?.questions`), so no
+// frontend change was needed for this pass. A pair is included only when
+// BOTH its question and answer are present and non-blank, so a partially-
+// filled field never produces a broken half-empty entry.
+export function normalizePracticeQuestionsPage(raw) {
+  if (!raw) return null;
+
+  const pairs = [
+    [raw.question1, raw.answer1],
+    [raw.question2, raw.answer2],
+    [raw.question3, raw.answer3],
+    [raw.question4, raw.answer4],
+    [raw.question5, raw.answer5],
+    [raw.question6, raw.answer6],
+    [raw.question7, raw.answer7],
+    [raw.question8, raw.answer8],
+    [raw.question9, raw.answer9],
+  ];
+
+  return {
+    questions: pairs
+      .filter(
+        ([question, answer]) =>
+          typeof question === "string" &&
+          question.trim() !== "" &&
+          typeof answer === "string" &&
+          answer.trim() !== "",
+      )
+      .map(([question, answer]) => ({ question, answer })),
+  };
+}
+
+export async function fetchPracticeQuestionsPage() {
+  const raw = await client.fetch(PRACTICE_QUESTIONS_PAGE_QUERY);
+  return normalizePracticeQuestionsPage(raw);
+}
+
+// -----------------------------------------------------------------------
+// Site Information Page (Surgical CMS pass). Same singleton pattern.
+// finePrintRichText is one Portable Text field (the shared `richText`
+// type, same as Contact's body copy) -- Josh edits the whole fine-print
+// sentence naturally in Sanity, including its inline link, through the
+// existing RichText renderer (src/RichText.jsx).
+// -----------------------------------------------------------------------
+export const SITE_INFORMATION_PAGE_QUERY = `
+  *[_type == "siteInformationPage" && !(_id in path("drafts.**"))][0] {
+    accessibilityText,
+    copyrightText,
+    finePrintRichText
+  }
+`;
+
+export function normalizeSiteInformationPage(raw) {
+  if (!raw) return null;
+
+  return {
+    accessibilityText: raw.accessibilityText,
+    copyrightText: raw.copyrightText,
+    // Same raw Portable Text passthrough as CONTACT_PAGE_QUERY's own
+    // bodyRichText immediately above -- src/RichText.jsx consumes this
+    // block-array shape directly.
+    finePrintRichText: raw.finePrintRichText,
+  };
+}
+
+export async function fetchSiteInformationPage() {
+  const raw = await client.fetch(SITE_INFORMATION_PAGE_QUERY);
+  return normalizeSiteInformationPage(raw);
+}

@@ -131,6 +131,29 @@ export function UrbanumToolMenu(props) {
       gap={6}
       padding={3}
     >
+      {/* Mobile navbar pass: at phone widths the topbar row has the
+          Urbanum mark, all three of these nav links, and the account
+          menu all competing for the same horizontal space (the read-only
+          audit's own "too much navigation competing for horizontal
+          space" finding). Import is the primary mobile use case (adding
+          photos) and stays a plain top-level link at every width, same
+          as today. Archive and System are deprioritized on mobile --
+          "may remain desktop-oriented" -- so this is a CSS-only hide,
+          scoped to the topbar context specifically (`!isSidebar`, so
+          whatever other Studio surface might render this component with
+          context="sidebar" is unaffected) and to only these two groups
+          (`group !== 'Import'`). Nothing about the link itself --
+          StateLink, active-state detection, routing -- changes; only
+          whether it's visible at this width does. */}
+      {!isSidebar && (
+        <style>{`
+          @media (max-width: 768px) {
+            .urbanum-toolmenu-secondary {
+              display: none;
+            }
+          }
+        `}</style>
+      )}
       {groups.map(({group, tool}) => {
         // "Archive" is active for any of its four underlying Structure
         // Tools, not just the one it links to (see the comment above
@@ -146,6 +169,7 @@ export function UrbanumToolMenu(props) {
             key={group}
             state={{tool: tool.name}}
             onClick={isSidebar ? closeSidebar : undefined}
+            className={!isSidebar && group !== 'Import' ? 'urbanum-toolmenu-secondary' : undefined}
             style={{
               ...navLinkStyle,
               color: isActive ? NAV_INK : NAV_MUTED_INK,

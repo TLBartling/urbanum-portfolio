@@ -32,13 +32,19 @@ const groupLabelStyle = {
   fontSize: '0.72rem',
 }
 
+// Mobile audit fix (touch target): 7px -> 10px vertical padding --
+// modest on purpose (same font size/weight/color, same left-aligned
+// full-width hit area), just a taller row so each item is closer to a
+// comfortable touch target. Applied unconditionally (not gated to
+// narrow widths) since a few extra px of row spacing on a plain text
+// nav list doesn't change desktop's visual character.
 const navItemStyle = {
   display: 'block',
   width: '100%',
   textAlign: 'left',
   background: 'none',
   border: 'none',
-  padding: '7px 0',
+  padding: '10px 0',
   margin: 0,
   cursor: 'pointer',
   font: 'inherit',
@@ -86,7 +92,13 @@ function ArchiveNavGroup({label, sections, activeToolName, onNavigate}) {
 // active -- it never unmounts or collapses while Josh is anywhere in the
 // Archive, since it isn't part of Structure Tool's own pane layout at
 // all.
-export function UrbanumArchiveNav({activeToolName}) {
+// Mobile audit fix (rail): `onAfterNavigate` is new and optional --
+// UrbanumArchiveLayout.jsx passes it so the drawer can close itself the
+// moment Josh taps a section, the same as tapping the backdrop already
+// does. Defaults to a no-op, so any other caller of this component
+// (there are none today, but nothing here assumes there's exactly one)
+// behaves exactly as before.
+export function UrbanumArchiveNav({activeToolName, onAfterNavigate = () => {}}) {
   const router = useRouter()
   const {basePath} = useWorkspace()
 
@@ -105,8 +117,12 @@ export function UrbanumArchiveNav({activeToolName}) {
         .filter(Boolean)
         .join('/')}`
       router.navigateUrl({path})
+      // Mobile audit fix (rail): no-op above NARROW_BREAKPOINT (the
+      // drawer state UrbanumArchiveLayout.jsx tracks never opens there
+      // in the first place), so this doesn't change desktop behavior.
+      onAfterNavigate()
     },
-    [router, basePath],
+    [router, basePath, onAfterNavigate],
   )
 
   const archiveSections = ARCHIVE_SECTIONS.filter((section) => section.group === 'Archive')

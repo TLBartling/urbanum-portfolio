@@ -2231,6 +2231,58 @@ export function ImportWorkspace() {
             min-width: ${COMPRESSED_LEFT_SIDEBAR_WIDTH}px;
           }
         }
+        /* Mobile Import Workspace pass: Josh's primary phone use case is
+           adding photos to the Archive, not managing the full desktop
+           workspace (see this block's own instructions -- "create a
+           clean single-column capture workflow, not a compressed desktop
+           workspace"). Everything above this point is the existing
+           desktop-down-to-tablet system, untouched; this is a hard,
+           literal 768px cutover to a different composition entirely,
+           not another step in that system's own math.
+
+           LEFT SIDEBAR is removed from the mobile composition outright
+           (display: none) rather than shrunk further -- its only job was
+           orientation ("which step am I on"), and CENTER already renders
+           that same information via the "Step X of Y" kicker at the top
+           of every step (see STEP_SEQUENCE/displayStepNumber above), so
+           nothing is lost. .urbanum-columns needs no change: with LEFT
+           removed from flow, its only remaining child (.urbanum-workspace)
+           simply fills the row via its own existing flex: 1.
+
+           .urbanum-workspace's own max-width (CENTER_MIN_WIDTH, applied
+           once WORKSPACE_STACK_THRESHOLD stacks it into a column) existed
+           to keep the stacked column from stretching to fill whatever
+           LEFT's fixed width left behind -- with LEFT now gone entirely,
+           that ceiling is exactly what was making the workspace read as
+           a narrow, centered strip instead of "essentially full usable
+           viewport width," so it's lifted here. .urbanum-workspace-center
+           and .urbanum-sidebar-right are already width: 100% at this
+           point (same WORKSPACE_STACK_THRESHOLD block) and need no
+           further change -- they now simply resolve against the wider,
+           uncapped parent. */
+        @media (max-width: 768px) {
+          .urbanum-sidebar-left {
+            display: none;
+          }
+          .urbanum-workspace {
+            max-width: none;
+          }
+          /* Tips is static, non-essential mockup copy ("you can add more
+             details after publishing...") -- not information required to
+             complete the Upload step, so it's hidden here rather than
+             competing for space in a single-column phone layout. */
+          .urbanum-tips-card {
+            display: none;
+          }
+          /* The upload dropzone already becomes essentially full-width
+             once CENTER is uncapped above; this only trims its own
+             padding (48px, the existing <=1400px step) down further so
+             the tap target reads as "large," not just "wide with a lot
+             of empty margin," on a phone screen. */
+          .urbanum-upload-card {
+            padding: 32px;
+          }
+        }
       `}</style>
       {/* Approved layout spec: a permanent three-column composition --
           LEFT SIDEBAR (workflow navigation, persistent) | CENTER (the
@@ -2821,6 +2873,7 @@ export function ImportWorkspace() {
                   radius={0}
                   shadow={0}
                   tone="default"
+                  className="urbanum-tips-card"
                   style={{border: `1px solid ${HAIRLINE}`, backgroundColor: 'transparent'}}
                 >
                   <Stack gap={3}>

@@ -273,19 +273,47 @@ export function UrbanumNavbar() {
     // account menu are all unchanged; text stays the same INK/muted-gray
     // already used against this exact background in the Uploader, so
     // contrast is unaffected.
+    //
+    // Mobile audit fix (navbar): the read-only mobile audit found this
+    // row has no shrink/truncation safeguard at all -- both flex:1
+    // sections default to the browser's own `min-width: auto`, so
+    // neither can compress below its content's natural size, and the
+    // account name had no overflow/ellipsis treatment. At narrow widths
+    // (logo + three nav words + a full name + avatar, inside ~360px)
+    // that's real overflow risk. `minWidth: 0` on both flex:1 sections
+    // below is the one-line fix that lets them actually shrink instead
+    // of forcing the row wider than the viewport; the account name's own
+    // truncation/hide treatment is the `urbanum-navbar-account-name`
+    // class in the <style> block below. Nothing else about this row's
+    // desktop appearance changes -- at desktop widths neither section
+    // ever needs to shrink below its content, so `minWidth: 0` has no
+    // visible effect there.
     <Flex align="center" paddingX={4} paddingY={3} style={{backgroundColor: SHELL_BACKGROUND}}>
-      <Flex align="center" style={{flex: 1}}>
+      <style>{`
+        .urbanum-navbar-account-name {
+          max-width: 160px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        @media (max-width: 480px) {
+          .urbanum-navbar-account-name {
+            display: none;
+          }
+        }
+      `}</style>
+      <Flex align="center" style={{flex: 1, minWidth: 0}}>
         <UrbanumLogo />
       </Flex>
       <UrbanumToolMenu tools={tools} context="topbar" activeToolName={activeToolName} />
-      <Flex align="center" justify="flex-end" style={{flex: 1}}>
+      <Flex align="center" justify="flex-end" style={{flex: 1, minWidth: 0}}>
         {currentUser ? (
           <MenuButton
             id="urbanum-account-menu"
             button={
               <button type="button" style={accountTriggerStyle}>
                 <Flex align="center" gap={3}>
-                  <Text size={1} muted>
+                  <Text size={1} muted className="urbanum-navbar-account-name">
                     {currentUser.name}
                   </Text>
                   <Avatar

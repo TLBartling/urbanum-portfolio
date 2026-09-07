@@ -1,6 +1,7 @@
 import {StateLink} from 'sanity/router'
 import {Flex} from '@sanity/ui'
 import {ARCHIVE_TOOL_NAMES, DEFAULT_ARCHIVE_TOOL_NAME} from '../archiveSections'
+import {useIsMobileStudio} from '../useIsMobileStudio'
 
 // Groups Studio's existing `tools` array under the IMPORT / ARCHIVE /
 // SYSTEM hierarchy from the Milestone 2 assessment, via
@@ -112,6 +113,14 @@ export function UrbanumToolMenu(props) {
   // for the active tool.
   const {tools, context, activeToolName, closeSidebar} = props
   const isSidebar = context === 'sidebar'
+  // Mobile Studio fix: this used to be a CSS class
+  // (urbanum-toolmenu-secondary) hidden via a plain @media rule.
+  // Confirmed on a real, freshly-deployed hosted Studio that CSS switch
+  // was NOT reliably taking effect -- see useIsMobileStudio.js for the
+  // full diagnosis. isMobileStudio is real JS state instead, so Archive/
+  // System are now genuinely not rendered at this width, rather than
+  // hidden by a CSS rule that could lose a cascade fight silently.
+  const isMobileStudio = useIsMobileStudio()
 
   // One link per group, always -- looked up by the group's own specific
   // tool name (GROUP_TOOL_NAME) rather than derived by scanning `tools`
@@ -131,29 +140,6 @@ export function UrbanumToolMenu(props) {
       gap={6}
       padding={3}
     >
-      {/* Mobile navbar pass: at phone widths the topbar row has the
-          Urbanum mark, all three of these nav links, and the account
-          menu all competing for the same horizontal space (the read-only
-          audit's own "too much navigation competing for horizontal
-          space" finding). Import is the primary mobile use case (adding
-          photos) and stays a plain top-level link at every width, same
-          as today. Archive and System are deprioritized on mobile --
-          "may remain desktop-oriented" -- so this is a CSS-only hide,
-          scoped to the topbar context specifically (`!isSidebar`, so
-          whatever other Studio surface might render this component with
-          context="sidebar" is unaffected) and to only these two groups
-          (`group !== 'Import'`). Nothing about the link itself --
-          StateLink, active-state detection, routing -- changes; only
-          whether it's visible at this width does. */}
-      {!isSidebar && (
-        <style>{`
-          @media (max-width: 768px) {
-            .urbanum-toolmenu-secondary {
-              display: none;
-            }
-          }
-        `}</style>
-      )}
       {groups.map(({group, tool}) => {
         // "Archive" is active for any of its four underlying Structure
         // Tools, not just the one it links to (see the comment above
@@ -164,12 +150,29 @@ export function UrbanumToolMenu(props) {
             ? ARCHIVE_TOOL_NAMES.includes(activeToolName)
             : activeToolName === tool.name
 
+        // Mobile navbar pass: at phone widths the topbar row has the
+        // Urbanum mark, all three of these nav links, and the account
+        // menu all competing for the same horizontal space (the
+        // read-only audit's own "too much navigation competing for
+        // horizontal space" finding). Import is the primary mobile use
+        // case (adding photos) and stays a plain top-level link at
+        // every width, same as today. Archive and System are
+        // deprioritized on mobile -- "may remain desktop-oriented" --
+        // so at mobile widths, in the topbar specifically (`!isSidebar`,
+        // so whatever other Studio surface might render this component
+        // with context="sidebar" is unaffected), those two groups are
+        // skipped entirely rather than rendered and hidden. Nothing
+        // about the link itself -- StateLink, active-state detection,
+        // routing -- changes; only whether it renders at all does.
+        if (isMobileStudio && !isSidebar && group !== 'Import') {
+          return null
+        }
+
         return (
           <StateLink
             key={group}
             state={{tool: tool.name}}
             onClick={isSidebar ? closeSidebar : undefined}
-            className={!isSidebar && group !== 'Import' ? 'urbanum-toolmenu-secondary' : undefined}
             style={{
               ...navLinkStyle,
               color: isActive ? NAV_INK : NAV_MUTED_INK,

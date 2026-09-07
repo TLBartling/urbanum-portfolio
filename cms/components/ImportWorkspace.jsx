@@ -19,6 +19,7 @@ import {createImportDrafts} from '../createImportDrafts'
 import {patchImportDraft} from '../patchImportDraft'
 import {DEFAULT_ARCHIVE_TOOL_NAME} from '../archiveSections'
 import {AnnotationField} from './AnnotationField'
+import {useIsMobileStudio} from '../useIsMobileStudio'
 
 const API_VERSION = '2024-01-01'
 
@@ -697,6 +698,14 @@ export function ImportWorkspace() {
   const router = useRouter()
   const {basePath} = useWorkspace()
   const client = useClient({apiVersion: API_VERSION})
+  // Mobile Studio fix: see useIsMobileStudio.js for why this replaces the
+  // plain @media-query approach that didn't reliably activate in the
+  // real hosted Studio. This boolean is the single source of truth for
+  // every mobile-only/desktop-only branch below (LEFT SIDEBAR, the
+  // workspace width cap, Tips) -- width-only, re-evaluated live via
+  // matchMedia, so narrowing a desktop browser drives it exactly like an
+  // actual phone does.
+  const isMobileStudio = useIsMobileStudio()
   const [queueItems, setQueueItems] = useState([])
   const [isCreatingDrafts, setIsCreatingDrafts] = useState(false)
   // Visual-polish pass ("Archive/Journal buttons"): `isCreatingDrafts` is
@@ -2260,19 +2269,19 @@ export function ImportWorkspace() {
            point (same WORKSPACE_STACK_THRESHOLD block) and need no
            further change -- they now simply resolve against the wider,
            uncapped parent. */
+        /* Mobile Studio fix: .urbanum-sidebar-left and .urbanum-tips-card
+           no longer need a display:none rule here -- both are now
+           conditionally not rendered at all when isMobileStudio (see
+           useIsMobileStudio.js and each element's own comment above), so
+           a CSS override for either one's display property would never
+           have a real element left to apply to. .urbanum-workspace's
+           max-width is now also forced via inline style (see that Flex's
+           own comment) -- this class rule stays only as a harmless
+           fallback for the max-width property specifically, which isn't
+           the property that was silently losing its cascade fight. */
         @media (max-width: 768px) {
-          .urbanum-sidebar-left {
-            display: none;
-          }
           .urbanum-workspace {
             max-width: none;
-          }
-          /* Tips is static, non-essential mockup copy ("you can add more
-             details after publishing...") -- not information required to
-             complete the Upload step, so it's hidden here rather than
-             competing for space in a single-column phone layout. */
-          .urbanum-tips-card {
-            display: none;
           }
           /* The upload dropzone already becomes essentially full-width
              once CENTER is uncapped above; this only trims its own
@@ -2326,7 +2335,14 @@ export function ImportWorkspace() {
             progress bar) -- same data, new presentation as a vertical
             step list. Not clickable: the underlying step machine is
             strictly forward-and-validated (unchanged, per the locked
-            architecture), so this is orientation, not navigation. */}
+            architecture), so this is orientation, not navigation.
+
+            Mobile Studio fix: not rendered at all when isMobileStudio --
+            see useIsMobileStudio.js. Josh's phone use case is capture,
+            not workflow orientation; CENTER's own "Step X of Y" kicker
+            (below) already carries the same information in the mobile
+            composition. */}
+        {isMobileStudio ? null : (
         <Box className="urbanum-sidebar-left">
           <Stack gap={4}>
             <Text size={0} style={kickerStyle}>
@@ -2377,6 +2393,7 @@ export function ImportWorkspace() {
             </Stack>
           </Stack>
         </Box>
+        )}
 
         {/* WORKSPACE -- prototype review pass, round 3: CENTER and RIGHT
             SIDEBAR, nested inside their own Flex so they can act as one
@@ -2385,7 +2402,13 @@ export function ImportWorkspace() {
             crossed) while LEFT stays a plain, unwrapped sibling in the
             outer row throughout. See `.urbanum-workspace`'s own CSS
             comment above for the full mechanism. */}
-        <Flex className="urbanum-workspace">
+        {/* Mobile Studio fix: max-width is forced off via inline style
+            (always wins any cascade fight) rather than relying solely on
+            the .urbanum-workspace CSS class's own @media override -- see
+            useIsMobileStudio.js. The base class/CSS is left in place as a
+            harmless fallback; this inline style is what actually
+            guarantees the effect now. */}
+        <Flex className="urbanum-workspace" style={isMobileStudio ? {maxWidth: 'none'} : undefined}>
 
         {/* CENTER -- the active workspace. Every step renders into this
             same Box; only its contents change.
@@ -2866,8 +2889,16 @@ export function ImportWorkspace() {
 
               {/* Tips -- static mockup copy. Shown only on Upload, the one
                   screen the mockup actually designed; no Required/
-                  Optional/Complete tip copy is invented here. */}
-              {step === 'upload' && (
+                  Optional/Complete tip copy is invented here.
+
+                  Mobile Studio fix: not rendered at all when
+                  isMobileStudio (rather than relying on the
+                  .urbanum-tips-card CSS class's own @media hide) -- see
+                  useIsMobileStudio.js. Not required to complete the
+                  Upload step, so it's dropped outright on the mobile
+                  single-column composition instead of competing for
+                  space. */}
+              {step === 'upload' && !isMobileStudio && (
                 <Card
                   padding={4}
                   radius={0}

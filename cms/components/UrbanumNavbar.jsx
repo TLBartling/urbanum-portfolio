@@ -15,6 +15,7 @@ import {Avatar, Box, Flex, Stack, Text} from '@sanity/ui'
 import {Menu, MenuButton, MenuDivider, MenuItem} from '@sanity/ui/menu'
 import {UrbanumToolMenu} from './UrbanumToolMenu'
 import {unstableSignOut} from '../unstableSignOut'
+import {useMatchesViewportQuery} from '../useIsMobileStudio'
 
 // Same ink value ImportWorkspace.jsx's own INK constant uses -- kept as
 // a local literal rather than imported across files (the two components
@@ -223,6 +224,15 @@ export function UrbanumNavbar() {
   const activeToolName = useRouterState((routerState) =>
     typeof routerState.tool === 'string' ? routerState.tool : undefined,
   )
+  // Mobile Studio fix: this used to be a CSS class
+  // (urbanum-navbar-account-name) hidden via a plain @media rule below
+  // 480px. Confirmed on a real, freshly-deployed hosted Studio that CSS
+  // switch was NOT reliably taking effect -- see useIsMobileStudio.js
+  // for the full diagnosis. Real JS state instead, via the same
+  // matchMedia mechanism, at the same deliberately-narrower-than-768px
+  // step this treatment always used (see the comment above the <Flex>
+  // below for why the name gets its own narrower threshold).
+  const hideAccountName = useMatchesViewportQuery('(max-width: 480px)')
 
   // Authentication pass ("Option A"): the only caller of `unstableSignOut`
   // in the project (see that file for the isolated `@internal` exception
@@ -296,11 +306,6 @@ export function UrbanumNavbar() {
           text-overflow: ellipsis;
           white-space: nowrap;
         }
-        @media (max-width: 480px) {
-          .urbanum-navbar-account-name {
-            display: none;
-          }
-        }
       `}</style>
       <Flex align="center" style={{flex: 1, minWidth: 0}}>
         <UrbanumLogo />
@@ -313,9 +318,11 @@ export function UrbanumNavbar() {
             button={
               <button type="button" style={accountTriggerStyle}>
                 <Flex align="center" gap={3}>
-                  <Text size={1} muted className="urbanum-navbar-account-name">
-                    {currentUser.name}
-                  </Text>
+                  {!hideAccountName && (
+                    <Text size={1} muted className="urbanum-navbar-account-name">
+                      {currentUser.name}
+                    </Text>
+                  )}
                   <Avatar
                     src={currentUser.profileImage}
                     initials={initialsFor(currentUser.name)}

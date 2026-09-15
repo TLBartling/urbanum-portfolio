@@ -168,7 +168,17 @@ export function UrbanumArchiveLayout(props) {
           <MenuIcon style={{fontSize: 20}} />
         </button>
       )}
-      <Box style={{flex: 1, minWidth: 0, height: '100%', overflow: 'hidden'}}>
+      {/* Allow native Sanity document panes to scroll on narrow/mobile viewports. */}
+      <Box
+        style={{
+          flex: 1,
+          minWidth: 0,
+          minHeight: 0,
+          height: '100%',
+          overflowX: 'hidden',
+          overflowY: 'auto',
+        }}
+      >
         {renderDefault(props)}
       </Box>
     </Flex>

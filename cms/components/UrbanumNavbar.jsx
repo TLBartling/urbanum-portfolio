@@ -302,6 +302,7 @@ export function UrbanumNavbar() {
       <style>{`
         .urbanum-navbar-account-name {
           max-width: 160px;
+          min-width: 0;
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
@@ -327,6 +328,7 @@ export function UrbanumNavbar() {
                     src={currentUser.profileImage}
                     initials={initialsFor(currentUser.name)}
                     size={1}
+                    style={{flexShrink: 0}}
                   />
                 </Flex>
               </button>

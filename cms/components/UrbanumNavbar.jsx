@@ -233,13 +233,22 @@ export function UrbanumNavbar() {
   // step this treatment always used (see the comment above the <Flex>
   // below for why the name gets its own narrower threshold).
   const hideAccountName = useMatchesViewportQuery('(max-width: 480px)')
-  // Username clipping fix: the account name's 160px cap below used to
-  // apply unconditionally (at every width, including full desktop),
-  // which clipped/truncated any name wider than 160px even with ample
-  // room to spare -- a regression from the mobile audit fix, not
-  // present before it. The cap is now only applied when the Studio is
-  // actually narrow enough to need it, at the same <=768px threshold
-  // the rest of the mobile Studio work already uses.
+  // Username clipping fix, round 2: gating only `max-width` (as the
+  // first pass did) left `overflow: hidden` on this Text applied
+  // unconditionally, at every width -- that property was introduced
+  // in the same "mobile audit fix" commit that first added this
+  // className, is NOT present in the pre-mobile-work version of this
+  // file (plain `<Text size={1} muted>{currentUser.name}</Text>`, no
+  // className/style at all -- checked directly against that commit),
+  // and was never touched by the first fix. Whatever exactly the
+  // rendering cost of an unnecessary `overflow: hidden` turns out to
+  // be, this Text has no genuine overflow risk to guard against at
+  // normal widths in the first place -- only `isNarrowStudio` actually
+  // needs the truncation treatment. The className (which carries
+  // overflow/text-overflow/white-space, not just max-width) is now
+  // gated the same way, so desktop gets back exactly the pre-mobile-
+  // work markup/styling, and only <=768px gets the truncation
+  // treatment at all.
   const isNarrowStudio = useMatchesViewportQuery('(max-width: 768px)')
 
   // Authentication pass ("Option A"): the only caller of `unstableSignOut`
@@ -330,7 +339,7 @@ export function UrbanumNavbar() {
                     <Text
                       size={1}
                       muted
-                      className="urbanum-navbar-account-name"
+                      className={isNarrowStudio ? 'urbanum-navbar-account-name' : undefined}
                       style={isNarrowStudio ? {maxWidth: 160} : undefined}
                     >
                       {currentUser.name}

@@ -1,4 +1,4 @@
-import { navigate } from "./navigation";
+import { navigate, getProjectEntryOrigin } from "./navigation";
 
 // Mobile Archive Interaction Pass -- Stage 0B (Universal Back to Archive):
 // the explicit, designed path back to the Archive that Project pages lost
@@ -62,6 +62,16 @@ import { navigate } from "./navigation";
 //   mechanism -- a calc() pulling it back by the difference between the
 //   two padding formulas, scoped to desktop only.
 export default function ProjectBreadcrumb({ isInfoOpen = false, onToggleInfo } = {}) {
+  // Mobile Project X entry-context fix: which page this Project was
+  // actually entered from (Archive vs. the Projects page), recorded at
+  // the point of entry by setProjectEntryOrigin (see App.jsx,
+  // ProjectsPage.jsx, and navigation.js's own comment there). Read fresh
+  // on every render rather than cached in state -- it's a plain module
+  // value, and this component re-renders on every isInfoOpen toggle
+  // anyway. Desktop's own "‹ Archive" control below is unaffected and
+  // deliberately still always navigate("/") -- see that button's own
+  // comment for why. Only the mobile "X" below uses this.
+  const exitPath = getProjectEntryOrigin() === "projects" ? "/projects" : "/";
   return (
     <div className="project-breadcrumb">
       <button
@@ -118,8 +128,14 @@ export default function ProjectBreadcrumb({ isInfoOpen = false, onToggleInfo } =
       <button
         type="button"
         className="project-breadcrumb__mobile-close"
-        onClick={isInfoOpen ? onToggleInfo : () => navigate("/")}
-        aria-label={isInfoOpen ? "Close project information" : "Back to Archive"}
+        onClick={isInfoOpen ? onToggleInfo : () => navigate(exitPath)}
+        aria-label={
+          isInfoOpen
+            ? "Close project information"
+            : exitPath === "/projects"
+              ? "Back to Projects"
+              : "Back to Archive"
+        }
       >
         <span aria-hidden="true">&times;</span>
       </button>

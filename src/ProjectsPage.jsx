@@ -1,6 +1,6 @@
 import { useState } from "react";
 import Header from "./Header";
-import { navigate } from "./navigation";
+import { navigate, setProjectEntryOrigin } from "./navigation";
 import { getProjects } from "./content";
 import { getProjectBySlug, resolveInitialImageId } from "./projectContent";
 import { getOptimizedImageSrc } from "./imageOptimization";
@@ -63,7 +63,15 @@ function MobileProjectRow({ project }) {
     <button
       type="button"
       className="mobile-projects-row"
-      onClick={() => navigate(`/projects/${project.slug}`)}
+      onClick={() => {
+        // Mobile Project X entry-context fix: this Project is being
+        // entered from the Projects page -- recorded so
+        // ProjectBreadcrumb.jsx's mobile "X" knows to exit back to
+        // /projects instead of assuming Archive. See navigation.js's own
+        // comment on setProjectEntryOrigin.
+        setProjectEntryOrigin("projects");
+        navigate(`/projects/${project.slug}`);
+      }}
       aria-label={`View project: ${project.title}`}
     >
       {thumbnailSrc && (

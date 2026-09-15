@@ -34,6 +34,31 @@ export function useCurrentPath() {
   return path;
 }
 
+// A minimal, ephemeral channel for remembering which page a visitor used
+// to enter the Project currently open, so the mobile Project "X" can exit
+// back to that same origin (Archive vs. the Projects page) instead of
+// always assuming Archive. Same pattern as pendingHomeIntent below: a
+// plain module variable, no persistence. Unlike pendingHomeIntent, this
+// is read non-destructively (never cleared on read) -- Previous/Next
+// Project (ProjectNavigation.jsx) remounts ProjectTemplate for the new
+// slug without re-declaring how the visitor originally arrived, and the
+// X should keep honoring that original origin across those in-Project
+// moves. It's only ever overwritten at an actual Project entry point
+// (Archive's gallery tiles/Filter row in App.jsx, the Projects page's
+// mobile row in ProjectsPage.jsx). Defaults to "archive", which is also
+// what a fresh module load (a direct Project URL, or any refresh) always
+// resets to -- exactly today's existing fallback behavior, preserved for
+// the case where no real entry context exists.
+let projectEntryOrigin = "archive";
+
+export function setProjectEntryOrigin(origin) {
+  projectEntryOrigin = origin;
+}
+
+export function getProjectEntryOrigin() {
+  return projectEntryOrigin;
+}
+
 // A minimal, ephemeral channel for handing a header intent (which control to
 // resume as active on arrival, plus any typed-but-unsubmitted text) across a
 // return trip to the homepage. Filter and Search both resolve on the

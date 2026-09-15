@@ -3,7 +3,7 @@ import gsap from "gsap";
 import imageMetadata from "./image-metadata.json";
 import Header from "./Header";
 import HoverOverlay from "./HoverOverlay";
-import { navigate } from "./navigation";
+import { navigate, setProjectEntryOrigin } from "./navigation";
 import { useIsMobileUiMode } from "./useIsMobileUiMode";
 import { hapticTap } from "./haptics";
 // Image-delivery helpers (which sized/format variant of an already-known
@@ -3978,6 +3978,13 @@ function App() {
     (item) => {
       if (!item.project || isEnteringProject) return;
       setIsEnteringProject(true);
+      // Mobile Project X entry-context fix: this Project is being entered
+      // from the Archive (this is App.jsx) -- recorded before the fade-
+      // then-navigate below so ProjectBreadcrumb.jsx's mobile "X" knows to
+      // exit back here. See navigation.js's own comment on
+      // setProjectEntryOrigin for why this is a plain, non-destructive
+      // module variable rather than router/history state.
+      setProjectEntryOrigin("archive");
       enterProjectTimeoutRef.current = window.setTimeout(() => {
         navigate(`/projects/${item.project}?image=${item.archiveNumber}`);
       }, GALLERY_FADE_MS);
@@ -7129,6 +7136,11 @@ function App() {
                             // second timeout/navigation on top of the first.
                             if (isEnteringProject) return;
                             setIsEnteringProject(true);
+                            // Mobile Project X entry-context fix: same
+                            // Archive-origin recording as
+                            // handleProjectRowImageClick above, for this
+                            // separate desktop-only entry path.
+                            setProjectEntryOrigin("archive");
                             enterProjectTimeoutRef.current = window.setTimeout(
                               () => {
                                 navigate(

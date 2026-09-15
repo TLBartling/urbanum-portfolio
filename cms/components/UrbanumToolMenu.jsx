@@ -150,21 +150,21 @@ export function UrbanumToolMenu(props) {
             ? ARCHIVE_TOOL_NAMES.includes(activeToolName)
             : activeToolName === tool.name
 
-        // Mobile navbar pass: at phone widths the topbar row has the
-        // Urbanum mark, all three of these nav links, and the account
-        // menu all competing for the same horizontal space (the
+        // Mobile navbar pass (revised): at phone widths the topbar row
+        // has the Urbanum mark, all three of these nav links, and the
+        // account menu all competing for the same horizontal space (the
         // read-only audit's own "too much navigation competing for
-        // horizontal space" finding). Import is the primary mobile use
-        // case (adding photos) and stays a plain top-level link at
-        // every width, same as today. Archive and System are
-        // deprioritized on mobile -- "may remain desktop-oriented" --
-        // so at mobile widths, in the topbar specifically (`!isSidebar`,
-        // so whatever other Studio surface might render this component
-        // with context="sidebar" is unaffected), those two groups are
-        // skipped entirely rather than rendered and hidden. Nothing
-        // about the link itself -- StateLink, active-state detection,
-        // routing -- changes; only whether it renders at all does.
-        if (isMobileStudio && !isSidebar && group !== 'Import') {
+        // horizontal space" finding). Import stays a plain top-level
+        // link at every width, same as today. Archive must stay reachable
+        // on mobile -- it is not an optional/desktop-only surface -- so
+        // only System is deprioritized on mobile now: in the topbar
+        // specifically (`!isSidebar`, so whatever other Studio surface
+        // might render this component with context="sidebar" is
+        // unaffected), System is skipped entirely rather than rendered
+        // and hidden. Nothing about the link itself -- StateLink,
+        // active-state detection, routing -- changes; only whether it
+        // renders at all does.
+        if (isMobileStudio && !isSidebar && group === 'System') {
           return null
         }
 

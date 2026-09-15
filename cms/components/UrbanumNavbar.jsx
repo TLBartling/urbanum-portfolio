@@ -233,6 +233,14 @@ export function UrbanumNavbar() {
   // step this treatment always used (see the comment above the <Flex>
   // below for why the name gets its own narrower threshold).
   const hideAccountName = useMatchesViewportQuery('(max-width: 480px)')
+  // Username clipping fix: the account name's 160px cap below used to
+  // apply unconditionally (at every width, including full desktop),
+  // which clipped/truncated any name wider than 160px even with ample
+  // room to spare -- a regression from the mobile audit fix, not
+  // present before it. The cap is now only applied when the Studio is
+  // actually narrow enough to need it, at the same <=768px threshold
+  // the rest of the mobile Studio work already uses.
+  const isNarrowStudio = useMatchesViewportQuery('(max-width: 768px)')
 
   // Authentication pass ("Option A"): the only caller of `unstableSignOut`
   // in the project (see that file for the isolated `@internal` exception
@@ -301,7 +309,6 @@ export function UrbanumNavbar() {
     <Flex align="center" paddingX={4} paddingY={3} style={{backgroundColor: SHELL_BACKGROUND}}>
       <style>{`
         .urbanum-navbar-account-name {
-          max-width: 160px;
           min-width: 0;
           overflow: hidden;
           text-overflow: ellipsis;
@@ -320,7 +327,12 @@ export function UrbanumNavbar() {
               <button type="button" style={accountTriggerStyle}>
                 <Flex align="center" gap={3}>
                   {!hideAccountName && (
-                    <Text size={1} muted className="urbanum-navbar-account-name">
+                    <Text
+                      size={1}
+                      muted
+                      className="urbanum-navbar-account-name"
+                      style={isNarrowStudio ? {maxWidth: 160} : undefined}
+                    >
                       {currentUser.name}
                     </Text>
                   )}

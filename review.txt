@@ -1,0 +1,179 @@
+You are acting as a senior software engineer performing a thorough pre-launch code review of this entire application.
+
+This project was developed primarily with AI assistance, so pay particular attention to code that may work but is unnecessarily complex, duplicated, inconsistent, insecure, fragile, or difficult for a human developer to maintain.
+
+Review the entire codebase and provide a structured developer review.
+
+Do not make changes yet. First analyze the application and report your findings.
+
+Evaluate the following areas:
+
+## 1. Architecture and Project Structure
+
+Review:
+
+- Overall application architecture
+- Directory and file organization
+- Separation of concerns
+- Component/module boundaries
+- Frontend/backend responsibilities
+- State management
+- API design
+- Database access patterns
+- Configuration management
+  Identify areas where the architecture is unnecessarily complex, inconsistent, tightly coupled, or likely to become difficult to maintain.
+
+## 2. Code Quality and Maintainability
+
+Look for:
+
+- Duplicate or copy/pasted code
+- Dead or unused code
+- Unused dependencies
+- Overly large files, functions, or components
+- Overly complicated logic
+- Poor naming
+- Magic numbers or strings
+- Inconsistent coding patterns
+- Unnecessary abstractions
+- AI-generated code smells
+- Code that is difficult for a human developer to understand or modify
+- Misleading or unnecessary comments
+- Opportunities to simplify the implementation
+  For each issue, explain why it matters and suggest a specific improvement.
+
+## 3. Correctness and Functional Risks
+
+Identify potential bugs or fragile behavior, including:
+
+- Incorrect assumptions
+- Edge cases
+- Missing validation
+- Race conditions
+- Async/await problems
+- State synchronization issues
+- Error paths that may fail
+- Navigation or refresh problems
+- Broken behavior under unexpected user input
+  Pay particular attention to code that may work during the normal happy path but fail in edge cases.
+
+## 4. Security Review
+
+Review for common security problems, including:
+
+- Hardcoded secrets, API keys, passwords, or tokens
+- Secrets accidentally exposed to the frontend
+- Missing authentication or authorization checks
+- Client-side-only authorization
+- Injection vulnerabilities
+- XSS risks
+- Unsafe HTML rendering
+- Insecure file handling
+- Excessive CORS permissions
+- Sensitive information exposed in logs or error messages
+- Unsafe environment variable handling
+- Insecure API endpoints
+  Clearly identify any issues that should block production deployment.
+
+## 5. Error Handling and Resilience
+
+Check whether the application handles:
+
+- API failures
+- Network failures
+- Invalid input
+- Missing or malformed data
+- Database failures
+- Slow responses
+- Unexpected exceptions
+  Identify places where the application could fail silently, crash, expose internal errors, or leave the user in a confusing state.
+
+## 6. Performance
+
+Look for:
+
+- Unnecessary API calls
+- Inefficient database queries
+- N+1 query patterns
+- Unnecessary rendering or recomputation
+- Large or unnecessary dependencies
+- Large assets
+- Missing caching where appropriate
+- Obvious scalability concerns
+  Only flag meaningful performance issues. Do not recommend premature optimization.
+
+## 7. Testing
+
+Review the existing test strategy.
+
+Identify:
+
+- Important functionality with no test coverage
+- Tests that are weak or not meaningful
+- Critical user flows that should be tested
+- Areas where integration or end-to-end testing would be more valuable than unit tests
+  Recommend a prioritized set of tests that should exist before launch.
+
+## 8. Accessibility and User Experience
+
+Review for obvious issues involving:
+
+- Keyboard navigation
+- Focus management
+- Form labels
+- Error messaging
+- Loading states
+- Mobile/responsive behavior
+- Accessibility attributes
+
+## 9. Dependencies and Deployment Readiness
+
+Review:
+
+- Dependency choices
+- Unnecessary or duplicate dependencies
+- Known or likely dependency risks
+- Environment variable usage
+- Production configuration
+- Build process
+- Deployment configuration
+- Database migrations, if applicable
+- Logging and monitoring readiness
+
+## Output Format
+
+Organize your findings into the following categories:
+
+### CRITICAL — Must fix before launch
+
+Security vulnerabilities, data-loss risks, major correctness issues, or anything likely to cause serious production problems.
+
+### HIGH — Strongly recommended before launch
+
+Significant reliability, maintainability, performance, or user experience issues.
+
+### MEDIUM — Should be addressed soon
+
+Issues that are not launch blockers but could create future maintenance or technical debt problems.
+
+### LOW — Nice improvements
+
+Minor cleanup, consistency, or refactoring opportunities.
+
+For every finding include:
+
+1. Severity
+2. File and line number(s)
+3. Description of the issue
+4. Why it matters
+5. Recommended fix
+   Do not overwhelm me with trivial style issues. Prioritize issues that would matter in a real production application.
+
+At the end, provide:
+
+1. A short overall assessment of production readiness
+2. A prioritized "before launch" checklist
+3. The top 5 risks in the application
+4. A list of areas that look particularly well designed
+5. Any assumptions or areas you were unable to fully evaluate
+   Again: do not modify the code yet. Perform the review first.
